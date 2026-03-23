@@ -24,6 +24,10 @@ graph LR
 
 Takes a feature spec (yours -- bring your own PRD, doc, or verbal description), decomposes it into PR-sized work items, launches parallel AI sessions to implement them, and orchestrates the full lifecycle: CI monitoring, review feedback, rebasing, merging, and post-merge reconciliation.
 
+- **Merge strategies** -- merge after approval + CI passes, auto-merge as soon as CI passes (skip approval), or confirm each merge manually
+- **WIP limits** -- rate-limit concurrent sessions (e.g., 5 at a time); auto-start next item when a PR opens, keeping the pipeline flowing without overwhelming CI or reviewers
+- **Dependency batches** -- items are grouped by dependencies; batch N+1 only starts after batch N is merged
+
 ## Supported AI Tools
 
 Works with any tool that supports the [Agent Skills standard](https://agentskills.io):
