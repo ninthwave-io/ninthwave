@@ -31,6 +31,7 @@ import * as git from "../core/git.ts";
 import {
   cmdClean,
   cmdCleanSingle,
+  cleanSingleWorktree,
   cmdCloseWorkspace,
   cmdCloseWorkspaces,
 } from "../core/commands/clean.ts";
@@ -118,6 +119,64 @@ describe("cmdCloseWorkspace", () => {
     captureOutput(() => cmdCloseWorkspace("H-CI-2"));
     expect(cmux.closeWorkspace as Mock).toHaveBeenCalledWith("workspace:1");
     expect(cmux.closeWorkspace as Mock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("cleanSingleWorktree", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => cleanupTempRepos());
+
+  it("returns false when worktree directory does not exist", () => {
+    const repo = setupTempRepo();
+    const worktreeDir = join(repo, ".worktrees");
+
+    const result = cleanSingleWorktree("H-CI-2", worktreeDir, repo);
+    expect(result).toBe(false);
+    expect(git.removeWorktree as Mock).not.toHaveBeenCalled();
+  });
+
+  it("returns true and cleans up when worktree exists", () => {
+    const repo = setupTempRepo();
+    const worktreeDir = join(repo, ".worktrees");
+    mkdirSync(join(worktreeDir, "todo-H-CI-2"), { recursive: true });
+
+    const result = cleanSingleWorktree("H-CI-2", worktreeDir, repo);
+    expect(result).toBe(true);
+    expect(git.removeWorktree as Mock).toHaveBeenCalled();
+    expect(git.deleteBranch as Mock).toHaveBeenCalledWith(repo, "todo/H-CI-2");
+    expect(git.deleteRemoteBranch as Mock).toHaveBeenCalledWith(repo, "todo/H-CI-2");
+  });
+
+  it("falls back to rmSync when removeWorktree throws", () => {
+    const repo = setupTempRepo();
+    const worktreeDir = join(repo, ".worktrees");
+    mkdirSync(join(worktreeDir, "todo-H-CI-2"), { recursive: true });
+    (git.removeWorktree as Mock).mockImplementation(() => {
+      throw new Error("git worktree remove failed");
+    });
+
+    const result = cleanSingleWorktree("H-CI-2", worktreeDir, repo);
+    expect(result).toBe(true);
+    // Worktree dir should be cleaned up by rmSync fallback
+    expect(git.removeWorktree as Mock).toHaveBeenCalled();
+  });
+
+  it("continues cleanup even if branch deletion fails", () => {
+    const repo = setupTempRepo();
+    const worktreeDir = join(repo, ".worktrees");
+    mkdirSync(join(worktreeDir, "todo-H-CI-2"), { recursive: true });
+    (git.deleteBranch as Mock).mockImplementation(() => {
+      throw new Error("branch not found");
+    });
+    (git.deleteRemoteBranch as Mock).mockImplementation(() => {
+      throw new Error("remote branch not found");
+    });
+
+    const result = cleanSingleWorktree("H-CI-2", worktreeDir, repo);
+    expect(result).toBe(true);
+    // Should still have been called despite throwing
+    expect(git.deleteBranch as Mock).toHaveBeenCalled();
+    expect(git.deleteRemoteBranch as Mock).toHaveBeenCalled();
   });
 });
 

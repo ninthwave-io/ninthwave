@@ -179,6 +179,61 @@ export function cmdClean(
 }
 
 /**
+ * Remove a single worktree and all associated resources (branches, partition, index entry).
+ * Returns true if the worktree was found and cleaned, false otherwise.
+ */
+export function cleanSingleWorktree(
+  id: string,
+  worktreeDir: string,
+  projectRoot: string,
+): boolean {
+  const branch = `todo/${id}`;
+  const partitionDir = join(worktreeDir, ".partitions");
+  const crossRepoIndex = join(worktreeDir, ".cross-repo-index");
+
+  // Check cross-repo index first, then fall back to hub worktree
+  const wtInfo = getWorktreeInfo(id, crossRepoIndex, worktreeDir);
+  let targetRepo: string;
+  let worktreePath: string;
+
+  if (wtInfo) {
+    targetRepo = wtInfo.repoRoot;
+    worktreePath = wtInfo.worktreePath;
+  } else {
+    worktreePath = join(worktreeDir, `todo-${id}`);
+    targetRepo = projectRoot;
+  }
+
+  if (!existsSync(worktreePath)) {
+    return false;
+  }
+
+  info(`Removing worktree for ${id} from ${basename(targetRepo)}`);
+  try {
+    removeWorktree(targetRepo, worktreePath, true);
+  } catch {
+    try {
+      rmSync(worktreePath, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    deleteBranch(targetRepo, branch);
+  } catch {
+    // ignore
+  }
+  try {
+    deleteRemoteBranch(targetRepo, branch);
+  } catch {
+    // ignore
+  }
+  releasePartition(partitionDir, id);
+  removeCrossRepoIndex(crossRepoIndex, id);
+  return true;
+}
+
+/**
  * Remove a single worktree without side effects (no workspace close).
  */
 export function cmdCleanSingle(
@@ -189,46 +244,7 @@ export function cmdCleanSingle(
   const targetId = args[0] ?? "";
   if (!targetId) die("Usage: ninthwave clean-single <ID>");
 
-  const branch = `todo/${targetId}`;
-  const partitionDir = join(worktreeDir, ".partitions");
-  const crossRepoIndex = join(worktreeDir, ".cross-repo-index");
-
-  // Check cross-repo index first, then fall back to hub worktree
-  const wtInfo = getWorktreeInfo(targetId, crossRepoIndex, worktreeDir);
-  let targetRepo: string;
-  let worktreePath: string;
-
-  if (wtInfo) {
-    targetRepo = wtInfo.repoRoot;
-    worktreePath = wtInfo.worktreePath;
-  } else {
-    worktreePath = join(worktreeDir, `todo-${targetId}`);
-    targetRepo = projectRoot;
-  }
-
-  if (existsSync(worktreePath)) {
-    info(`Removing worktree for ${targetId} from ${basename(targetRepo)}`);
-    try {
-      removeWorktree(targetRepo, worktreePath, true);
-    } catch {
-      try {
-        rmSync(worktreePath, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
-    }
-    try {
-      deleteBranch(targetRepo, branch);
-    } catch {
-      // ignore
-    }
-    try {
-      deleteRemoteBranch(targetRepo, branch);
-    } catch {
-      // ignore
-    }
-    releasePartition(partitionDir, targetId);
-    removeCrossRepoIndex(crossRepoIndex, targetId);
+  if (cleanSingleWorktree(targetId, worktreeDir, projectRoot)) {
     console.log(`${GREEN}Cleaned worktree for ${targetId}${RESET}`);
   } else {
     console.log(`No worktree found for ${targetId}`);
