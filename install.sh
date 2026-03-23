@@ -8,7 +8,7 @@
 #
 # Dependencies (per-user, not installed by this script):
 #   - An AI coding tool (Claude Code, OpenCode, Copilot CLI, etc.)
-#   - gstack (for /review, /qa, /design-review)
+#   - gstack or equivalent (optional, provides /review, /qa, /design-review)
 #   - cmux (for parallel sessions)
 #   - gh (for PR operations)
 

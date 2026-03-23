@@ -44,10 +44,16 @@ FS=$'\x1c'
 
 # --- Project configuration ---
 # Load optional project config from .workflow-kit/config
+# Only accepts KEY=VALUE lines (no command execution).
 WK_CONFIG="$PROJECT_ROOT/.workflow-kit/config"
 if [[ -f "$WK_CONFIG" ]]; then
-  # shellcheck source=/dev/null
-  source "$WK_CONFIG"
+  while IFS='=' read -r key value; do
+    key="$(echo "$key" | tr -d '[:space:]')"
+    [[ -z "$key" || "$key" =~ ^# ]] && continue
+    # Strip surrounding quotes from value
+    value="$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^["'"'"']//;s/["'"'"']$//')"
+    export "$key=$value" 2>/dev/null || true
+  done < "$WK_CONFIG"
 fi
 
 # Configurable file extensions for LOC counting (space-separated glob patterns)
@@ -109,12 +115,14 @@ detect_ai_tool() {
   local pid="$$"
   local depth=0
   while [[ "$pid" -gt 1 ]] && [[ $depth -lt 10 ]]; do
-    local cmd
-    cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
-    case "$cmd" in
-      *opencode*) echo "opencode"; return ;;
-      *claude*)   echo "claude"; return ;;
-      *copilot*)  echo "copilot"; return ;;
+    local cmd_path
+    cmd_path="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
+    local cmd_base
+    cmd_base="$(basename "$cmd_path" 2>/dev/null || echo "$cmd_path")"
+    case "$cmd_base" in
+      opencode) echo "opencode"; return ;;
+      claude)   echo "claude"; return ;;
+      copilot)  echo "copilot"; return ;;
     esac
     pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || echo 1)"
     depth=$((depth + 1))
@@ -137,71 +145,40 @@ detect_ai_tool() {
 launch_ai_session() {
   local tool="$1" worktree_path="$2" id="$3" safe_title="$4" prompt_file="$5"
 
+  # Build the tool-specific command string
+  local cmd=""
+  local initial_prompt="Start"
   case "$tool" in
     claude)
-      # Claude Code via cmux with the todo-worker agent
-      # --agent todo-worker: loads .claude/agents/todo-worker.md
-      # --append-system-prompt: injects TODO details into agent context
-      local ws_output
-      ws_output=$(cmux new-workspace \
-        --cwd "$worktree_path" \
-        --command "claude --name 'TODO ${id}: ${safe_title}' --permission-mode bypassPermissions --agent todo-worker --append-system-prompt \"\$(cat '${prompt_file}')\"" \
-        2>/dev/null) || { warn "cmux launch failed for $id -- is cmux running?"; return 1; }
-
-      local ws_ref
-      ws_ref=$(echo "$ws_output" | grep -o 'workspace:[0-9]*')
-      if [[ -n "$ws_ref" ]]; then
-        sleep 2
-        cmux send --workspace "$ws_ref" "Start\n" 2>/dev/null \
-          || warn "Failed to send initial prompt to $ws_ref for $id"
-      fi
+      cmd="claude --name 'TODO ${id}: ${safe_title}' --permission-mode bypassPermissions --agent todo-worker --append-system-prompt \"\$(cat '${prompt_file}')\""
       ;;
-
     opencode)
-      # OpenCode via cmux with the todo-worker agent
-      # --agent todo-worker: loads .opencode/agents/todo-worker.md
-      # Uses 'opencode run' for non-interactive execution, but we launch
-      # interactive mode via cmux so the worker stays alive for feedback.
-      local ws_output
-      ws_output=$(cmux new-workspace \
-        --cwd "$worktree_path" \
-        --command "opencode --agent todo-worker --title 'TODO ${id}: ${safe_title}'" \
-        2>/dev/null) || { warn "cmux launch failed for $id -- is cmux running?"; return 1; }
-
-      local ws_ref
-      ws_ref=$(echo "$ws_output" | grep -o 'workspace:[0-9]*')
-      if [[ -n "$ws_ref" ]]; then
-        sleep 2
-        # Send the TODO context as the initial message
-        cmux send --workspace "$ws_ref" "$(cat "$prompt_file")\n\nStart implementing this TODO now.\n" 2>/dev/null \
-          || warn "Failed to send initial prompt to $ws_ref for $id"
-      fi
+      cmd="opencode --agent todo-worker --title 'TODO ${id}: ${safe_title}'"
+      initial_prompt="$(cat "$prompt_file")\n\nStart implementing this TODO now."
       ;;
-
     copilot)
-      # GitHub Copilot CLI via cmux with the todo-worker agent
-      # --agent=todo-worker: loads .github/agents/todo-worker.agent.md
-      # --allow-all-tools: pre-approve tool usage for autonomous operation
-      local ws_output
-      ws_output=$(cmux new-workspace \
-        --cwd "$worktree_path" \
-        --command "copilot --agent=todo-worker --allow-all-tools --allow-all-paths" \
-        2>/dev/null) || { warn "cmux launch failed for $id -- is cmux running?"; return 1; }
-
-      local ws_ref
-      ws_ref=$(echo "$ws_output" | grep -o 'workspace:[0-9]*')
-      if [[ -n "$ws_ref" ]]; then
-        sleep 2
-        # Send the TODO context as the initial message
-        cmux send --workspace "$ws_ref" "$(cat "$prompt_file")\n\nStart implementing this TODO now.\n" 2>/dev/null \
-          || warn "Failed to send initial prompt to $ws_ref for $id"
-      fi
+      cmd="copilot --agent=todo-worker --allow-all-tools --allow-all-paths"
+      initial_prompt="$(cat "$prompt_file")\n\nStart implementing this TODO now."
       ;;
-
     *)
       die "Unknown AI tool: $tool. Set WK_AI_TOOL=claude|opencode|copilot to override detection."
       ;;
   esac
+
+  # Launch via cmux and send initial prompt
+  local ws_output
+  ws_output=$(cmux new-workspace \
+    --cwd "$worktree_path" \
+    --command "$cmd" \
+    2>/dev/null) || { warn "cmux launch failed for $id -- is cmux running?"; return 1; }
+
+  local ws_ref
+  ws_ref=$(echo "$ws_output" | grep -o 'workspace:[0-9]*')
+  if [[ -n "$ws_ref" ]]; then
+    sleep 2
+    cmux send --workspace "$ws_ref" "${initial_prompt}\n" 2>/dev/null \
+      || warn "Failed to send initial prompt to $ws_ref for $id"
+  fi
 }
 
 # --- Partition management ---
@@ -265,14 +242,27 @@ cleanup_stale_partitions() {
 # --- Domain normalization ---
 # Map section headers to short domain keys.
 # Projects can override this by defining a domains.conf file.
+# Domain mappings are cached on first load to avoid re-reading the file per item.
+
+_DOMAIN_CACHE=""
+_DOMAIN_CACHE_LOADED=false
+
+_load_domain_cache() {
+  if $_DOMAIN_CACHE_LOADED; then return; fi
+  _DOMAIN_CACHE_LOADED=true
+  local domains_file="${DOMAINS_FILE:-$PROJECT_ROOT/.workflow-kit/domains.conf}"
+  if [[ -f "$domains_file" ]]; then
+    _DOMAIN_CACHE="$(cat "$domains_file")"
+  fi
+}
 
 normalize_domain() {
   local section="$1"
   section="$(echo "$section" | tr '[:upper:]' '[:lower:]')"
 
-  # Check project-specific domain mappings first
-  local domains_file="${DOMAINS_FILE:-$PROJECT_ROOT/.workflow-kit/domains.conf}"
-  if [[ -f "$domains_file" ]]; then
+  # Check project-specific domain mappings first (cached)
+  _load_domain_cache
+  if [[ -n "$_DOMAIN_CACHE" ]]; then
     while IFS='=' read -r pattern domain_key; do
       [[ -z "$pattern" || "$pattern" =~ ^# ]] && continue
       pattern="$(echo "$pattern" | tr -d '[:space:]')"
@@ -281,7 +271,7 @@ normalize_domain() {
         echo "$domain_key"
         return
       fi
-    done < "$domains_file"
+    done <<< "$_DOMAIN_CACHE"
   fi
 
   # Default auto-slugify: lowercase, spaces to hyphens, strip non-alphanum
@@ -923,6 +913,10 @@ cmd_batch_order() {
 cmd_start() {
   [[ $# -lt 1 ]] && die "Usage: batch-todos.sh start <ID1> [ID2...]"
 
+  # Track temp files for cleanup
+  local _prompt_files=()
+  trap 'rm -f "${_prompt_files[@]}" 2>/dev/null' EXIT
+
   local ids=("$@")
   local items
   items="$(parse_todos)"
@@ -1020,6 +1014,7 @@ ${todo_text}"
     # Write system prompt to a temp file to avoid shell escaping issues
     local prompt_file
     prompt_file="$(mktemp)"
+    _prompt_files+=("$prompt_file")
     echo "$system_prompt" > "$prompt_file"
 
     # Launch using the detected AI tool

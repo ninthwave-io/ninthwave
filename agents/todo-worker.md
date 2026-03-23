@@ -22,11 +22,11 @@ Read the full TODO details from the appended system prompt, including: title, de
 
 Before making any changes, read the following documents:
 
-1. **CLAUDE.md** at the project root for project conventions, coding standards, and architecture docs
-2. **Any domain or architecture docs** referenced in CLAUDE.md that are relevant to the TODO's affected files or description
-3. **Any coding standards** referenced in CLAUDE.md
+1. **The project instruction file** at the project root -- check for `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md` (read whichever exists)
+2. **Any domain or architecture docs** referenced in the project instructions that are relevant to the TODO's affected files or description
+3. **Any coding standards** referenced in the project instructions
 
-CLAUDE.md is the source of truth for project-specific conventions. Follow it.
+The project instruction file is the source of truth for project-specific conventions. Follow it.
 
 ## 3. Sync with latest main and set status
 
@@ -51,7 +51,7 @@ cmux set-status "todo-YOUR_TODO_ID" "Implementing" --icon "hammer.fill" --color 
 ## 4. Implement the Change
 
 - Implement the fix, feature, test, refactor, or documentation change described in the TODO
-- Follow all project conventions from CLAUDE.md
+- Follow all project conventions from the project instruction file
 - Keep changes tightly scoped to files mentioned in the TODO
 - If you discover related issues, note them in the PR body but do NOT fix them
 
@@ -72,7 +72,7 @@ Keep subject lines under 72 characters.
 
 ### Run the project's test suite
 
-Check CLAUDE.md for the exact test commands. Use YOUR_PARTITION for database and port isolation where applicable.
+Check the project instruction file for the exact test commands. Use YOUR_PARTITION for database and port isolation where applicable.
 
 Common patterns:
 - Run the compiler/linter with warnings-as-errors
