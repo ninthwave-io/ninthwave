@@ -15,6 +15,21 @@ allowed-tools:
 user_invocable: true
 ---
 
+## Interactive Questions (CRITICAL)
+
+This skill is highly interactive. You MUST use your interactive question tool to ask the user questions -- do NOT simply print a question as text and wait for a response.
+
+**Tool names by platform:** `AskUserQuestion` (Claude Code), `question` (OpenCode), `request_user_input` (Codex), `ask_user` (Gemini CLI). Use whichever is available in your environment.
+
+**Every question must follow this structure:**
+
+1. **Re-ground:** State the project, the current branch, and what phase you're in. Assume the user hasn't looked at this window in 20 minutes.
+2. **Explain simply:** Describe the situation in plain English. Say what it does, not what it's called.
+3. **Recommend:** State which option you'd pick and why. Include a one-line reason.
+4. **Options:** Lettered options: A), B), C). When an option involves effort, indicate the scale.
+
+---
+
 ## Instructions
 
 This skill orchestrates batch processing of engineering TODOs through 5 interactive phases. The utility script `scripts/batch-todos.sh` must exist and be executable. All implementation work happens on worktree branches, never directly on main. VERSION and CHANGELOG.md are ONLY modified during Phase 5 (version-bump), never on feature branches.

@@ -18,6 +18,21 @@ allowed-tools:
 user_invocable: true
 ---
 
+## Interactive Questions (CRITICAL)
+
+This skill is highly interactive. You MUST use your interactive question tool to ask the user questions -- do NOT simply print a question as text and wait for a response.
+
+**Tool names by platform:** `AskUserQuestion` (Claude Code), `question` (OpenCode), `request_user_input` (Codex), `ask_user` (Gemini CLI). Use whichever is available in your environment.
+
+**Every question must follow this structure:**
+
+1. **Re-ground:** State the project, the current branch, and what phase you're in. Assume the user hasn't looked at this window in 20 minutes.
+2. **Explain simply:** Describe the situation in plain English. Say what it does, not what it's called.
+3. **Recommend:** State which option you'd pick and why. Include a one-line reason.
+4. **Options:** Lettered options: A), B), C). When an option involves effort, indicate the scale.
+
+---
+
 ## Instructions
 
 This skill decomposes a feature spec into TODO items sized for individual human-reviewable PRs. The TODOs are written to `TODOS.md` in a format compatible with `scripts/batch-todos.sh`, ready for processing via `/todos`.
@@ -41,7 +56,7 @@ This skill decomposes a feature spec into TODO items sized for individual human-
 
 4. Summarize the feature scope in 3-5 bullet points and confirm with the user.
 
-5. Assign a **feature code** for TODO IDs. Derive from the feature name (e.g., "Bank Feeds Phase 5" -> `BF5`, "User Onboarding" -> `UO`). Keep it 2-4 uppercase alphanumeric characters.
+5. Assign a **feature code** for TODO IDs. Derive from the feature name (e.g., "User Onboarding" -> `UO`, "Search & Filters" -> `SF`). Keep it 2-4 uppercase alphanumeric characters.
 
 ---
 
