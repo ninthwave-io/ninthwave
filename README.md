@@ -3,21 +3,15 @@
 Tool-agnostic batch TODO processing for AI coding assistants.
 
 ```mermaid
-graph LR
+graph TD
     A[Feature spec]:::external -->|/decompose| B[TODOS.md]
     B -->|/todos| C[Orchestrator]
-    C -->|cmux| D[Worker 1]
-    C -->|cmux| E[Worker 2]
-    C -->|cmux| F[Worker N]
-    D -->|PR| G[GitHub]
-    E -->|PR| G
-    F -->|PR| G
-    C -->|"CI fixes, review\nfeedback, rebases"| D
-    C -->|"CI fixes, review\nfeedback, rebases"| E
-    C -->|"CI fixes, review\nfeedback, rebases"| F
-    C -->|"squash merge\neach PR"| G
-    G --> H[main]
-    H -->|reconcile| I["Update TODOS,\nversion bump,\nchangelog"]
+    C -->|launch via cmux| W[Workers]
+    W -->|open PRs| G[GitHub]
+    C -.->|"CI fixes · review feedback · rebases"| W
+    C -->|squash merge| G
+    G --> M[main]
+    M -->|reconcile| R["Update TODOS · version bump · changelog"]
 
     classDef external fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5,color:#666
 ```
