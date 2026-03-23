@@ -1,8 +1,10 @@
 # workflow-kit
 
-Workflow orchestration for AI coding tools. Not a framework, not a harness -- bring your own AI tool, your own coding conventions, your own feature specs. workflow-kit handles what comes next: decomposing work into human-reviewable PRs with dependency ordering, running parallel AI sessions to implement them, addressing review feedback automatically, and delivering reviewed code ready to merge.
+Decompose a feature into work items. Run them in parallel. Each gets a full interactive AI coding session. The orchestrator handles CI, reviews, rebasing, and merging. You review and approve the PRs.
 
-Each TODO gets its own full interactive session -- not a sub-task or function call, but a complete session with its own context window, tool access, and the full capabilities of whichever harness you use. You can switch into any worker to steer it, give feedback, or iterate on a PR, while the orchestrator manages the pipeline around them.
+Each work item gets its own complete session -- not a sub-task or function call, but a dedicated session with its own context window, tool access, and the full capabilities of whichever AI coding tool you use. You can switch into any worker session to steer it mid-flight, give feedback, or iterate on a PR, while the orchestrator manages the pipeline around them.
+
+Bring your own AI tool, coding conventions, and feature specs. workflow-kit is the orchestration layer.
 
 ```mermaid
 graph TD
@@ -18,41 +20,40 @@ graph TD
     classDef external fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5,color:#666
 ```
 
-- **Bring your own spec** -- PRD, design doc, verbal description, whatever. `/decompose` breaks it into PR-sized TODO items with dependency ordering
+- **Dependency ordering** -- work items are grouped into batches by their dependencies; batch N+1 starts after batch N is merged
 - **Merge strategies** -- merge after approval + CI passes, auto-merge as soon as CI passes, or confirm each merge manually
-- **WIP limits** -- rate-limit concurrent sessions (e.g., 5 at a time); auto-start next item when a PR opens, keeping the pipeline flowing
-- **Dependency batches** -- items are grouped by dependencies; batch N+1 only starts after batch N is merged
+- **WIP limits** -- rate-limit concurrent sessions (e.g., 5 at a time); auto-start next when a PR opens, keeping the pipeline flowing
 
-## Supported AI Tools
-
-Works with any tool that supports the [Agent Skills standard](https://agentskills.io):
-
-- **Claude Code** -- skills from `.agents/skills/`, agent from `.claude/agents/`
-- **OpenCode** -- discovers `.agents/skills/` natively, agent from `.opencode/agents/`
-- **GitHub Copilot CLI** -- discovers `.agents/skills/` natively, agent from `.github/agents/`
-- **Codex, Gemini CLI, Cursor, Kiro, Goose, Amp** -- all discover `.agents/skills/`
-
-The tool is auto-detected from the orchestrator's environment. Workers launch with the same tool. Override with `WK_AI_TOOL=claude|opencode|copilot`.
+Works with Claude Code, OpenCode, Copilot CLI, and any tool supporting the [Agent Skills standard](https://agentskills.io). The tool is auto-detected from the orchestrator's environment.
 
 ## Quick Start
 
-From your project directory:
+```bash
+git clone https://github.com/roblambell/workflow-kit.git ~/workflow-kit
+cd /path/to/your/project
+~/workflow-kit/install.sh
+```
+
+One developer runs the install; the rest get the files via `git pull`. Review with `git diff`, then commit.
+
+Or, if you prefer a one-liner:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/roblambell/workflow-kit/main/remote-install.sh)
 ```
 
-This downloads the latest files and installs them. One developer runs it once; the rest get the files via `git pull`. Review with `git diff`, then commit.
-
 ## What Gets Installed
 
-Everything workflow-kit installs is **project-level** -- committed to git and shared by the whole team. No per-user project setup is needed.
+Everything is **project-level** -- committed to git, shared by the whole team. No per-user project setup needed.
 
-### Project artifacts (committed to git)
+The installer adds: three skills (`/todos`, `/decompose`, `/todo-preview`) via the cross-tool `.agents/skills/` directory, a worker agent installed to all tool-specific agent directories, a CLI script (`scripts/batch-todos.sh`), and project config.
+
+<details>
+<summary>Full file inventory</summary>
 
 | Path | Purpose |
 |------|---------|
-| `scripts/batch-todos.sh` | CLI for TODO parsing, worktree management, session launching, PR monitoring |
+| `scripts/batch-todos.sh` | CLI for work item parsing, worktree management, session launching, PR monitoring |
 | `TODOS.md` | Work items (created if missing) |
 | `docs/guides/todos-format.md` | TODOS.md format reference |
 | `.workflow-kit/config` | Project settings (LOC extensions, domain mappings) |
@@ -66,9 +67,13 @@ Everything workflow-kit installs is **project-level** -- committed to git and sh
 
 **Skills** use `.agents/skills/` -- the cross-tool standard. One copy, discovered by all tools.
 
-**Agents** are installed to all three tool directories unconditionally. The file is small and identical -- this means any team member works regardless of which AI tool they use, with no per-user install step.
+**Agents** are installed to all three tool directories unconditionally -- any team member works regardless of which AI tool they use.
 
-### Per-user dependencies (each developer installs once)
+</details>
+
+### Per-user dependencies
+
+Each developer installs these once on their machine:
 
 | Dependency | Purpose | Install |
 |------------|---------|---------|
@@ -76,18 +81,16 @@ Everything workflow-kit installs is **project-level** -- committed to git and sh
 | [gh](https://cli.github.com/) | GitHub CLI for PR operations | `brew install gh` |
 | [cmux](https://cmux.com/) | Terminal multiplexer for parallel sessions | See cmux.com |
 
-These are user-level tools, not project files. Each team member installs them on their own machine.
-
 ### Expected skills (bring your own)
 
-The orchestrator and workers reference these skill names during execution. If a skill is available, it's used; if not, the worker falls back to a built-in self-review.
+Workers reference these skill names during execution. If available, they're used; if not, the worker falls back gracefully.
 
-| Skill | Used By | When | Fallback |
-|-------|---------|------|----------|
-| `/review` | todo-worker | Pre-landing code review | Self-review of the diff |
-| `/design-review` | todo-worker | UI/visual changes | Skipped |
-| `/qa` | todo-worker | Bug fixes with UI impact | Skipped |
-| `/plan-eng-review` | `/decompose` | Optional architecture validation | Skipped |
+| Skill | When | Fallback |
+|-------|------|----------|
+| `/review` | Pre-landing code review | Self-review of the diff |
+| `/design-review` | UI/visual changes | Skipped |
+| `/qa` | Bug fixes with UI impact | Skipped |
+| `/plan-eng-review` | Architecture validation (optional) | Skipped |
 
 [gstack](https://github.com/garrytan/gstack) provides all four out of the box. Or bring your own -- any skill with the matching name and the [SKILL.md standard](https://agentskills.io) will work.
 
@@ -95,7 +98,7 @@ The orchestrator and workers reference these skill names during execution. If a 
 
 ### 1. Decompose
 
-Break a feature into TODO items:
+Break a feature into work items:
 
 ```
 /decompose
@@ -105,7 +108,7 @@ Or write them directly to `TODOS.md` following `docs/guides/todos-format.md`.
 
 ### 2. Process
 
-Launch parallel AI sessions to implement TODOs:
+Launch parallel AI sessions to implement the work items:
 
 ```
 /todos
@@ -116,7 +119,7 @@ This orchestrates: SELECT items, LAUNCH parallel sessions, MONITOR for PRs/CI/re
 ### 3. Standalone CLI
 
 ```bash
-scripts/batch-todos.sh list --ready          # List ready items
+scripts/batch-todos.sh list --ready          # List ready work items
 scripts/batch-todos.sh batch-order H-1 H-2   # Check dependency order
 scripts/batch-todos.sh start H-1 H-2         # Launch sessions (auto-detects tool)
 scripts/batch-todos.sh status                 # Check worktree status
@@ -180,9 +183,9 @@ workflow-kit/
 Re-run the same command you used to install. Core files are overwritten; project-specific config (`TODOS.md`, `.workflow-kit/config`, `domains.conf`) is preserved.
 
 ```bash
-# Remote (teammates)
-bash <(curl -fsSL https://raw.githubusercontent.com/roblambell/workflow-kit/main/remote-install.sh)
+# Clone users
+~/workflow-kit/install.sh
 
-# Local clone (contributors)
-~/code/workflow-kit/install.sh
+# One-liner users
+bash <(curl -fsSL https://raw.githubusercontent.com/roblambell/workflow-kit/main/remote-install.sh)
 ```
