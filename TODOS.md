@@ -88,25 +88,6 @@ Key files: `core/orchestrator.ts`, `core/commands/orchestrate.ts`, `core/shell.t
 
 ---
 
-### Docs: Engineering review — worker lifecycle and communication (H-ENG-2)
-
-**Priority:** High
-**Source:** Vision — comprehensive architecture audit
-**Depends on:** None
-
-Run `/plan-eng-review` on the worker lifecycle: launch (`core/commands/start.ts`), multiplexer abstraction (`core/mux.ts`, `core/cmux.ts`), message sending (`core/send-message.ts`), heartbeat monitoring, cleanup (`core/commands/clean.ts`), and reconciliation (`core/commands/reconcile.ts`). Audit: worker launch reliability, message delivery guarantees, heartbeat accuracy, cleanup completeness, and cross-platform edge cases (cmux vs tmux). Document findings in `docs/reviews/eng-review-workers.md`. Add TODOs for actionable findings.
-
-**Test plan:**
-- Run `/plan-eng-review` targeting worker lifecycle modules
-- Verify review covers both cmux and tmux code paths
-- Verify each actionable finding has a corresponding TODO
-
-Acceptance: `docs/reviews/eng-review-workers.md` exists with structured findings. Every actionable finding has a corresponding TODO added to TODOS.md. Review covers: launch reliability, message delivery, heartbeat accuracy, cleanup completeness, and multiplexer edge cases. No code changes in this TODO — findings only.
-
-Key files: `core/commands/start.ts`, `core/mux.ts`, `core/cmux.ts`, `core/send-message.ts`, `core/commands/clean.ts`, `core/commands/reconcile.ts`, `test/start.test.ts`, `test/mux.test.ts`, `test/clean.test.ts`, `test/reconcile.test.ts`
-
----
-
 ### Docs: Engineering review — data pipeline (parser, analytics, webhooks, templates) (M-ENG-3)
 
 **Priority:** Medium
