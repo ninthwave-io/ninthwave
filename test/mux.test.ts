@@ -189,9 +189,16 @@ describe("getMux", () => {
     expect(typeof mux.closeWorkspace).toBe("function");
   });
 
-  it("throws with clear message when no mux available", () => {
+  it("falls back to CmuxAdapter when no mux available", () => {
     const deps = makeDeps({}, []);
-    expect(() => getMux(deps)).toThrow("No multiplexer available");
+    const mux = getMux(deps);
+    // Falls back gracefully — caller can check isAvailable()
+    expect(mux).toBeInstanceOf(CmuxAdapter);
+  });
+
+  it("still throws on invalid NINTHWAVE_MUX value", () => {
+    const deps = makeDeps({ NINTHWAVE_MUX: "screen" });
+    expect(() => getMux(deps)).toThrow('Invalid NINTHWAVE_MUX value: "screen"');
   });
 });
 

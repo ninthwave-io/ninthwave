@@ -142,9 +142,14 @@ export interface DetectMuxDeps {
 const defaultDetectDeps: DetectMuxDeps = {
   env: process.env,
   checkBinary: (name: string): boolean => {
-    const flag = name === "tmux" ? "-V" : "--version";
-    const result = defaultRun(name, [flag]);
-    return result.exitCode === 0;
+    try {
+      const flag = name === "tmux" ? "-V" : "--version";
+      const result = defaultRun(name, [flag]);
+      return result.exitCode === 0;
+    } catch {
+      // Shell runner may not be available (e.g., vitest on Node.js without Bun)
+      return false;
+    }
   },
 };
 
@@ -191,14 +196,30 @@ export function detectMuxType(deps: DetectMuxDeps = defaultDetectDeps): MuxType 
   );
 }
 
-/** Return the active multiplexer adapter based on auto-detection. */
+/**
+ * Return the active multiplexer adapter based on auto-detection.
+ *
+ * When detection fails (no mux available), falls back to CmuxAdapter so that
+ * callers using `getMux()` as a default parameter don't crash at import time.
+ * The adapter's `isAvailable()` will return false, and the caller can handle
+ * the error. Validation errors (invalid NINTHWAVE_MUX) still throw immediately.
+ */
 export function getMux(deps?: DetectMuxDeps): Multiplexer {
-  const muxType = detectMuxType(deps);
-  switch (muxType) {
-    case "cmux":
-      return new CmuxAdapter();
-    case "tmux":
-      return new TmuxAdapter();
+  try {
+    const muxType = detectMuxType(deps);
+    switch (muxType) {
+      case "cmux":
+        return new CmuxAdapter();
+      case "tmux":
+        return new TmuxAdapter();
+    }
+  } catch (e) {
+    // Validation errors (invalid NINTHWAVE_MUX) propagate immediately
+    if (e instanceof Error && e.message.includes("Invalid NINTHWAVE_MUX")) {
+      throw e;
+    }
+    // No mux available — fall back to CmuxAdapter (isAvailable() will report false)
+    return new CmuxAdapter();
   }
 }
 
