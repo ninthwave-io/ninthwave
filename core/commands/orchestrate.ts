@@ -931,11 +931,11 @@ export async function orchestrateLoop(
           );
 
           // Write friction log if configured
-          if (config.supervisor.frictionLogPath) {
+          if (config.supervisor.frictionDir) {
             writeFrictionLog(
               observation,
-              config.supervisor.frictionLogPath,
-              deps.supervisorDeps.appendFile,
+              config.supervisor.frictionDir,
+              deps.supervisorDeps,
             );
           }
         } catch (e: unknown) {
@@ -1085,7 +1085,7 @@ export async function cmdOrchestrate(
   let pollIntervalOverride: number | undefined;
   let supervisorFlag = false;
   let supervisorIntervalSecs: number | undefined;
-  let frictionLogPath: string | undefined;
+  let frictionDir: string | undefined;
   let daemonMode = false;
   let isDaemonChild = false;
 
@@ -1126,7 +1126,7 @@ export async function cmdOrchestrate(
         i += 2;
         break;
       case "--friction-log":
-        frictionLogPath = args[i + 1];
+        frictionDir = args[i + 1];
         i += 2;
         break;
       case "--mux": {
@@ -1263,7 +1263,7 @@ export async function cmdOrchestrate(
         intervalMs: supervisorIntervalSecs
           ? supervisorIntervalSecs * 1000
           : DEFAULT_SUPERVISOR_CONFIG.intervalMs,
-        frictionLogPath,
+        frictionDir,
         maxLogEntries: DEFAULT_SUPERVISOR_CONFIG.maxLogEntries,
       }
     : undefined;
@@ -1274,7 +1274,7 @@ export async function cmdOrchestrate(
       level: "info",
       event: "supervisor_enabled",
       intervalMs: supervisorConfig!.intervalMs,
-      frictionLogPath: frictionLogPath ?? null,
+      frictionDir: frictionDir ?? null,
       autoActivated: !supervisorFlag,
     });
   }
