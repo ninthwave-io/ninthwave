@@ -48,26 +48,6 @@ Key files: `core/commands/orchestrate.ts`, `test/orchestrator.test.ts`
 
 
 
-### Fix: Add timeout support to shell.ts run() (H-SHL-1)
-
-**Priority:** High
-**Source:** Eng review H-ENG-1 — finding F5
-**Depends on:** None
-
-`Bun.spawnSync` in `run()` can block indefinitely. Git commands that prompt for SSH credentials, encounter network timeouts, or deadlock on large repos will hang the orchestrator's event loop. Since the event loop is single-threaded, a single hung command blocks all processing. Add an optional `timeout` parameter to `run()` with sensible defaults (30s for git, 60s for gh). Use Bun's `timeout` option in `spawnSync`. Return a timeout-specific error that callers can handle.
-
-**Test plan:**
-- Unit test: run() with timeout kills process and returns non-zero exit code after timeout
-- Unit test: run() without timeout still works (backward compatible)
-- Unit test: timeout error message is distinguishable from normal exit code errors
-- Edge case: very short timeout (1ms) doesn't cause flaky behavior
-
-Acceptance: `run()` accepts an optional `timeout` parameter. Commands that exceed the timeout are killed and return a timeout error. Existing callers are unaffected (no breaking changes). Tests pass.
-
-Key files: `core/shell.ts`, `test/shell.test.ts`
-
----
-
 ### Fix: TOCTOU race in lock.ts acquireLock (H-LCK-1)
 
 **Priority:** High

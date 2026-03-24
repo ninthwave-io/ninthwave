@@ -55,6 +55,7 @@ export interface RunResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  timedOut?: boolean;
 }
 
 // ID pattern: X-code-N (e.g., H-BF5-1, D-2-1)
