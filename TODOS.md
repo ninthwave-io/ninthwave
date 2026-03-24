@@ -6,6 +6,7 @@
 
 
 
+
 ### Feat: Add tmux multiplexer adapter (H-MUX-2)
 
 **Priority:** High
@@ -66,25 +67,8 @@ Key files: `README.md`, `core/commands/setup.ts`, `test/setup.test.ts`
 
 ---
 
-## Communication Reliability (friction log, 2026-03-24)
-
-
-
-### Fix: cmux send should reliably submit messages to worker sessions (H-COM-1)
-
-**Priority:** High
-**Source:** Friction log #19
-**Depends on:** None
-
-`cmux send` has a race condition: it types message text into the worker's input field then immediately sends return, but return can fire before the text is fully entered, leaving the message unsubmitted. The supervisor sent multiple status check messages to a stalled worker — all appeared in the input field but none were submitted. Fix by adding a delay between text entry and return, or use a paste-then-submit approach. Add a verification step: after sending, check if the input field is empty (submitted) or still has text (failed), and retry with increasing delay on failure.
-
-Acceptance: `cmux send` reliably delivers messages to idle worker sessions. Messages are submitted (return pressed after text is fully entered). A retry mechanism handles delivery failures. Unit test verifies the send-verify-retry flow.
-
-Key files: `core/cmux.ts`, `test/cmux.test.ts`
-
----
-
 ## Vision (recurring, 2026-03-24)
+
 
 
 
