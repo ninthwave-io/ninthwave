@@ -62,7 +62,30 @@ export function parseTemplate(
     .map((k) => k.trim().toLowerCase())
     .filter((k) => k.length > 0);
 
-  return { slug, name, keywords, body: content };
+  // Strip the ## Keywords section from body so it doesn't leak to users.
+  const bodyLines: string[] = [];
+  let inKeywordsSection = false;
+  for (const line of lines) {
+    if (/^##\s+Keywords/i.test(line)) {
+      inKeywordsSection = true;
+      continue;
+    }
+    if (inKeywordsSection && /^##\s/.test(line)) {
+      inKeywordsSection = false;
+    }
+    if (!inKeywordsSection) {
+      bodyLines.push(line);
+    }
+  }
+
+  // Collapse runs of 3+ blank lines down to 2 (one visual blank line)
+  const body = bodyLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    + "\n";
+
+  return { slug, name, keywords, body };
 }
 
 /**

@@ -60,10 +60,45 @@ describe("parseTemplate", () => {
     expect(result.keywords).toEqual([]);
   });
 
-  it("preserves full body", () => {
-    const content = "# Test\n\nFull content here.\n\n## Keywords\n\napi\n";
+  it("strips Keywords section from body", () => {
+    const content = "# Test\n\nFull content here.\n\n## Keywords\n\napi\n\n## Other\n\nKeep this.\n";
     const result = parseTemplate("test.md", content);
-    expect(result.body).toBe(content);
+    expect(result.body).not.toContain("## Keywords");
+    expect(result.body).not.toContain("api\n\n## Other");
+    expect(result.body).toContain("# Test");
+    expect(result.body).toContain("Full content here.");
+    expect(result.body).toContain("## Other");
+    expect(result.body).toContain("Keep this.");
+  });
+
+  it("preserves all non-Keywords sections in body", () => {
+    const content =
+      "# Template\n\nIntro paragraph.\n\n## Keywords\n\napi, endpoint\n\n## Breakdown\n\nStep 1.\n\n## Guidance\n\nBe careful.\n";
+    const result = parseTemplate("test.md", content);
+    expect(result.body).toContain("# Template");
+    expect(result.body).toContain("Intro paragraph.");
+    expect(result.body).toContain("## Breakdown");
+    expect(result.body).toContain("Step 1.");
+    expect(result.body).toContain("## Guidance");
+    expect(result.body).toContain("Be careful.");
+    expect(result.body).not.toContain("## Keywords");
+    expect(result.body).not.toContain("api, endpoint");
+  });
+
+  it("handles body with no Keywords section", () => {
+    const content = "# Test\n\nJust content, no keywords.\n";
+    const result = parseTemplate("test.md", content);
+    expect(result.body).toContain("# Test");
+    expect(result.body).toContain("Just content, no keywords.");
+  });
+
+  it("handles Keywords section at end of file", () => {
+    const content = "# Test\n\nContent before.\n\n## Keywords\n\napi, route\n";
+    const result = parseTemplate("test.md", content);
+    expect(result.body).toContain("# Test");
+    expect(result.body).toContain("Content before.");
+    expect(result.body).not.toContain("## Keywords");
+    expect(result.body).not.toContain("api, route");
   });
 });
 
