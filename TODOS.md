@@ -10,6 +10,7 @@
 
 
 
+
 ### Feat: Auto-detect multiplexer and add --mux flag (M-MUX-3)
 
 **Priority:** Medium
@@ -57,6 +58,7 @@ Key files: `README.md`, `core/commands/setup.ts`, `test/setup.test.ts`
 
 
 
+
 ### Feat: Explore vision, scope next iteration, and decompose into TODOs (L-VIS-4)
 
 **Priority:** Low
@@ -68,50 +70,5 @@ This is a recurring meta-item. When all other TODOs are complete, this item trig
 Acceptance: New TODO items are written to TODOS.md. A new vision exploration item is added depending on the new terminal items. The friction log is reviewed and actionable items are addressed. TODOS.md is non-empty after this item completes.
 
 Key files: `TODOS.md`, `CLAUDE.md`, `README.md`, `vision.md`
-
----
-
-## Dogfood Friction Fixes (friction decomposition, 2026-03-24)
-
-
-
-
-### Feat: Reconcile closes stale cmux workspaces for done items (H-DF-2)
-
-**Priority:** High
-**Source:** Friction #22 — zombie cmux workspaces left open after orchestrator exits
-**Depends on:** None
-
-Extract the workspace-closing logic from `cmdCloseWorkspaces()` in `clean.ts` into a shared helper (or call it directly from reconcile). After reconcile marks items done and cleans worktrees, it should also list cmux workspaces via `mux.listWorkspaces()`, match by TODO ID in the workspace name, and close any that correspond to done/merged items. This prevents zombie terminal sessions from accumulating across orchestrator runs.
-
-**Test plan:**
-- Unit test: reconcile calls workspace close for items it marks done
-- Unit test: workspace matching correctly extracts TODO ID from workspace name
-- Unit test: reconcile skips workspace close when no workspaces match
-- Unit test: reconcile handles mux.listWorkspaces() returning empty list
-
-Acceptance: Running `ninthwave reconcile` closes cmux workspaces for any items it marks done. Workspace matching uses the TODO ID pattern in the workspace name. No zombie workspaces remain after reconcile completes.
-
-Key files: `core/commands/reconcile.ts`, `core/commands/clean.ts`, `test/reconcile.test.ts`
-
----
-
-### Feat: Worker heartbeat via worktree commit tracking (M-DF-3)
-
-**Priority:** Medium
-**Source:** Friction #24 — can't distinguish active workers from hung ones
-**Depends on:** None
-
-Add `lastCommitTime` to the orchestrator's snapshot builder by running `git log -1 --format=%cI` on each worktree branch. Pass this to the supervisor prompt as an additional signal alongside state duration. The supervisor can then distinguish "implementing for 8 min with commits 2 min ago" (healthy) from "implementing for 8 min with no commits" (likely stuck). This is a lightweight proxy — no worker-side changes needed, just reading git log from the worktree.
-
-**Test plan:**
-- Unit test: snapshot builder includes `lastCommitTime` for implementing items
-- Unit test: `lastCommitTime` is null when worktree has no commits beyond base
-- Unit test: supervisor prompt includes commit freshness information
-- Edge case: worktree branch doesn't exist yet (just launched)
-
-Acceptance: Orchestrator snapshot includes `lastCommitTime` per item. Supervisor prompt shows commit freshness alongside state duration. Supervisor can distinguish active workers (recent commits) from stalled ones (no recent commits). No changes to worker code.
-
-Key files: `core/commands/orchestrate.ts`, `core/supervisor.ts`, `test/orchestrate.test.ts`
 
 ---
