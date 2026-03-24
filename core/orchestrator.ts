@@ -1,14 +1,8 @@
 // Orchestrator state machine for parallel TODO processing.
 // processTransitions is pure — takes a snapshot and returns actions, no side effects.
-// executeAction bridges the pure state machine to external dependencies.
+// executeAction bridges the pure state machine to external dependencies via injected deps.
 
 import type { TodoItem } from "./types.ts";
-import { launchSingleItem } from "./commands/start.ts";
-import { cleanSingleWorktree } from "./commands/clean.ts";
-import { cmdMarkDone } from "./commands/mark-done.ts";
-import { prMerge, prComment } from "./gh.ts";
-import * as cmux from "./cmux.ts";
-import { fetchOrigin, ffMerge } from "./git.ts";
 
 // ── State types ──────────────────────────────────────────────────────
 
@@ -98,7 +92,7 @@ export interface Action {
   message?: string;
 }
 
-// ── Execution context ────────────────────────────────────────────
+// ── Execution context and dependencies ──────────────────────────────
 
 /** Configuration for executing actions against external systems. */
 export interface ExecutionContext {
@@ -106,6 +100,29 @@ export interface ExecutionContext {
   worktreeDir: string;
   todosFile: string;
   aiTool: string;
+}
+
+/** External dependencies injected into executeAction. */
+export interface OrchestratorDeps {
+  launchSingleItem: (
+    item: TodoItem,
+    todosFile: string,
+    worktreeDir: string,
+    projectRoot: string,
+    aiTool: string,
+  ) => { worktreePath: string; workspaceRef: string } | null;
+  cleanSingleWorktree: (
+    id: string,
+    worktreeDir: string,
+    projectRoot: string,
+  ) => boolean;
+  cmdMarkDone: (ids: string[], todosFile: string) => void;
+  prMerge: (repoRoot: string, prNumber: number) => boolean;
+  prComment: (repoRoot: string, prNumber: number, body: string) => boolean;
+  sendMessage: (workspaceRef: string, message: string) => boolean;
+  closeWorkspace: (workspaceRef: string) => boolean;
+  fetchOrigin: (repoRoot: string, branch: string) => void;
+  ffMerge: (repoRoot: string, branch: string) => void;
 }
 
 /** Result of executing a single action. */
@@ -453,9 +470,14 @@ export class Orchestrator {
 
   /**
    * Execute a single action against external systems (gh, cmux, git, etc.).
+   * Dependencies are injected via the `deps` parameter to keep the class testable.
    * Updates internal state on success. Returns result indicating success/failure.
    */
-  executeAction(action: Action, ctx: ExecutionContext): ActionResult {
+  executeAction(
+    action: Action,
+    ctx: ExecutionContext,
+    deps: OrchestratorDeps,
+  ): ActionResult {
     const item = this.items.get(action.itemId);
     if (!item) {
       return { success: false, error: `Item ${action.itemId} not found` };
@@ -463,26 +485,30 @@ export class Orchestrator {
 
     switch (action.type) {
       case "launch":
-        return this.executeLaunch(item, ctx);
+        return this.executeLaunch(item, ctx, deps);
       case "merge":
-        return this.executeMerge(item, action, ctx);
+        return this.executeMerge(item, action, ctx, deps);
       case "notify-ci-failure":
-        return this.executeNotifyCiFailure(item, action, ctx);
+        return this.executeNotifyCiFailure(item, action, ctx, deps);
       case "notify-review":
-        return this.executeNotifyReview(item, action);
+        return this.executeNotifyReview(item, action, deps);
       case "clean":
-        return this.executeClean(item, ctx);
+        return this.executeClean(item, ctx, deps);
       case "mark-done":
-        return this.executeMarkDone(item, ctx);
+        return this.executeMarkDone(item, ctx, deps);
       case "rebase":
-        return this.executeRebase(item, action);
+        return this.executeRebase(item, action, deps);
     }
   }
 
   /** Launch a worker for an item. Stores workspaceRef on success, marks stuck on failure. */
-  private executeLaunch(item: OrchestratorItem, ctx: ExecutionContext): ActionResult {
+  private executeLaunch(
+    item: OrchestratorItem,
+    ctx: ExecutionContext,
+    deps: OrchestratorDeps,
+  ): ActionResult {
     try {
-      const result = launchSingleItem(
+      const result = deps.launchSingleItem(
         item.todo,
         ctx.todosFile,
         ctx.worktreeDir,
@@ -507,20 +533,21 @@ export class Orchestrator {
     item: OrchestratorItem,
     action: Action,
     ctx: ExecutionContext,
+    deps: OrchestratorDeps,
   ): ActionResult {
     const prNum = action.prNumber ?? item.prNumber;
     if (!prNum) {
       return { success: false, error: `No PR number for ${item.id}` };
     }
 
-    const merged = prMerge(ctx.projectRoot, prNum);
+    const merged = deps.prMerge(ctx.projectRoot, prNum);
     if (!merged) {
       this.transition(item, "ci-passed");
       return { success: false, error: `Merge failed for PR #${prNum}` };
     }
 
     // Audit trail
-    prComment(
+    deps.prComment(
       ctx.projectRoot,
       prNum,
       `**[Orchestrator]** Auto-merged PR #${prNum} for ${item.id}.`,
@@ -530,8 +557,8 @@ export class Orchestrator {
 
     // Pull latest main
     try {
-      fetchOrigin(ctx.projectRoot, "main");
-      ffMerge(ctx.projectRoot, "main");
+      deps.fetchOrigin(ctx.projectRoot, "main");
+      deps.ffMerge(ctx.projectRoot, "main");
     } catch {
       // Non-fatal — main will be pulled on next cycle
     }
@@ -542,7 +569,7 @@ export class Orchestrator {
       if (!other.todo.dependencies.includes(item.id)) continue;
       if (!WIP_STATES.has(other.state)) continue;
       if (other.workspaceRef) {
-        cmux.sendMessage(
+        deps.sendMessage(
           other.workspaceRef,
           `Dependency ${item.id} merged. Please rebase onto latest main.`,
         );
@@ -557,15 +584,16 @@ export class Orchestrator {
     item: OrchestratorItem,
     action: Action,
     ctx: ExecutionContext,
+    deps: OrchestratorDeps,
   ): ActionResult {
     const message = action.message || "CI failed — please investigate and fix.";
 
     if (item.workspaceRef) {
-      cmux.sendMessage(item.workspaceRef, message);
+      deps.sendMessage(item.workspaceRef, message);
     }
 
     if (item.prNumber) {
-      prComment(
+      deps.prComment(
         ctx.projectRoot,
         item.prNumber,
         `**[Orchestrator]** CI failure detected for ${item.id}. Worker notified.`,
@@ -579,11 +607,12 @@ export class Orchestrator {
   private executeNotifyReview(
     item: OrchestratorItem,
     action: Action,
+    deps: OrchestratorDeps,
   ): ActionResult {
     const message = action.message || "Review feedback received — please address.";
 
     if (item.workspaceRef) {
-      cmux.sendMessage(item.workspaceRef, message);
+      deps.sendMessage(item.workspaceRef, message);
     }
 
     return { success: true };
@@ -593,12 +622,13 @@ export class Orchestrator {
   private executeClean(
     item: OrchestratorItem,
     ctx: ExecutionContext,
+    deps: OrchestratorDeps,
   ): ActionResult {
     if (item.workspaceRef) {
-      cmux.closeWorkspace(item.workspaceRef);
+      deps.closeWorkspace(item.workspaceRef);
     }
 
-    cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
+    deps.cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
 
     return { success: true };
   }
@@ -607,9 +637,10 @@ export class Orchestrator {
   private executeMarkDone(
     item: OrchestratorItem,
     ctx: ExecutionContext,
+    deps: OrchestratorDeps,
   ): ActionResult {
     try {
-      cmdMarkDone([item.id], ctx.todosFile);
+      deps.cmdMarkDone([item.id], ctx.todosFile);
       this.transition(item, "done");
       return { success: true };
     } catch (e: unknown) {
@@ -622,6 +653,7 @@ export class Orchestrator {
   private executeRebase(
     item: OrchestratorItem,
     action: Action,
+    deps: OrchestratorDeps,
   ): ActionResult {
     const message = action.message || "Please rebase onto latest main.";
 
@@ -629,7 +661,7 @@ export class Orchestrator {
       return { success: false, error: `No workspace reference for ${item.id}` };
     }
 
-    const sent = cmux.sendMessage(item.workspaceRef, message);
+    const sent = deps.sendMessage(item.workspaceRef, message);
     if (!sent) {
       return { success: false, error: `Failed to send rebase message to ${item.id}` };
     }

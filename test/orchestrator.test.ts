@@ -1,46 +1,7 @@
 // Tests for core/orchestrator.ts — Orchestrator state machine and action execution.
+// No vi.mock — executeAction uses dependency injection to stay bun-test compatible.
 
-import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
-
-// Mock external dependencies used by executeAction
-vi.mock("../core/gh.ts", () => ({
-  prMerge: vi.fn(() => true),
-  prComment: vi.fn(() => true),
-}));
-
-vi.mock("../core/cmux.ts", () => ({
-  sendMessage: vi.fn(() => true),
-  closeWorkspace: vi.fn(() => true),
-}));
-
-vi.mock("../core/git.ts", () => ({
-  fetchOrigin: vi.fn(),
-  ffMerge: vi.fn(),
-}));
-
-vi.mock("../core/commands/start.ts", () => ({
-  launchSingleItem: vi.fn(() => ({
-    worktreePath: "/tmp/test/todo-test",
-    workspaceRef: "workspace:1",
-  })),
-}));
-
-vi.mock("../core/commands/clean.ts", () => ({
-  cleanSingleWorktree: vi.fn(() => true),
-}));
-
-vi.mock("../core/commands/mark-done.ts", () => ({
-  cmdMarkDone: vi.fn(),
-}));
-
-// Import mocked modules for assertions
-import * as gh from "../core/gh.ts";
-import * as cmuxMock from "../core/cmux.ts";
-import * as gitMock from "../core/git.ts";
-import { launchSingleItem } from "../core/commands/start.ts";
-import { cleanSingleWorktree } from "../core/commands/clean.ts";
-import { cmdMarkDone } from "../core/commands/mark-done.ts";
-
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   Orchestrator,
   DEFAULT_CONFIG,
@@ -50,6 +11,7 @@ import {
   type Action,
   type ExecutionContext,
   type ActionResult,
+  type OrchestratorDeps,
 } from "../core/orchestrator.ts";
 import type { TodoItem } from "../core/types.ts";
 
@@ -90,6 +52,25 @@ const defaultCtx: ExecutionContext = {
   aiTool: "claude",
 };
 
+/** Create mock deps with sensible defaults. Override individual fns as needed. */
+function mockDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps {
+  return {
+    launchSingleItem: vi.fn(() => ({
+      worktreePath: "/tmp/test/todo-test",
+      workspaceRef: "workspace:1",
+    })),
+    cleanSingleWorktree: vi.fn(() => true),
+    cmdMarkDone: vi.fn(),
+    prMerge: vi.fn(() => true),
+    prComment: vi.fn(() => true),
+    sendMessage: vi.fn(() => true),
+    closeWorkspace: vi.fn(() => true),
+    fetchOrigin: vi.fn(),
+    ffMerge: vi.fn(),
+    ...overrides,
+  };
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("Orchestrator", () => {
@@ -97,7 +78,6 @@ describe("Orchestrator", () => {
 
   beforeEach(() => {
     orch = new Orchestrator();
-    vi.clearAllMocks();
   });
 
   // ── 1. Item management ─────────────────────────────────────────
@@ -276,7 +256,6 @@ describe("Orchestrator", () => {
   // ── 8. CI fail recovery ────────────────────────────────────────
 
   it("ci-failed recovers when CI passes (chains to merge evaluation)", () => {
-    // With "ask" strategy, we can observe ci-passed intermediate state
     orch = new Orchestrator({ mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
@@ -286,7 +265,6 @@ describe("Orchestrator", () => {
       snapshotWith([{ id: "H-1-1", ciStatus: "pass", prState: "open" }]),
     );
 
-    // "ask" strategy moves to review-pending instead of merging
     expect(orch.getItem("H-1-1")!.state).toBe("review-pending");
   });
 
@@ -308,7 +286,7 @@ describe("Orchestrator", () => {
     orch = new Orchestrator({ maxCiRetries: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
-    orch.getItem("H-1-1")!.ciFailCount = 2; // exceeds maxCiRetries of 1
+    orch.getItem("H-1-1")!.ciFailCount = 2;
 
     orch.processTransitions(
       snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open" }]),
@@ -366,9 +344,8 @@ describe("Orchestrator", () => {
 
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2"));
-    orch.setState("H-1-1", "merged"); // will transition to done
+    orch.setState("H-1-1", "merged");
 
-    // H-1-2 is ready, H-1-1 frees WIP slot by going to done
     const actions = orch.processTransitions(
       emptySnapshot(["H-1-2"]),
     );
@@ -394,7 +371,6 @@ describe("Orchestrator", () => {
       ]),
     );
 
-    // Should move to review-pending, not merging
     expect(orch.getItem("H-1-1")!.state).toBe("review-pending");
     const mergeActions = actions.filter((a) => a.type === "merge");
     expect(mergeActions).toHaveLength(0);
@@ -441,7 +417,6 @@ describe("Orchestrator", () => {
       ]),
     );
 
-    // Should not produce merge action
     expect(orch.getItem("H-1-1")!.state).toBe("review-pending");
     const mergeActions = actions.filter((a) => a.type === "merge");
     expect(mergeActions).toHaveLength(0);
@@ -450,7 +425,6 @@ describe("Orchestrator", () => {
   // ── 14. ci-pending transitions ─────────────────────────────────
 
   it("ci-pending chains CI pass through merge evaluation", () => {
-    // With "ask" strategy, CI pass goes to review-pending (not merging)
     orch = new Orchestrator({ mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
@@ -499,8 +473,8 @@ describe("Orchestrator", () => {
 
     orch.setState("H-1-1", "implementing");
     orch.setState("H-1-2", "ci-pending");
-    orch.setState("H-1-3", "done"); // not WIP
-    orch.setState("H-1-4", "queued"); // not WIP
+    orch.setState("H-1-3", "done");
+    orch.setState("H-1-4", "queued");
 
     expect(orch.wipCount).toBe(2);
     expect(orch.wipSlots).toBe(3);
@@ -555,7 +529,7 @@ describe("Orchestrator", () => {
     expect(actions.some((a) => a.type === "clean")).toBe(true);
   });
 
-  // ── 19. ci-failed → ci-pending (worker pushed fix, CI restarting) ──
+  // ── 19. ci-failed → ci-pending ─────────────────────────────────
 
   it("ci-failed transitions to ci-pending when CI restarts", () => {
     orch.addItem(makeTodo("H-1-1"));
@@ -591,13 +565,11 @@ describe("Orchestrator", () => {
     orch.addItem(makeTodo("A-1-2"));
     orch.addItem(makeTodo("A-1-3", ["A-1-1"]));
 
-    // Cycle 1: Launch first two
     orch.processTransitions(emptySnapshot(["A-1-1", "A-1-2"]));
     expect(orch.getItem("A-1-1")!.state).toBe("launching");
     expect(orch.getItem("A-1-2")!.state).toBe("launching");
     expect(orch.getItem("A-1-3")!.state).toBe("queued");
 
-    // Cycle 2: Workers are alive
     orch.processTransitions(
       snapshotWith([
         { id: "A-1-1", workerAlive: true },
@@ -607,7 +579,6 @@ describe("Orchestrator", () => {
     expect(orch.getItem("A-1-1")!.state).toBe("implementing");
     expect(orch.getItem("A-1-2")!.state).toBe("implementing");
 
-    // Cycle 3: PRs opened, CI passes on A-1-1
     orch.processTransitions(
       snapshotWith([
         { id: "A-1-1", prNumber: 10, prState: "open", workerAlive: true },
@@ -617,7 +588,6 @@ describe("Orchestrator", () => {
     expect(orch.getItem("A-1-1")!.state).toBe("pr-open");
     expect(orch.getItem("A-1-2")!.state).toBe("pr-open");
 
-    // Cycle 4: CI passes on A-1-1, triggers merge (asap)
     const cycle4 = orch.processTransitions(
       snapshotWith([
         { id: "A-1-1", ciStatus: "pass", prState: "open" },
@@ -626,32 +596,23 @@ describe("Orchestrator", () => {
     );
     expect(orch.getItem("A-1-1")!.state).toBe("merging");
     expect(orch.getItem("A-1-2")!.state).toBe("ci-pending");
-    expect(cycle4.some((a) => a.type === "merge" && a.itemId === "A-1-1")).toBe(
-      true,
-    );
+    expect(cycle4.some((a) => a.type === "merge" && a.itemId === "A-1-1")).toBe(true);
 
-    // Cycle 5: A-1-1 merged, A-1-2 CI passes, A-1-3 deps met
-    // A-1-1 frees a WIP slot → A-1-3 is promoted and launched
     const cycle5 = orch.processTransitions(
       snapshotWith(
         [
           { id: "A-1-1", prState: "merged" },
           { id: "A-1-2", ciStatus: "pass", prState: "open" },
         ],
-        ["A-1-3"], // A-1-3's dep is now done
+        ["A-1-3"],
       ),
     );
     expect(orch.getItem("A-1-1")!.state).toBe("merged");
     expect(orch.getItem("A-1-2")!.state).toBe("merging");
     expect(orch.getItem("A-1-3")!.state).toBe("launching");
-    expect(cycle5.some((a) => a.type === "clean" && a.itemId === "A-1-1")).toBe(
-      true,
-    );
-    expect(
-      cycle5.some((a) => a.type === "launch" && a.itemId === "A-1-3"),
-    ).toBe(true);
+    expect(cycle5.some((a) => a.type === "clean" && a.itemId === "A-1-1")).toBe(true);
+    expect(cycle5.some((a) => a.type === "launch" && a.itemId === "A-1-3")).toBe(true);
 
-    // Cycle 6: A-1-1 goes to done, A-1-2 merged
     const cycle6 = orch.processTransitions(
       snapshotWith([
         { id: "A-1-2", prState: "merged" },
@@ -669,16 +630,18 @@ describe("Orchestrator", () => {
     // ── launch ────────────────────────────────────────────────
 
     it("launch: calls launchSingleItem and stores workspaceRef", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "launching");
 
       const result = orch.executeAction(
         { type: "launch", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(launchSingleItem as Mock).toHaveBeenCalledWith(
+      expect(deps.launchSingleItem).toHaveBeenCalledWith(
         orch.getItem("H-1-1")!.todo,
         defaultCtx.todosFile,
         defaultCtx.worktreeDir,
@@ -689,13 +652,14 @@ describe("Orchestrator", () => {
     });
 
     it("launch: marks stuck when launchSingleItem returns null", () => {
-      (launchSingleItem as Mock).mockReturnValueOnce(null);
+      const deps = mockDeps({ launchSingleItem: vi.fn(() => null) });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "launching");
 
       const result = orch.executeAction(
         { type: "launch", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(false);
@@ -704,8 +668,8 @@ describe("Orchestrator", () => {
     });
 
     it("launch: marks stuck when launchSingleItem throws", () => {
-      (launchSingleItem as Mock).mockImplementationOnce(() => {
-        throw new Error("cmux not running");
+      const deps = mockDeps({
+        launchSingleItem: vi.fn(() => { throw new Error("cmux not running"); }),
       });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "launching");
@@ -713,6 +677,7 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "launch", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(false);
@@ -723,6 +688,7 @@ describe("Orchestrator", () => {
     // ── merge ─────────────────────────────────────────────────
 
     it("merge: calls prMerge, posts audit comment, pulls main, transitions to merged", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merging");
       orch.getItem("H-1-1")!.prNumber = 42;
@@ -730,22 +696,23 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(gh.prMerge as Mock).toHaveBeenCalledWith(defaultCtx.projectRoot, 42);
-      expect(gh.prComment as Mock).toHaveBeenCalledWith(
+      expect(deps.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 42);
+      expect(deps.prComment).toHaveBeenCalledWith(
         defaultCtx.projectRoot,
         42,
         expect.stringContaining("[Orchestrator]"),
       );
-      expect(gitMock.fetchOrigin as Mock).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
-      expect(gitMock.ffMerge as Mock).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
+      expect(deps.fetchOrigin).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
+      expect(deps.ffMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
       expect(orch.getItem("H-1-1")!.state).toBe("merged");
     });
 
     it("merge: reverts to ci-passed when prMerge fails", () => {
-      (gh.prMerge as Mock).mockReturnValueOnce(false);
+      const deps = mockDeps({ prMerge: vi.fn(() => false) });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merging");
       orch.getItem("H-1-1")!.prNumber = 42;
@@ -753,6 +720,7 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(false);
@@ -761,12 +729,14 @@ describe("Orchestrator", () => {
     });
 
     it("merge: fails gracefully when no PR number", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merging");
 
       const result = orch.executeAction(
         { type: "merge", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(false);
@@ -774,6 +744,7 @@ describe("Orchestrator", () => {
     });
 
     it("merge: sends rebase requests to dependent WIP items", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
       orch.setState("H-1-1", "merging");
@@ -784,17 +755,19 @@ describe("Orchestrator", () => {
       orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
         defaultCtx,
+        deps,
       );
 
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
+      expect(deps.sendMessage).toHaveBeenCalledWith(
         "workspace:2",
         expect.stringContaining("Dependency H-1-1 merged"),
       );
     });
 
     it("merge: does not send rebase to non-dependent items", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
-      orch.addItem(makeTodo("H-1-2")); // no dependency on H-1-1
+      orch.addItem(makeTodo("H-1-2"));
       orch.setState("H-1-1", "merging");
       orch.getItem("H-1-1")!.prNumber = 42;
       orch.setState("H-1-2", "implementing");
@@ -803,14 +776,15 @@ describe("Orchestrator", () => {
       orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
         defaultCtx,
+        deps,
       );
 
-      expect(cmuxMock.sendMessage as Mock).not.toHaveBeenCalled();
+      expect(deps.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: succeeds even when fetchOrigin/ffMerge throw", () => {
-      (gitMock.fetchOrigin as Mock).mockImplementationOnce(() => {
-        throw new Error("network error");
+      const deps = mockDeps({
+        fetchOrigin: vi.fn(() => { throw new Error("network error"); }),
       });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merging");
@@ -819,6 +793,7 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
@@ -828,26 +803,21 @@ describe("Orchestrator", () => {
     // ── notify-ci-failure ─────────────────────────────────────
 
     it("notify-ci-failure: sends message to worker and posts PR comment", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "ci-failed");
       orch.getItem("H-1-1")!.prNumber = 42;
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
       const result = orch.executeAction(
-        {
-          type: "notify-ci-failure",
-          itemId: "H-1-1",
-          message: "CI failed on job build",
-        },
+        { type: "notify-ci-failure", itemId: "H-1-1", message: "CI failed on job build" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
-        "workspace:1",
-        "CI failed on job build",
-      );
-      expect(gh.prComment as Mock).toHaveBeenCalledWith(
+      expect(deps.sendMessage).toHaveBeenCalledWith("workspace:1", "CI failed on job build");
+      expect(deps.prComment).toHaveBeenCalledWith(
         defaultCtx.projectRoot,
         42,
         expect.stringContaining("CI failure detected"),
@@ -855,6 +825,7 @@ describe("Orchestrator", () => {
     });
 
     it("notify-ci-failure: uses default message when none provided", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "ci-failed");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -862,15 +833,17 @@ describe("Orchestrator", () => {
       orch.executeAction(
         { type: "notify-ci-failure", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
+      expect(deps.sendMessage).toHaveBeenCalledWith(
         "workspace:1",
         "CI failed — please investigate and fix.",
       );
     });
 
     it("notify-ci-failure: succeeds without workspace ref (no message sent)", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "ci-failed");
       orch.getItem("H-1-1")!.prNumber = 42;
@@ -878,81 +851,74 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "notify-ci-failure", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.sendMessage as Mock).not.toHaveBeenCalled();
-      // PR comment still posted
-      expect(gh.prComment as Mock).toHaveBeenCalled();
+      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.prComment).toHaveBeenCalled();
     });
 
     // ── notify-review ─────────────────────────────────────────
 
     it("notify-review: sends review message to worker", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "review-pending");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
       const result = orch.executeAction(
-        {
-          type: "notify-review",
-          itemId: "H-1-1",
-          message: "Please address review comments on PR #42.",
-        },
+        { type: "notify-review", itemId: "H-1-1", message: "Please address review comments." },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
-        "workspace:1",
-        "Please address review comments on PR #42.",
-      );
+      expect(deps.sendMessage).toHaveBeenCalledWith("workspace:1", "Please address review comments.");
     });
 
     it("notify-review: uses default message when none provided", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "review-pending");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
-      orch.executeAction(
-        { type: "notify-review", itemId: "H-1-1" },
-        defaultCtx,
-      );
+      orch.executeAction({ type: "notify-review", itemId: "H-1-1" }, defaultCtx, deps);
 
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
+      expect(deps.sendMessage).toHaveBeenCalledWith(
         "workspace:1",
         "Review feedback received — please address.",
       );
     });
 
     it("notify-review: succeeds without workspace ref", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "review-pending");
 
       const result = orch.executeAction(
         { type: "notify-review", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.sendMessage as Mock).not.toHaveBeenCalled();
+      expect(deps.sendMessage).not.toHaveBeenCalled();
     });
 
     // ── clean ─────────────────────────────────────────────────
 
     it("clean: closes workspace and cleans worktree", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merged");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
-      const result = orch.executeAction(
-        { type: "clean", itemId: "H-1-1" },
-        defaultCtx,
-      );
+      const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.closeWorkspace as Mock).toHaveBeenCalledWith("workspace:1");
-      expect(cleanSingleWorktree as Mock).toHaveBeenCalledWith(
+      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
+      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
         "H-1-1",
         defaultCtx.worktreeDir,
         defaultCtx.projectRoot,
@@ -960,17 +926,15 @@ describe("Orchestrator", () => {
     });
 
     it("clean: skips workspace close when no ref", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merged");
 
-      const result = orch.executeAction(
-        { type: "clean", itemId: "H-1-1" },
-        defaultCtx,
-      );
+      const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.closeWorkspace as Mock).not.toHaveBeenCalled();
-      expect(cleanSingleWorktree as Mock).toHaveBeenCalledWith(
+      expect(deps.closeWorkspace).not.toHaveBeenCalled();
+      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
         "H-1-1",
         defaultCtx.worktreeDir,
         defaultCtx.projectRoot,
@@ -980,25 +944,24 @@ describe("Orchestrator", () => {
     // ── mark-done ─────────────────────────────────────────────
 
     it("mark-done: calls cmdMarkDone and transitions to done", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merged");
 
       const result = orch.executeAction(
         { type: "mark-done", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(cmdMarkDone as Mock).toHaveBeenCalledWith(
-        ["H-1-1"],
-        defaultCtx.todosFile,
-      );
+      expect(deps.cmdMarkDone).toHaveBeenCalledWith(["H-1-1"], defaultCtx.todosFile);
       expect(orch.getItem("H-1-1")!.state).toBe("done");
     });
 
     it("mark-done: handles cmdMarkDone failure gracefully", () => {
-      (cmdMarkDone as Mock).mockImplementationOnce(() => {
-        throw new Error("TODOS.md not found");
+      const deps = mockDeps({
+        cmdMarkDone: vi.fn(() => { throw new Error("TODOS.md not found"); }),
       });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merged");
@@ -1006,17 +969,18 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "mark-done", itemId: "H-1-1" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("TODOS.md not found");
-      // State should NOT change to done on failure
       expect(orch.getItem("H-1-1")!.state).toBe("merged");
     });
 
     // ── rebase ────────────────────────────────────────────────
 
     it("rebase: sends rebase message to worker", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -1024,54 +988,42 @@ describe("Orchestrator", () => {
       const result = orch.executeAction(
         { type: "rebase", itemId: "H-1-1", message: "Rebase onto main now." },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(true);
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
-        "workspace:1",
-        "Rebase onto main now.",
-      );
+      expect(deps.sendMessage).toHaveBeenCalledWith("workspace:1", "Rebase onto main now.");
     });
 
     it("rebase: uses default message when none provided", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
-      orch.executeAction(
-        { type: "rebase", itemId: "H-1-1" },
-        defaultCtx,
-      );
+      orch.executeAction({ type: "rebase", itemId: "H-1-1" }, defaultCtx, deps);
 
-      expect(cmuxMock.sendMessage as Mock).toHaveBeenCalledWith(
-        "workspace:1",
-        "Please rebase onto latest main.",
-      );
+      expect(deps.sendMessage).toHaveBeenCalledWith("workspace:1", "Please rebase onto latest main.");
     });
 
     it("rebase: fails when no workspace ref", () => {
+      const deps = mockDeps();
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
-      const result = orch.executeAction(
-        { type: "rebase", itemId: "H-1-1" },
-        defaultCtx,
-      );
+      const result = orch.executeAction({ type: "rebase", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("No workspace reference");
     });
 
     it("rebase: fails when sendMessage returns false", () => {
-      (cmuxMock.sendMessage as Mock).mockReturnValueOnce(false);
+      const deps = mockDeps({ sendMessage: vi.fn(() => false) });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
-      const result = orch.executeAction(
-        { type: "rebase", itemId: "H-1-1" },
-        defaultCtx,
-      );
+      const result = orch.executeAction({ type: "rebase", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Failed to send rebase message");
@@ -1080,9 +1032,11 @@ describe("Orchestrator", () => {
     // ── common error handling ─────────────────────────────────
 
     it("returns error for unknown item ID", () => {
+      const deps = mockDeps();
       const result = orch.executeAction(
         { type: "launch", itemId: "NONEXISTENT" },
         defaultCtx,
+        deps,
       );
 
       expect(result.success).toBe(false);
