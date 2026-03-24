@@ -34,7 +34,7 @@ import { cmdOrchestrate } from "./commands/orchestrate.ts";
 import { cmdReconcile } from "./commands/reconcile.ts";
 import { cmdAnalytics } from "./commands/analytics.ts";
 import { cmdStop } from "./commands/stop.ts";
-import { cmdGenerateTodos } from "./commands/generate-todos.ts";
+import { cmdMigrateTodos, cmdGenerateTodos } from "./commands/migrate-todos.ts";
 
 // Resolve project root via git
 function getProjectRoot(): string {
@@ -180,6 +180,9 @@ if (!command) {
     "  analytics [--all]                             Show orchestration performance trends",
   );
   console.log(
+    "  migrate-todos                                 Migrate TODOS.md to file-per-todo format",
+  );
+  console.log(
     "  generate-todos                                Generate TODOS.md from individual todo files",
   );
   process.exit(0);
@@ -204,6 +207,7 @@ const needsTodos = ![
   "pr-activity",
   "version-bump",
   "analytics",
+  "migrate-todos",
   "generate-todos",
 ].includes(command);
 
@@ -291,6 +295,9 @@ switch (command) {
     break;
   case "analytics":
     cmdAnalytics(args, projectRoot);
+    break;
+  case "migrate-todos":
+    cmdMigrateTodos(projectRoot);
     break;
   case "generate-todos":
     cmdGenerateTodos(todosDir, join(projectRoot, "TODOS.md"));

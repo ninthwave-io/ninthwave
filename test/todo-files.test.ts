@@ -240,6 +240,19 @@ Just a description.
   it("returns null for nonexistent file", () => {
     expect(parseTodoFile("/tmp/does-not-exist-nw-test.md")).toBeNull();
   });
+
+  it("returns null for invalid priority value", () => {
+    const dir = makeTempDir();
+    const content = `# Typo priority (M-TP-1)
+
+**Priority:** Hgh
+**Domain:** broken
+`;
+    const fp = join(dir, "broken3.md");
+    writeFileSync(fp, content);
+
+    expect(parseTodoFile(fp)).toBeNull();
+  });
 });
 
 // --- writeTodoFile + parseTodoFile round-trip ---

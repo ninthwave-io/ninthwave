@@ -15,7 +15,7 @@ import {
   ID_PATTERN_GLOBAL,
   WILDCARD_DEP_PATTERN,
 } from "./types.ts";
-import { normalizeDomain, extractTestPlan, extractFilePaths, expandWildcardDeps } from "./parser.ts";
+import { extractTestPlan, extractFilePaths, expandWildcardDeps, extractBody } from "./todo-utils.ts";
 
 /** Map a priority to its sort-order number. */
 export function priorityNum(p: Priority): number {
@@ -105,6 +105,10 @@ export function parseTodoFile(filePath: string): TodoItem | null {
   }
 
   if (!priority) return null;
+
+  // Validate priority is a known value
+  const validPriorities: Set<string> = new Set(Object.keys(PRIORITY_NUM));
+  if (!validPriorities.has(priority)) return null;
 
   // Parse dependencies
   const dependencies: string[] = [];
@@ -284,39 +288,7 @@ export function writeTodoFile(todosDir: string, item: TodoItem): void {
   lines.push("");
 
   // Description (rawText body minus any metadata we already wrote)
-  // For round-tripping, store the rawText body as the description
-  const rawLines = item.rawText.split("\n");
-  const bodyLines: string[] = [];
-  let pastHeader = false;
-  let pastMeta = false;
-
-  for (const line of rawLines) {
-    if (!pastHeader) {
-      if (line.startsWith("# ")) {
-        pastHeader = true;
-        continue;
-      }
-      continue;
-    }
-
-    // Skip metadata lines we already wrote
-    if (!pastMeta) {
-      if (
-        line.startsWith("**Priority:**") ||
-        line.startsWith("**Source:**") ||
-        line.startsWith("**Depends on:**") ||
-        line.startsWith("**Domain:**") ||
-        line.startsWith("**Bundle with:**") ||
-        line.startsWith("**Repo:**") ||
-        line.trim() === ""
-      ) {
-        continue;
-      }
-      pastMeta = true;
-    }
-
-    bodyLines.push(line);
-  }
+  const bodyLines = extractBody(item.rawText);
 
   if (bodyLines.length > 0) {
     lines.push(...bodyLines);

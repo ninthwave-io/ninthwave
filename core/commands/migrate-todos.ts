@@ -23,7 +23,8 @@ import {
   normalizeDomain,
   extractTestPlan,
   extractFilePaths,
-} from "../parser.ts";
+  extractBody,
+} from "../todo-utils.ts";
 import { loadDomainMappings } from "../config.ts";
 import { writeTodoFile, listTodos } from "../todo-files.ts";
 import { info, warn, die, GREEN, RESET, BOLD } from "../output.ts";
@@ -505,49 +506,4 @@ export function cmdGenerateTodos(todosDir: string, outputPath: string): void {
   writeFileSync(outputPath, lines.join("\n"));
 
   info(`Generated ${outputPath} with ${items.length} items across ${sortedDomains.length} domains.`);
-}
-
-/**
- * Extract the body text from a todo file's rawText, stripping the # header
- * and metadata lines (Priority, Source, Depends on, Domain, Bundle with, Repo).
- */
-function extractBody(rawText: string): string[] {
-  const rawLines = rawText.split("\n");
-  const bodyLines: string[] = [];
-  let pastHeader = false;
-  let pastMeta = false;
-
-  for (const line of rawLines) {
-    if (!pastHeader) {
-      if (line.startsWith("# ")) {
-        pastHeader = true;
-        continue;
-      }
-      continue;
-    }
-
-    if (!pastMeta) {
-      if (
-        line.startsWith("**Priority:**") ||
-        line.startsWith("**Source:**") ||
-        line.startsWith("**Depends on:**") ||
-        line.startsWith("**Domain:**") ||
-        line.startsWith("**Bundle with:**") ||
-        line.startsWith("**Repo:**") ||
-        line.trim() === ""
-      ) {
-        continue;
-      }
-      pastMeta = true;
-    }
-
-    bodyLines.push(line);
-  }
-
-  // Trim trailing empty lines
-  while (bodyLines.length > 0 && bodyLines[bodyLines.length - 1]!.trim() === "") {
-    bodyLines.pop();
-  }
-
-  return bodyLines;
 }

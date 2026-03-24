@@ -13,15 +13,6 @@ Key files: `agents/todo-worker.md`, `core/orchestrator.ts`
 
 ---
 
-### Migrate friction log to per-stream directory (M-DET-7)
-
-**Priority:** Medium
-**Depends on:** None
-
-Key files: `.claude/skills/grind/SKILL.md`, `.ninthwave/friction.log`, `agents/todo-worker.md`, `core/supervisor.ts`
-
----
-
 ### Surface detection latency in analytics summaries (L-DET-3)
 
 **Priority:** Low
@@ -126,14 +117,5 @@ Key files: `core/orchestrator.ts`, `test/orchestrator.test.ts`
 **Depends on:** None
 
 Key files: `core/orchestrator.ts`, `test/orchestrator.test.ts`
-
----
-
-### Reconcile closes orphaned workspaces (L-ORC-7)
-
-**Priority:** Low
-**Depends on:** M-ORC-3, M-ORC-4
-
-Key files: `core/commands/clean.ts`, `core/commands/reconcile.ts`, `test/clean.test.ts`, `test/reconcile.test.ts`
 
 ---
