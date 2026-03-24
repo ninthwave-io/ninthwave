@@ -197,25 +197,6 @@ Key files: `core/commands/start.ts`, `core/commands/clean.ts`, `test/start.test.
 
 ---
 
-### Refactor: Return actual success/failure from executeClean (L-CLN-1)
-
-**Priority:** Low
-**Source:** Eng review H-ENG-1 — finding F7
-**Depends on:** None
-
-`executeClean` always returns `{ success: true }` regardless of whether `closeWorkspace` or `cleanSingleWorktree` actually succeeded. Return `success: false` with an error message if both operations fail, to aid debugging of systematic cleanup issues.
-
-**Test plan:**
-- Unit test: executeClean returns success when cleanup works
-- Unit test: executeClean returns success when only one operation fails (partial cleanup is OK)
-- Unit test: executeClean returns failure when both operations fail
-
-Acceptance: `executeClean` returns accurate success/failure status. Partial cleanup (one of two operations succeeds) is still reported as success. Tests pass.
-
-Key files: `core/orchestrator.ts`, `test/orchestrator.test.ts`
-
----
-
 ### Refactor: Extract helpers from orchestrateLoop (L-REF-1)
 
 **Priority:** Low
