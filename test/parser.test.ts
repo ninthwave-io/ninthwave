@@ -2,7 +2,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { parseTodos, extractFilePaths, extractTestPlan, normalizeDomain, truncateSlug, expandWildcardDeps } from "../core/parser.ts";
 import {
   setupTempRepo,
@@ -899,6 +899,36 @@ describe("parseTodos — wildcard dependencies", () => {
     expect(mga1.dependencies).toContain("H-AL-1"); // literal
     expect(mga1.dependencies).toContain("H-BE-1"); // wildcard expanded
     expect(mga1.dependencies).not.toContain("M-AL-2"); // not matched
+  });
+});
+
+describe("parseTodos — UTF-8 BOM handling", () => {
+  it("parses correctly when TODOS.md starts with a UTF-8 BOM", () => {
+    const repo = setupTempRepo();
+    useFixture(repo, "valid.md");
+
+    // Prepend BOM to the fixture file
+    const todosPath = join(repo, "TODOS.md");
+    const original = readFileSync(todosPath, "utf-8");
+    writeFileSync(todosPath, "\uFEFF" + original);
+
+    const items = parseTodos(todosPath, join(repo, ".worktrees"));
+    expect(items).toHaveLength(4);
+
+    // Verify the first section's domain is parsed correctly (not corrupted by BOM)
+    const byId = new Map(items.map((i) => [i.id, i]));
+    expect(byId.get("M-CI-1")!.domain).toBe("cloud-infrastructure");
+  });
+
+  it("parses correctly when TODOS.md has no BOM", () => {
+    const repo = setupTempRepo();
+    useFixture(repo, "valid.md");
+
+    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    expect(items).toHaveLength(4);
+
+    const byId = new Map(items.map((i) => [i.id, i]));
+    expect(byId.get("M-CI-1")!.domain).toBe("cloud-infrastructure");
   });
 });
 
