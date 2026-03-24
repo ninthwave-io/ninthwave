@@ -5,15 +5,9 @@ Parallel AI coding orchestration. TypeScript + Bun CLI.
 ## Development
 
 ```bash
-bun run test          # run vitest suite (main tests)
-bun test              # run bun's native test runner (bun-dependent tests only)
+bun test              # run all tests
 bun run core/cli.ts   # run CLI directly
 ```
-
-**WARNING:** Do NOT run `bun test` on the full test suite or on large test files
-(orchestrate.test.ts, orchestrator.test.ts). Bun's native test runner has pathological
-memory behavior on these files (40GB+). Use `vitest run` for the main test suite.
-The pre-commit hook handles this split automatically.
 
 No build step — Bun executes TypeScript directly. Changes take effect immediately.
 
@@ -29,8 +23,9 @@ No build step — Bun executes TypeScript directly. Changes take effect immediat
 ## Conventions
 
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
-- Tests live in `test/` using vitest with `vi.mock` for external dependencies
-- **Mock isolation:** `bun test` (our CI runner) does not isolate `vi.mock` between test files — mocks leak across files and break unrelated tests. Prefer dependency injection (pass collaborators as function arguments) over `vi.mock`. Only use `vi.mock` when the mocked module is not imported by any other test file. When in doubt, inject.
+- Tests live in `test/` using bun's native test runner (vitest-compatible API via `import { describe, it, expect, vi } from "vitest"`)
+- **Mock isolation:** `bun test` does not isolate `vi.mock` between test files — mocks leak across files and break unrelated tests. Prefer dependency injection (pass collaborators as function arguments) over `vi.mock`. Only use `vi.mock` when the mocked module is not imported by any other test file. When in doubt, inject.
+- **Always run `bun test test/`** (scoped to test directory) to avoid picking up tests from `.worktrees/` during orchestration
 - No runtime dependencies beyond Bun — keep it self-contained
 - Convention over configuration — sensible defaults, minimal config files
 
