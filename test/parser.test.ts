@@ -857,6 +857,37 @@ describe("parseTodos — wildcard dependencies", () => {
   });
 });
 
+describe("parseTodos — UTF-8 BOM handling", () => {
+  it("parses correctly when TODOS.md starts with a UTF-8 BOM", () => {
+    const repo = setupTempRepo();
+    useFixture(repo, "valid.md");
+
+    // Prepend BOM to the fixture file
+    const todosPath = join(repo, "TODOS.md");
+    const { readFileSync, writeFileSync } = require("fs");
+    const original = readFileSync(todosPath, "utf-8");
+    writeFileSync(todosPath, "\uFEFF" + original);
+
+    const items = parseTodos(todosPath, join(repo, ".worktrees"));
+    expect(items).toHaveLength(4);
+
+    // Verify the first section's domain is parsed correctly (not corrupted by BOM)
+    const byId = new Map(items.map((i) => [i.id, i]));
+    expect(byId.get("M-CI-1")!.domain).toBe("cloud-infrastructure");
+  });
+
+  it("parses correctly when TODOS.md has no BOM", () => {
+    const repo = setupTempRepo();
+    useFixture(repo, "valid.md");
+
+    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    expect(items).toHaveLength(4);
+
+    const byId = new Map(items.map((i) => [i.id, i]));
+    expect(byId.get("M-CI-1")!.domain).toBe("cloud-infrastructure");
+  });
+});
+
 // Helper: create a minimal TodoItem with the given rawText
 function fakeItem(rawText: string) {
   return {

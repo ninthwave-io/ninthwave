@@ -219,7 +219,9 @@ export function parseTodos(
 ): TodoItem[] {
   if (!existsSync(todosFile)) return [];
 
-  const content = readFileSync(todosFile, "utf-8");
+  const raw = readFileSync(todosFile, "utf-8");
+  // Strip UTF-8 BOM if present — it would break the first "## " header check
+  const content = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
   const lines = content.split("\n");
 
   // Derive in-progress IDs from worktree directories
