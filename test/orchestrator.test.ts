@@ -203,11 +203,12 @@ describe("Orchestrator", () => {
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
-    orch.processTransitions(
+    const actions = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", workerAlive: false }]),
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
+    expect(actions.some((a) => a.type === "clean" && a.itemId === "H-1-1")).toBe(true);
   });
 
   // ── 5. Implementing → PR open ─────────────────────────────────
@@ -261,11 +262,12 @@ describe("Orchestrator", () => {
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
-    orch.processTransitions(
+    const actions = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", workerAlive: false }]),
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
+    expect(actions.some((a) => a.type === "clean" && a.itemId === "H-1-1")).toBe(true);
   });
 
   // ── 6. CI pass → merge action (asap strategy) ─────────────────
@@ -456,11 +458,12 @@ describe("Orchestrator", () => {
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.ciFailCount = 2;
 
-    orch.processTransitions(
+    const actions = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open" }]),
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
+    expect(actions.some((a) => a.type === "clean" && a.itemId === "H-1-1")).toBe(true);
   });
 
   // ── 9. PR merged → clean action ───────────────────────────────
@@ -1697,10 +1700,11 @@ describe("Orchestrator", () => {
         orch = new Orchestrator({ maxRetries: 0 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "launching");
-        orch.processTransitions(
+        const actions = orch.processTransitions(
           snapshotWith([{ id: "X-1-1", workerAlive: false }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
+        expect(actions.some((a) => a.type === "clean" && a.itemId === "X-1-1")).toBe(true);
       });
 
       it("stays launching when no snapshot for item", () => {
@@ -1748,10 +1752,11 @@ describe("Orchestrator", () => {
         orch = new Orchestrator({ maxRetries: 0 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "implementing");
-        orch.processTransitions(
+        const actions = orch.processTransitions(
           snapshotWith([{ id: "X-1-1", workerAlive: false }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
+        expect(actions.some((a) => a.type === "clean" && a.itemId === "X-1-1")).toBe(true);
       });
 
       it("stays implementing when worker alive but no PR yet", () => {
@@ -2129,10 +2134,11 @@ describe("Orchestrator", () => {
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-failed");
         orch.getItem("X-1-1")!.ciFailCount = 3;
-        orch.processTransitions(
+        const actions = orch.processTransitions(
           snapshotWith([{ id: "X-1-1", ciStatus: "fail", prState: "open" }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
+        expect(actions.some((a) => a.type === "clean" && a.itemId === "X-1-1")).toBe(true);
       });
 
       it("→ merged when PR externally merged (takes priority)", () => {
@@ -2937,11 +2943,12 @@ describe("Orchestrator", () => {
       orch2.setState("A-1-1", "ci-failed");
       orch2.getItem("A-1-1")!.ciFailCount = 3;
 
-      orch2.processTransitions(
+      const actions = orch2.processTransitions(
         snapshotWith([{ id: "A-1-1", ciStatus: "fail", prState: "open" }]),
       );
 
       expect(orch2.getItem("A-1-1")!.state).toBe("stuck");
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "A-1-1")).toBe(true);
     });
 
     it("reconstructed state preserves workspaceRef and prNumber", () => {
@@ -3184,6 +3191,7 @@ describe("Orchestrator", () => {
 
       expect(orch.getItem("R-1-1")!.state).toBe("stuck");
       expect(actions.filter((a) => a.type === "retry")).toHaveLength(0);
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "R-1-1")).toBe(true);
     });
 
     it("retryCount is tracked in item for analytics", () => {
@@ -3237,6 +3245,7 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-1-1")!.retryCount).toBe(2);
       expect(orch.getItem("R-1-1")!.state).toBe("stuck");
       expect(actions.some((a) => a.type === "retry")).toBe(false);
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "R-1-1")).toBe(true);
     });
 
     it("defaults maxRetries to 1", () => {
@@ -3254,13 +3263,14 @@ describe("Orchestrator", () => {
       orch.setState("R-1-1", "ci-failed");
       orch.getItem("R-1-1")!.ciFailCount = 1;
 
-      orch.processTransitions(
+      const actions = orch.processTransitions(
         snapshotWith([{ id: "R-1-1", ciStatus: "fail", prState: "open" }]),
       );
 
       // CI exhaustion goes to stuck, not retried via worker retry
       expect(orch.getItem("R-1-1")!.state).toBe("stuck");
       expect(orch.getItem("R-1-1")!.retryCount).toBe(0);
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "R-1-1")).toBe(true);
     });
 
     it("retry from launching state re-launches in same cycle", () => {
@@ -3299,7 +3309,7 @@ describe("Orchestrator", () => {
       );
 
       expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-      expect(actions).toEqual([]); // stuckOrRetry with 0 retries → stuck, no actions
+      expect(actions).toEqual([{ type: "clean", itemId: "H-1-1" }]);
     });
 
     it("transitions implementing → stuck when stale commit beyond activity timeout", () => {
@@ -3317,7 +3327,7 @@ describe("Orchestrator", () => {
       );
 
       expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-      expect(actions).toEqual([]);
+      expect(actions).toEqual([{ type: "clean", itemId: "H-1-1" }]);
     });
 
     it("keeps implementing when worker has recent commits", () => {

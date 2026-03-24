@@ -437,7 +437,7 @@ export class Orchestrator {
       return [{ type: "retry", itemId: item.id }];
     }
     this.transition(item, "stuck");
-    return [];
+    return [{ type: "clean", itemId: item.id }];
   }
 
   /**
@@ -464,7 +464,7 @@ export class Orchestrator {
     if (item.state === "ci-failed") {
       if (item.ciFailCount > this.config.maxCiRetries) {
         this.transition(item, "stuck");
-        return [];
+        return [{ type: "clean", itemId: item.id }];
       }
       // If CI recovered, transition and continue processing
       if (ciStatus === "pass") {
