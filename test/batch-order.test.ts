@@ -1,8 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { setupTempRepo, useFixture, cleanupTempRepos } from "./helpers.ts";
+import { setupTempRepo, useFixtureDir, writeTodoFiles, cleanupTempRepos } from "./helpers.ts";
 import { join } from "path";
-import { writeFileSync, mkdirSync } from "fs";
-import { spawnSync } from "child_process";
 import { parseTodos } from "../core/parser.ts";
 import {
   cmdBatchOrder,
@@ -46,8 +44,7 @@ describe("batch-order", () => {
 
   it("items with no mutual deps are all in batch 1", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const { stdout } = captureOutput(() =>
@@ -62,8 +59,7 @@ describe("batch-order", () => {
 
   it("linear dependency: dep in batch 1, dependent in batch 2", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const { stdout } = captureOutput(() =>
@@ -82,8 +78,7 @@ describe("batch-order", () => {
 
   it("multi-level deps: independent items in batch 1, dependents in batch 2", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const { stdout } = captureOutput(() =>
@@ -104,8 +99,7 @@ describe("batch-order", () => {
 
   it("circular dependency is detected and returns error", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "circular_deps.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "circular_deps.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const { stdout, exitCode } = captureOutput(() =>
@@ -121,14 +115,9 @@ describe("batch-order", () => {
 
   it("partial circular: free item batched, then circular error", () => {
     const repo = setupTempRepo();
-    const todosDir = join(repo, "TODOS.md");
     const worktreeDir = join(repo, ".worktrees");
 
-    writeFileSync(
-      todosDir,
-      `# TODOS
-
-## Mixed
+    const todosDir = writeTodoFiles(repo, `## Mixed
 
 ### Feat: Free item (H-MX-1)
 
@@ -165,8 +154,7 @@ Depends on H-MX-2.
 Acceptance: Test fixture only.
 
 ---
-`,
-    );
+`);
 
     const { stdout } = captureOutput(() =>
       cmdBatchOrder(["H-MX-1", "H-MX-2", "H-MX-3"], todosDir, worktreeDir),
@@ -179,8 +167,7 @@ Acceptance: Test fixture only.
 
   it("single item with no deps goes to batch 1", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const { stdout } = captureOutput(() =>
@@ -194,8 +181,7 @@ Acceptance: Test fixture only.
 
   it("unknown item is warned and skipped", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const { stdout } = captureOutput(() =>
@@ -213,8 +199,8 @@ describe("computeBatches", () => {
 
   it("all independent items land in batch 1", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     const result = computeBatches(items, ["M-CI-1", "C-UO-1"]);
 
@@ -226,8 +212,8 @@ describe("computeBatches", () => {
 
   it("linear dependency produces two batches", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     const result = computeBatches(items, ["M-CI-1", "H-CI-2"]);
 
@@ -238,8 +224,8 @@ describe("computeBatches", () => {
 
   it("single item returns batch 1", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     const result = computeBatches(items, ["C-UO-1"]);
 
@@ -250,8 +236,8 @@ describe("computeBatches", () => {
 
   it("unknown IDs are silently skipped", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     const result = computeBatches(items, ["M-CI-1", "FAKE-99"]);
 
@@ -263,8 +249,8 @@ describe("computeBatches", () => {
 
   it("circular dependency throws CircularDependencyError", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "circular_deps.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "circular_deps.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     expect(() =>
       computeBatches(items, ["H-CC-1", "H-CC-2", "H-CC-3"]),
@@ -273,8 +259,8 @@ describe("computeBatches", () => {
 
   it("circular dependency error contains all circular item IDs", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "circular_deps.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "circular_deps.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     try {
       computeBatches(items, ["H-CC-1", "H-CC-2", "H-CC-3"]);
@@ -292,13 +278,8 @@ describe("computeBatches", () => {
 
   it("partial circular: assigns free items then throws for cycle", () => {
     const repo = setupTempRepo();
-    const todosDir = join(repo, "TODOS.md");
 
-    writeFileSync(
-      todosDir,
-      `# TODOS
-
-## Mixed
+    const todosDir = writeTodoFiles(repo, `## Mixed
 
 ### Feat: Free item (H-MX-1)
 
@@ -335,8 +316,7 @@ Depends on H-MX-2.
 Acceptance: Test fixture only.
 
 ---
-`,
-    );
+`);
 
     const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
@@ -358,14 +338,9 @@ Acceptance: Test fixture only.
 
   it("multi-level deps: diamond dependency resolves correctly", () => {
     const repo = setupTempRepo();
-    const todosDir = join(repo, "TODOS.md");
 
     // Diamond: A has no deps, B depends on A, C depends on A, D depends on B+C
-    writeFileSync(
-      todosDir,
-      `# TODOS
-
-## Diamond
+    const todosDir = writeTodoFiles(repo, `## Diamond
 
 ### Feat: Root (H-DI-1)
 
@@ -414,8 +389,7 @@ Joins left and right.
 Acceptance: Test fixture only.
 
 ---
-`,
-    );
+`);
 
     const items = parseTodos(todosDir, join(repo, ".worktrees"));
     const result = computeBatches(items, [
@@ -434,8 +408,8 @@ Acceptance: Test fixture only.
 
   it("empty selectedIds returns empty result", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     const result = computeBatches(items, []);
 
@@ -445,14 +419,9 @@ Acceptance: Test fixture only.
 
   it("wildcard-expanded deps are respected in batch ordering", () => {
     const repo = setupTempRepo();
-    const todosDir = join(repo, "TODOS.md");
 
     // Three domain items + one item depending on the whole domain via wildcard
-    writeFileSync(
-      todosDir,
-      `# TODOS
-
-## Alpha
+    const todosDir = writeTodoFiles(repo, `## Alpha
 
 ### Feat: A1 (H-AL-1)
 
@@ -491,8 +460,7 @@ Depends on all alpha items via wildcard.
 Acceptance: Test fixture only.
 
 ---
-`,
-    );
+`);
 
     const items = parseTodos(todosDir, join(repo, ".worktrees"));
     const result = computeBatches(items, ["H-AL-1", "M-AL-2", "H-BE-1"]);
@@ -506,8 +474,8 @@ Acceptance: Test fixture only.
 
   it("external deps are ignored (only selected set matters)", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const items = parseTodos(join(repo, "TODOS.md"), join(repo, ".worktrees"));
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const items = parseTodos(todosDir, join(repo, ".worktrees"));
 
     // H-CI-2 depends on M-CI-1, but M-CI-1 is not in the selected set
     // So H-CI-2 should be batch 1 (its dep is external)

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { setupTempRepo, useFixture, cleanupTempRepos } from "./helpers.ts";
+import { setupTempRepo, useFixtureDir, cleanupTempRepos } from "./helpers.ts";
 import { join } from "path";
 import { cmdList } from "../core/commands/list.ts";
 
@@ -33,8 +33,7 @@ describe("list", () => {
 
   it("lists all items with no filters", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() => cmdList([], todosDir, worktreeDir));
@@ -48,8 +47,7 @@ describe("list", () => {
 
   it("filters by priority", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -68,8 +66,7 @@ describe("list", () => {
 
   it("filters by domain", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -85,8 +82,7 @@ describe("list", () => {
 
   it("filters by feature code", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -105,8 +101,7 @@ describe("list", () => {
 
   it("filters by ready (deps all satisfied)", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -126,8 +121,7 @@ describe("list", () => {
 
   it("shows repo label for cross-repo items", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "cross_repo.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "cross_repo.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() => cmdList([], todosDir, worktreeDir));

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { setupTempRepo, useFixture, cleanupTempRepos } from "./helpers.ts";
+import { setupTempRepo, useFixtureDir, cleanupTempRepos } from "./helpers.ts";
 import { join } from "path";
 import { cmdDeps } from "../core/commands/deps.ts";
 
@@ -33,8 +33,7 @@ describe("deps", () => {
 
   it("shows upstream dependencies", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -44,14 +43,13 @@ describe("deps", () => {
     expect(output).toContain("Dependency chain for H-CI-2");
     expect(output).toContain("Must complete before H-CI-2");
     expect(output).toContain("M-CI-1");
-    // M-CI-1 is still in TODOS.md so it should show as pending
+    // M-CI-1 is still in todos so it should show as pending
     expect(output).toContain("[ ]");
   });
 
   it("shows downstream dependents", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -65,8 +63,7 @@ describe("deps", () => {
 
   it("shows bundle relationships", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     // H-UO-2 bundles with H-CI-2
@@ -80,8 +77,7 @@ describe("deps", () => {
 
   it("shows (none) when item has no deps", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -94,8 +90,7 @@ describe("deps", () => {
 
   it("errors on unknown ID", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     const output = captureOutput(() =>
@@ -107,8 +102,7 @@ describe("deps", () => {
 
   it("shows reverse bundle (item referenced by another's bundle-with)", () => {
     const repo = setupTempRepo();
-    useFixture(repo, "valid.md");
-    const todosDir = join(repo, "TODOS.md");
+    const todosDir = useFixtureDir(repo, "valid.md");
     const worktreeDir = join(repo, ".worktrees");
 
     // H-CI-2 is referenced in H-UO-2's bundle-with field
