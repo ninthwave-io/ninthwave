@@ -60,25 +60,6 @@ Key files: `core/analytics.ts`, `test/analytics.test.ts`
 
 ---
 
-### Fix: Webhook fireWebhook should have a fetch timeout (M-DP-9)
-
-**Priority:** Medium
-**Source:** Eng review M-ENG-3 finding 4.1
-**Depends on:** None
-
-`fireWebhook` calls fetch without a timeout. If the webhook endpoint hangs, the promise stays pending indefinitely, accumulating resources. Add an `AbortController` with a 10-second timeout to the fetch call.
-
-**Test plan:**
-- Unit test: fetch that exceeds timeout is aborted and error is logged
-- Unit test: fast responses work normally
-- Unit test: existing webhook tests pass
-
-Acceptance: Fetch calls have a 10-second timeout via AbortController. Timeout triggers abort and logs an error. No change to behavior for fast responses. Tests cover timeout scenario.
-
-Key files: `core/webhooks.ts`, `test/webhooks.test.ts`
-
----
-
 ### Feat: Webhook rate limiting / debounce for rapid events (L-DP-10)
 
 **Priority:** Low
