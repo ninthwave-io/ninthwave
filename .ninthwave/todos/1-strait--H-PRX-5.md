@@ -3,8 +3,8 @@
 **Priority:** High
 **Source:** Policy proxy design doc (2026-03-25)
 **Depends on:** H-PRX-4
-**Domain:** policy-proxy
-**Repo:** policy-proxy
+**Domain:** strait
+**Repo:** strait
 
 Integrate cedar-policy crate into the MITM request handler. Load a .cedar policy file at startup (--policy flag). Build the Cedar entity hierarchy from each request's URL path by splitting into segments (parent/child resources). Evaluate each MITM'd request against the policy set with context attributes (host, path, headers). On DENY, return HTTP 403 with a structured JSON body including error type, matched policy name, request details, and a human-readable hint. On ALLOW, forward the request. Default disposition is DENY (Cedar's native behavior).
 

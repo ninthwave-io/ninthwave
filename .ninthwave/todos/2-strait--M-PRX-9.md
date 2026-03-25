@@ -3,7 +3,7 @@
 **Priority:** Medium
 **Source:** Policy proxy design doc (2026-03-25)
 **Depends on:** H-PRX-8
-**Domain:** policy-proxy
+**Domain:** strait
 
 Write an end-to-end integration test that exercises the full chain: nono kernel sandbox + policy proxy + real GitHub API. The test starts the policy proxy with a test Cedar policy, launches a command inside nono with --upstream-proxy, makes GitHub API calls, and verifies: allowed calls succeed with injected credentials, denied calls return 403, and audit log contains structured events. The test suite is skipped when nono or the proxy binary is not installed (CI-friendly). Uses a separate test file to avoid interfering with the main fast test suite.
 

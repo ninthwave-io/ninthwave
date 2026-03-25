@@ -2,9 +2,9 @@
 
 **Priority:** High
 **Source:** Policy proxy design doc (2026-03-25)
-**Depends on:** H-PRX-3
-**Domain:** policy-proxy
-**Repo:** policy-proxy
+**Depends on:** -
+**Domain:** strait
+**Repo:** strait
 
 Add session-local CA cert generation at startup using rcgen. Implement selective MITM: when the CONNECT target is api.github.com, generate a per-host certificate signed by the session CA, terminate TLS, and expose the inner HTTP request (method, path, headers). For all other domains, continue transparent passthrough. Write the CA cert PEM to a predictable path (stdout or --ca-cert-path flag) so the caller can inject it into the sandbox. Concatenate with system CA bundle instructions in --help output.
 

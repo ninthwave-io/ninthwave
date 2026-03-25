@@ -3,7 +3,7 @@
 **Priority:** High
 **Source:** Policy proxy design doc (2026-03-25)
 **Depends on:** H-PRX-6
-**Domain:** policy-proxy
+**Domain:** strait
 
 Create core/proxy-launcher.ts as a new module following the sandbox.ts binary detection pattern. Implement: isProxyAvailable() using dependency-injected ShellRunner (same pattern as isNonoAvailable), startProxy(config) that spawns the proxy binary as a subprocess on an ephemeral port and returns { port, stop() }, healthCheck() that TCP-connects to the proxy port every 30s and auto-restarts on failure, and stopProxy() for clean shutdown. Graceful degradation: if proxy binary not installed, log a one-time warning and continue without proxy (same pattern as nono).
 

@@ -3,8 +3,8 @@
 **Priority:** High
 **Source:** Policy proxy design doc (2026-03-25)
 **Depends on:** H-PRX-5
-**Domain:** policy-proxy
-**Repo:** policy-proxy
+**Domain:** strait
+**Repo:** strait
 
 Add credential injection for GitHub API requests. Load a credentials.toml config file (--credentials flag) that maps services to credential sources (env vars, with keychain support planned for later). For GitHub: inject `Authorization: token <PAT>` header on allowed requests. Add structured JSON audit logging for every policy decision: timestamp, session_id, request (host, port, method, path, mitm flag), decision, matched_policy, credential_injected, eval_latency_us. Log to stderr and optionally to a file (--audit-log flag). Passthrough CONNECT events also logged with mitm:false.
 

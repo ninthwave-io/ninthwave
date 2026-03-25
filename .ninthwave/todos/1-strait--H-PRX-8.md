@@ -3,7 +3,7 @@
 **Priority:** High
 **Source:** Policy proxy design doc (2026-03-25)
 **Depends on:** H-PRX-7
-**Domain:** policy-proxy
+**Domain:** strait
 
 Extend sandbox.ts to accept an optional upstreamProxyPort parameter in wrapWithSandbox(). When provided, add --upstream-proxy 127.0.0.1:<port> to the nono command in both buildProfileCommand() and buildSandboxCommand(). Add proxy_policy and proxy_credentials to SANDBOX_CONFIG_KEYS and register in config.ts KNOWN_CONFIG_KEYS. In start.ts, wire up: if proxy is available and proxy_policy config is set, start proxy via proxy-launcher before launching workers, inject CA cert env vars (NODE_EXTRA_CA_CERTS, GIT_SSL_CAINFO, SSL_CERT_FILE with concatenated system CAs), pass port to wrapWithSandbox, and stop proxy after workers finish.
 
