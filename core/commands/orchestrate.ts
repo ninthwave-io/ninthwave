@@ -1800,8 +1800,6 @@ export async function cmdOrchestrate(
   // Apply custom GitHub token so daemon and workers use the configured identity
   applyGithubToken(projectRoot);
 
-  // Parse TODO items
-  const allTodos = parseTodos(todosDir, worktreeDir);
   const todoMap = new Map<string, TodoItem>();
   for (const todo of allTodos) {
     todoMap.set(todo.id, todo);
