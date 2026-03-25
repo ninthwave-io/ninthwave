@@ -29,7 +29,8 @@ export type ItemState =
   | "ci-pending"
   | "review"
   | "pr-open"
-  | "in-progress";
+  | "in-progress"
+  | "queued";
 
 export interface StatusItem {
   id: string;
@@ -57,6 +58,8 @@ export function stateColor(state: ItemState): string {
     case "review":
     case "pr-open":
       return BLUE;
+    case "queued":
+      return DIM;
     default:
       return DIM;
   }
@@ -79,6 +82,8 @@ export function stateLabel(state: ItemState): string {
       return "PR Open";
     case "in-progress":
       return "In Progress";
+    case "queued":
+      return "Queued";
     default:
       return "Unknown";
   }
@@ -147,7 +152,7 @@ export function formatBatchProgress(items: StatusItem[]): string {
     counts.set(item.state, (counts.get(item.state) ?? 0) + 1);
   }
 
-  // Order states for display: merged first (good news), then active, then bad
+  // Order states for display: merged first (good news), then active, then bad, then queued
   const order: ItemState[] = [
     "merged",
     "review",
@@ -156,6 +161,7 @@ export function formatBatchProgress(items: StatusItem[]): string {
     "implementing",
     "in-progress",
     "ci-failed",
+    "queued",
   ];
 
   const parts: string[] = [];
@@ -189,12 +195,29 @@ export function formatSummary(items: StatusItem[]): string {
 }
 
 /**
+ * Format a fully dimmed item row for the queue section.
+ * Returns a string with DIM applied to the entire row.
+ */
+export function formatQueuedItemRow(item: StatusItem, titleWidth: number): string {
+  const id = pad(item.id, 12);
+  const label = pad(stateLabel(item.state), 14);
+  const pr = item.prNumber ? pad(`#${item.prNumber}`, 7) : pad("-", 7);
+  const age = pad(formatAge(item.ageMs), 8);
+  const title = truncateTitle(item.title || item.id, titleWidth);
+  const repo = item.repoLabel ? ` [${item.repoLabel}]` : "";
+
+  return `  ${DIM}${id}${label} ${pr} ${age} ${title}${repo}${RESET}`;
+}
+
+/**
  * Format the complete status table from a list of StatusItems.
  * Returns a multi-line string ready for console output.
+ * When wipLimit is provided, shows WIP slot usage in the queue header.
  */
 export function formatStatusTable(
   items: StatusItem[],
   termWidth: number = 80,
+  wipLimit?: number,
 ): string {
   const lines: string[] = [];
 
@@ -210,6 +233,11 @@ export function formatStatusTable(
     return lines.join("\n");
   }
 
+  // Split items into active and queued groups
+  const activeItems = items.filter((i) => i.state !== "queued" && i.state !== "merged");
+  const queuedItems = items.filter((i) => i.state === "queued");
+  const mergedItems = items.filter((i) => i.state === "merged");
+
   // Column widths: 2 indent + 12 ID + 14 state + 1 + 7 PR + 1 + 8 age + 1 + title
   // = 46 fixed + title
   const fixedWidth = 46;
@@ -223,9 +251,32 @@ export function formatStatusTable(
   const sep = `  ${DIM}${"─".repeat(Math.min(termWidth - 2, 78))}${RESET}`;
   lines.push(sep);
 
-  // Item rows
-  for (const item of items) {
+  // Active items at top (not merged, not queued)
+  for (const item of activeItems) {
     lines.push(formatItemRow(item, titleWidth));
+  }
+
+  // Merged items
+  for (const item of mergedItems) {
+    lines.push(formatItemRow(item, titleWidth));
+  }
+
+  // Queue section with header
+  if (queuedItems.length > 0) {
+    const activeCount = activeItems.length;
+    let queueHeader = `Queue (${queuedItems.length} waiting`;
+    if (wipLimit !== undefined) {
+      queueHeader += `, ${activeCount}/${wipLimit} WIP slots active`;
+    }
+    queueHeader += ")";
+
+    lines.push("");
+    lines.push(`  ${DIM}${queueHeader}${RESET}`);
+    lines.push(sep);
+
+    for (const item of queuedItems) {
+      lines.push(formatQueuedItemRow(item, titleWidth));
+    }
   }
 
   // Footer
@@ -263,6 +314,7 @@ export function mapDaemonItemState(orchState: string): ItemState {
       return "pr-open";
     case "queued":
     case "ready":
+      return "queued";
     default:
       return "in-progress";
   }
@@ -501,7 +553,7 @@ export function renderStatus(worktreeDir: string, projectRoot: string): string {
     if (daemonState) {
       const items = daemonStateToStatusItems(daemonState);
       const termWidth = getTerminalWidth();
-      lines.push(formatStatusTable(items, termWidth));
+      lines.push(formatStatusTable(items, termWidth, daemonState.wipLimit));
       lines.push(`\n  ${DIM}Daemon running (PID ${daemonPid}), updated ${daemonState.updatedAt}${RESET}`);
       return lines.join("\n") + "\n";
     }

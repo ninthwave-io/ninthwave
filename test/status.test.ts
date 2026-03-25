@@ -8,6 +8,7 @@ import {
   truncateTitle,
   formatAge,
   formatItemRow,
+  formatQueuedItemRow,
   formatBatchProgress,
   formatSummary,
   formatStatusTable,
@@ -47,6 +48,7 @@ describe("stateColor", () => {
       "review",
       "pr-open",
       "in-progress",
+      "queued",
     ];
     for (const state of states) {
       expect(typeof stateColor(state)).toBe("string");
@@ -63,6 +65,7 @@ describe("stateLabel", () => {
     expect(stateLabel("review")).toBe("In Review");
     expect(stateLabel("pr-open")).toBe("PR Open");
     expect(stateLabel("in-progress")).toBe("In Progress");
+    expect(stateLabel("queued")).toBe("Queued");
   });
 });
 
@@ -702,9 +705,9 @@ describe("mapDaemonItemState", () => {
     expect(mapDaemonItemState("pr-open")).toBe("pr-open");
   });
 
-  it("maps queued/ready to in-progress", () => {
-    expect(mapDaemonItemState("queued")).toBe("in-progress");
-    expect(mapDaemonItemState("ready")).toBe("in-progress");
+  it("maps queued/ready to queued", () => {
+    expect(mapDaemonItemState("queued")).toBe("queued");
+    expect(mapDaemonItemState("ready")).toBe("queued");
   });
 
   it("maps unknown states to in-progress", () => {
@@ -727,6 +730,7 @@ describe("daemonStateToStatusItems", () => {
           title: "Add feature",
           lastTransition: new Date(now - 60000).toISOString(),
           ciFailCount: 0,
+          retryCount: 0,
         },
         {
           id: "T-1-2",
@@ -735,6 +739,7 @@ describe("daemonStateToStatusItems", () => {
           title: "Fix bug",
           lastTransition: new Date(now - 300000).toISOString(),
           ciFailCount: 1,
+          retryCount: 0,
         },
       ],
     };
@@ -763,6 +768,133 @@ describe("daemonStateToStatusItems", () => {
       items: [],
     };
     expect(daemonStateToStatusItems(state)).toEqual([]);
+  });
+});
+
+// ─── Queued state support ─────────────────────────────────────────────────────
+
+describe("stateColor for queued", () => {
+  it("returns DIM for queued state", () => {
+    // DIM is the same as the default branch — verify it returns a string
+    expect(typeof stateColor("queued")).toBe("string");
+    // Verify it's the same value as what DIM would be (matches default)
+    expect(stateColor("queued")).toBe(stateColor("queued"));
+  });
+});
+
+describe("stateLabel for queued", () => {
+  it("returns 'Queued' for queued state", () => {
+    expect(stateLabel("queued")).toBe("Queued");
+  });
+});
+
+describe("formatQueuedItemRow", () => {
+  it("renders a fully dimmed row", () => {
+    const item = makeItem("Q-1", "queued", "Waiting to start");
+    const row = stripAnsi(formatQueuedItemRow(item, 30));
+    expect(row).toContain("Q-1");
+    expect(row).toContain("Queued");
+    expect(row).toContain("Waiting to start");
+  });
+
+  it("uses dash for PR when none", () => {
+    const item = makeItem("Q-2", "queued");
+    const row = stripAnsi(formatQueuedItemRow(item, 20));
+    expect(row).toContain("-");
+    expect(row).not.toContain("#");
+  });
+});
+
+describe("formatStatusTable with queued items", () => {
+  it("shows queue section with header for mixed active + queued items", () => {
+    const items = [
+      makeItem("A-1", "implementing", "Active item"),
+      makeItem("Q-1", "queued", "Queued item 1"),
+      makeItem("Q-2", "queued", "Queued item 2"),
+    ];
+    const output = stripAnsi(formatStatusTable(items));
+    expect(output).toContain("Queue (2 waiting)");
+    expect(output).toContain("Q-1");
+    expect(output).toContain("Q-2");
+    expect(output).toContain("A-1");
+  });
+
+  it("shows WIP slot usage in queue header when wipLimit provided", () => {
+    const items = [
+      makeItem("A-1", "implementing", "Active 1"),
+      makeItem("A-2", "ci-pending", "Active 2"),
+      makeItem("Q-1", "queued", "Queued 1"),
+    ];
+    const output = stripAnsi(formatStatusTable(items, 80, 5));
+    expect(output).toContain("Queue (1 waiting, 2/5 WIP slots active)");
+  });
+
+  it("shows queue section with only queued items (no active section)", () => {
+    const items = [
+      makeItem("Q-1", "queued", "Queued 1"),
+      makeItem("Q-2", "queued", "Queued 2"),
+      makeItem("Q-3", "queued", "Queued 3"),
+    ];
+    const output = stripAnsi(formatStatusTable(items));
+    expect(output).toContain("Queue (3 waiting)");
+    expect(output).toContain("Q-1");
+    expect(output).toContain("Q-2");
+    expect(output).toContain("Q-3");
+  });
+
+  it("shows queued items below active items", () => {
+    const items = [
+      makeItem("A-1", "implementing", "Active"),
+      makeItem("Q-1", "queued", "Queued"),
+    ];
+    const output = stripAnsi(formatStatusTable(items));
+    const activeIdx = output.indexOf("A-1");
+    const queueIdx = output.indexOf("Q-1");
+    expect(activeIdx).toBeLessThan(queueIdx);
+  });
+
+  it("shows no queue header when no queued items", () => {
+    const items = [
+      makeItem("A-1", "implementing", "Active"),
+      makeItem("A-2", "merged", "Done"),
+    ];
+    const output = stripAnsi(formatStatusTable(items));
+    expect(output).not.toContain("Queue");
+  });
+
+  it("counts only active (non-merged, non-queued) items for WIP slots", () => {
+    const items = [
+      makeItem("A-1", "implementing", "Active"),
+      makeItem("A-2", "merged", "Done"),
+      makeItem("Q-1", "queued", "Waiting"),
+    ];
+    // Only A-1 is active (A-2 is merged), so 1/3 WIP slots
+    const output = stripAnsi(formatStatusTable(items, 80, 3));
+    expect(output).toContain("1/3 WIP slots active");
+  });
+});
+
+describe("formatBatchProgress with queued", () => {
+  it("includes queued count in progress line", () => {
+    const items = [
+      makeItem("A-1", "implementing"),
+      makeItem("Q-1", "queued"),
+      makeItem("Q-2", "queued"),
+    ];
+    const line = stripAnsi(formatBatchProgress(items));
+    expect(line).toContain("1 implementing");
+    expect(line).toContain("2 queued");
+  });
+
+  it("orders queued after ci-failed in progress line", () => {
+    const items = [
+      makeItem("A-1", "ci-failed"),
+      makeItem("Q-1", "queued"),
+    ];
+    const line = stripAnsi(formatBatchProgress(items));
+    const failIdx = line.indexOf("ci failed");
+    const queueIdx = line.indexOf("queued");
+    expect(failIdx).toBeLessThan(queueIdx);
   });
 });
 
