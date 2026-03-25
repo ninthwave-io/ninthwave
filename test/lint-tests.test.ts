@@ -189,6 +189,44 @@ function checkNoUnresetGlobals(
   return violations;
 }
 
+function checkNoUnrestoredProcessExit(
+  file: { name: string; content: string },
+): Violation[] {
+  const violations: Violation[] = [];
+  const lines = file.content.split("\n");
+  const pattern = /process\.exit\s*=/;
+  let hasOverride = false;
+  const overrideLines: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = pattern.exec(lines[i]!);
+    if (match && !isInsideString(lines[i]!, match.index) && !isIgnored(lines, i, "no-unrestored-process-exit")) {
+      hasOverride = true;
+      overrideLines.push(i + 1);
+    }
+  }
+
+  if (!hasOverride) return violations;
+
+  // Check for restore in finally, afterEach, or afterAll
+  const hasRestore =
+    /finally\s*\{[\s\S]*?process\.exit\s*=/m.test(file.content) ||
+    /(?:afterEach|afterAll)\s*\([\s\S]*?process\.exit\s*=/m.test(file.content);
+
+  if (!hasRestore) {
+    for (const line of overrideLines) {
+      violations.push({
+        file: file.name,
+        line,
+        rule: "no-unrestored-process-exit",
+        message: "process.exit override without restore in finally/afterEach/afterAll — disables test safety guards for all subsequent test files",
+      });
+    }
+  }
+
+  return violations;
+}
+
 // ── Run all rules ────────────────────────────────────────────────────
 
 function runAllRules(files: { name: string; content: string }[]): Violation[] {
@@ -199,6 +237,7 @@ function runAllRules(files: { name: string; content: string }[]): Violation[] {
       ...checkNoUnclearedInterval(file),
       ...checkNoLongTimeout(file),
       ...checkNoUnresetGlobals(file),
+      ...checkNoUnrestoredProcessExit(file),
     );
   }
   return violations;
@@ -436,6 +475,57 @@ describe("test", () => {
 });`,
       };
       const violations = checkNoUnresetGlobals(file);
+      expect(violations.length).toBe(0);
+    });
+  });
+
+  describe("no-unrestored-process-exit", () => {
+    it("detects process.exit override without restore", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+const origExit = process.exit;
+beforeAll(() => {
+  process.exit = (() => { throw new Error("exit"); }) as any;
+});
+describe("test", () => {
+  it("calls die()", () => {});
+});`,
+      };
+      const violations = checkNoUnrestoredProcessExit(file);
+      expect(violations.length).toBeGreaterThan(0);
+      expect(violations[0]!.rule).toBe("no-unrestored-process-exit");
+    });
+
+    it("passes when restore is in afterAll", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+const origExit = process.exit;
+beforeAll(() => {
+  process.exit = (() => { throw new Error("exit"); }) as any;
+});
+afterAll(() => {
+  process.exit = origExit;
+});`,
+      };
+      const violations = checkNoUnrestoredProcessExit(file);
+      expect(violations.length).toBe(0);
+    });
+
+    it("passes when restore is in finally", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+const origExit = process.exit;
+process.exit = (() => { throw new Error("exit"); }) as any;
+try {
+  doStuff();
+} finally {
+  process.exit = origExit;
+}`,
+      };
+      const violations = checkNoUnrestoredProcessExit(file);
       expect(violations.length).toBe(0);
     });
   });

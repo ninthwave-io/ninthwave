@@ -4,7 +4,7 @@
 // Supports daemon mode (--daemon) for background operation with state persistence.
 // Optionally runs an LLM supervisor tick for anomaly detection and friction logging.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, openSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, openSync, appendFileSync } from "fs";
 import { join } from "path";
 import { totalmem, freemem, platform } from "os";
 import { execSync } from "node:child_process";
@@ -210,6 +210,24 @@ export function buildSnapshot(
       // Screen-based health check: detect loading, prompt (stuck), processing, stalled, error
       if (orchItem.workspaceRef) {
         snap.workerHealth = checkWorkerHealth(mux, orchItem.workspaceRef);
+        // Record screen samples for health-check tuning (H-HLT-1 data collection)
+        try {
+          const rawScreen = mux.readScreen(orchItem.workspaceRef, 30);
+          if (rawScreen.trim()) {
+            const samplesDir = join(projectRoot, ".ninthwave");
+            const samplesFile = join(samplesDir, "health-samples.jsonl");
+            const sample = JSON.stringify({
+              t: new Date().toISOString(),
+              id: orchItem.id,
+              state: orchItem.state,
+              health: snap.workerHealth,
+              alive: snap.workerAlive,
+              lines: rawScreen.split("\n").filter((l: string) => l.trim()).length,
+              screen: rawScreen.slice(0, 2000),
+            });
+            appendFileSync(samplesFile, sample + "\n");
+          }
+        } catch { /* best-effort — don't break polling */ }
       }
       const commitTime = getLastCommitTime(projectRoot, `todo/${orchItem.id}`);
       snap.lastCommitTime = commitTime;

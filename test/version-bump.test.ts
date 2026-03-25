@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, afterEach, afterAll, beforeAll } from "vitest";
 import {
   mkdirSync,
   readFileSync,
@@ -133,8 +133,8 @@ beforeAll(() => {
     throw new Error(`process.exit(${code})`);
   }) as any;
 });
-afterEach(() => {
-  // Restore in case a test needs it
+afterAll(() => {
+  process.exit = origExit;
 });
 
 describe("cmdVersionBump", { timeout: 30_000 }, () => {
