@@ -19,6 +19,7 @@ export function cmdList(
   let filterDomain = "";
   let filterFeature = "";
   let showReady = false;
+  let depth = 0; // 0 = no depth limit (when used with --ready, depth 1 is default)
   let backend = "";
   let clickupListId = "";
 
@@ -42,6 +43,14 @@ export function cmdList(
         showReady = true;
         i += 1;
         break;
+      case "--depth": {
+        const v = parseInt(args[i + 1] ?? "", 10);
+        if (isNaN(v) || v < 1) die("--depth requires a positive integer");
+        depth = v;
+        showReady = true; // --depth implies --ready
+        i += 2;
+        break;
+      }
       case "--backend":
         backend = args[i + 1] ?? "";
         i += 2;
@@ -92,15 +101,44 @@ export function cmdList(
     items = items.filter((item) => item.id.includes(filterFeature));
   }
 
-  // Ready filter: only items whose deps are all satisfied (not in todo files)
+  // Ready filter: items whose deps are satisfied, with optional depth traversal.
+  // --ready alone (depth=0): only items whose deps are all done (depth 1 behavior).
+  // --depth N: walk the dependency graph N levels from ready roots.
   if (showReady) {
-    const allIds = new Set(
-      parseTodos(todosDir, worktreeDir).map((it) => it.id),
-    );
-    items = items.filter((item) => {
-      if (item.dependencies.length === 0) return true;
-      return item.dependencies.every((depId) => !allIds.has(depId));
-    });
+    const allItems = parseTodos(todosDir, worktreeDir);
+    const allIds = new Set(allItems.map((it) => it.id));
+
+    // Effective depth: --ready alone = 1, --depth N = N
+    const maxDepth = depth || 1;
+
+    // Iteratively find items reachable within maxDepth batches
+    const included = new Set<string>(); // IDs selected so far
+    const done = new Set<string>(); // IDs not in todo files (already done)
+
+    // Seed "done" with all IDs referenced as deps but not in todo files
+    for (const item of allItems) {
+      for (const depId of item.dependencies) {
+        if (!allIds.has(depId)) done.add(depId);
+      }
+    }
+
+    for (let d = 0; d < maxDepth; d++) {
+      const satisfiedIds = new Set([...done, ...included]);
+      let foundNew = false;
+      for (const item of allItems) {
+        if (included.has(item.id)) continue;
+        const depsOk =
+          item.dependencies.length === 0 ||
+          item.dependencies.every((depId) => satisfiedIds.has(depId));
+        if (depsOk) {
+          included.add(item.id);
+          foundNew = true;
+        }
+      }
+      if (!foundNew) break; // no more items reachable
+    }
+
+    items = items.filter((item) => included.has(item.id));
   }
 
   // Print table header

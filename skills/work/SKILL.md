@@ -52,21 +52,28 @@ This skill interactively selects TODO items, then delegates all orchestration to
 > **Rule: Never trust `list --ready` without reconciling first.** Todo files in `.ninthwave/todos/` may be stale if PRs were merged outside the orchestrator (manually, by another session, or by GitHub auto-merge). Always reconcile before listing.
 
 1. Run `ninthwave reconcile` to sync todo state with GitHub (removes files for merged PRs, cleans stale worktrees).
-2. Run `ninthwave list --ready` to get all available items.
-3. Parse the output and present a summary table to the user showing: ID, priority, domain, title, and estimated complexity. Items with a `Repo:` field will indicate which target repo they belong to.
+2. Run `ninthwave list --depth 99` to get all reachable items across the full dependency chain. Also run `ninthwave list --ready` to identify which items can start immediately (depth 1).
+3. Parse the output and present a summary showing items grouped by depth tier:
+   - **Depth 1 (starts now):** items with all deps already done
+   - **Depth 2 (starts after depth 1):** items whose deps are all in depth 1 or done
+   - **Depth N:** and so on until all items are shown
+   Show: ID, priority, domain, title, and estimated complexity. Items with a `Repo:` field will indicate which target repo they belong to.
 
-4. **Quick-start detection:** If there are ready items and the user invoked `/work` without specifying particular items or filters, offer a streamlined entry:
+4. **Quick-start detection:** If there are reachable items and the user invoked `/work` without specifying particular items or filters, offer a streamlined entry:
 
-   AskUserQuestion -- "N items ready. How do you want to proceed?"
-   - A) All ready items with defaults (auto-merge ASAP, WIP 4, supervisor on) — recommended for unattended runs
-   - B) Interactive selection — choose items by feature, priority, or domain
-   - C) Dry run — show the batch plan without launching
+   AskUserQuestion -- "N items reachable (M at depth 1, K at depth 2, ...). How deep do you want to go?"
+   - A) Full chain (depth N) with defaults (auto-merge ASAP, WIP 4, supervisor on) — recommended; the orchestrator queues deeper items until their deps merge
+   - B) Depth 1 only — just items that can start right now
+   - C) Interactive selection — choose items by feature, priority, or domain
+   - D) Dry run — show the batch plan without launching
 
-   **If user picks A:** Skip to step 6 (dependency analysis) with all ready items selected, then skip the merge strategy / WIP limit / supervisor questions — use the defaults. Proceed directly to Phase 2.
+   **If user picks A:** Skip to step 6 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit / supervisor questions — use the defaults. Proceed directly to Phase 2.
 
-   **If user picks B:** Continue with the interactive selection flow below.
+   **If user picks B:** Skip to step 6 with only depth-1 items selected, using defaults. Proceed directly to Phase 2.
 
-   **If user picks C:** Show the batch plan and exit.
+   **If user picks C:** Continue with the interactive selection flow below.
+
+   **If user picks D:** Show the batch plan and exit.
 
 5. AskUserQuestion -- "How do you want to select items?"
    - Detect if any feature-code IDs exist (IDs with alphabetic characters like `BF5`, `UO`, `ST`).

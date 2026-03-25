@@ -119,6 +119,65 @@ describe("list", () => {
     expect(output).toContain("2 items");
   });
 
+  it("--depth 1 is equivalent to --ready", () => {
+    const repo = setupTempRepo();
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".worktrees");
+
+    const output = captureOutput(() =>
+      cmdList(["--depth", "1"], todosDir, worktreeDir),
+    );
+
+    expect(output).toContain("M-CI-1");
+    expect(output).toContain("C-UO-1");
+    expect(output).not.toContain("H-CI-2");
+    expect(output).not.toContain("H-UO-2");
+    expect(output).toContain("2 items");
+  });
+
+  it("--depth 2 includes items one hop from ready roots", () => {
+    const repo = setupTempRepo();
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".worktrees");
+
+    const output = captureOutput(() =>
+      cmdList(["--depth", "2"], todosDir, worktreeDir),
+    );
+
+    // Depth 1: M-CI-1, C-UO-1 (no deps)
+    // Depth 2: H-CI-2 (dep: M-CI-1), H-UO-2 (deps: C-UO-1, M-CI-1)
+    expect(output).toContain("M-CI-1");
+    expect(output).toContain("C-UO-1");
+    expect(output).toContain("H-CI-2");
+    expect(output).toContain("H-UO-2");
+    expect(output).toContain("4 items");
+  });
+
+  it("--depth implies --ready", () => {
+    const repo = setupTempRepo();
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".worktrees");
+
+    // --depth without --ready should still filter
+    const output = captureOutput(() =>
+      cmdList(["--depth", "1"], todosDir, worktreeDir),
+    );
+
+    expect(output).toContain("2 items");
+  });
+
+  it("--depth with invalid value exits with error", () => {
+    const repo = setupTempRepo();
+    const todosDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".worktrees");
+
+    const output = captureOutput(() =>
+      cmdList(["--depth", "0"], todosDir, worktreeDir),
+    );
+
+    expect(output).toContain("--depth requires a positive integer");
+  });
+
   it("shows repo label for cross-repo items", () => {
     const repo = setupTempRepo();
     const todosDir = useFixtureDir(repo, "cross_repo.md");
