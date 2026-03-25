@@ -374,6 +374,8 @@ export interface CleanOrphanedDeps {
   getOpenTodoIds(todosDir: string): string[];
   /** Clean a single worktree by ID. Returns true if cleaned. */
   cleanWorktree(id: string, worktreeDir: string, projectRoot: string): boolean;
+  /** Close a multiplexer workspace by item ID (best-effort). */
+  closeWorkspaceForItem?(itemId: string): void;
   /** Structured logger. */
   log(entry: LogEntry): void;
 }
@@ -427,6 +429,10 @@ export function cleanOrphanedWorktrees(
 
   for (const wtId of worktreeIds) {
     if (!openTodoIds.has(wtId)) {
+      // Close workspace before removing worktree to prevent orphaned windows
+      if (deps.closeWorkspaceForItem) {
+        try { deps.closeWorkspaceForItem(wtId); } catch { /* best-effort */ }
+      }
       if (deps.cleanWorktree(wtId, worktreeDir, projectRoot)) {
         cleanedIds.push(wtId);
       }
@@ -1080,6 +1086,12 @@ export function launchStatusPane(
 ): string | null {
   if (!mux.isAvailable()) return null;
 
+  // Check if a status pane is already running — don't open duplicates
+  const existing = mux.listWorkspaces();
+  if (existing && existing.includes(STATUS_PANE_NAME)) {
+    return null;
+  }
+
   // When inside an existing workspace, split a pane instead of creating a new workspace
   if (isInsideWorkspace(env)) {
     const paneRef = mux.splitPane("ninthwave status --watch");
@@ -1318,6 +1330,15 @@ export async function cmdOrchestrate(
     getWorktreeIds: listWorktreeIds,
     getOpenTodoIds: listOpenTodoIds,
     cleanWorktree: (id, wtDir, root) => cleanSingleWorktree(id, wtDir, root),
+    closeWorkspaceForItem: (itemId) => {
+      const list = mux.listWorkspaces();
+      if (!list) return;
+      for (const line of list.split("\n")) {
+        if (!line.includes(itemId)) continue;
+        const match = line.match(/workspace:\d+/);
+        if (match) mux.closeWorkspace(match[0]);
+      }
+    },
     log: structuredLog,
   });
 

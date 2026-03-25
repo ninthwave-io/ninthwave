@@ -189,8 +189,10 @@ export function applySandboxOverrides(
 /**
  * Build the nono command prefix for sandboxing a worker command.
  *
- * Produces a command string like:
- *   nono run --allow /path/to/worktree --read /path/to/project --allow-domain api.github.com -- <original-command>
+ * Filesystem-only sandboxing — network is unrestricted by default because
+ * workers need to push to GitHub, install packages, call APIs, etc.
+ * Using --allow-domain triggers nono's network proxy which adds latency
+ * and can hang; filesystem isolation is the right default.
  *
  * @param config - The sandbox configuration
  * @param command - The original command to wrap
@@ -200,16 +202,13 @@ export function buildSandboxCommand(
   config: SandboxConfig,
   command: string,
 ): string {
-  const parts: string[] = ["nono", "run"];
+  const parts: string[] = ["nono", "run", "-s"];
 
   for (const rw of config.paths.readWrite) {
     parts.push("--allow", rw);
   }
   for (const ro of config.paths.readOnly) {
     parts.push("--read", ro);
-  }
-  for (const host of config.network.allowHosts) {
-    parts.push("--allow-domain", host);
   }
 
   parts.push("--", command);
