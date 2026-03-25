@@ -29,6 +29,14 @@ No build step — Bun executes TypeScript directly. Changes take effect immediat
 - One external dependency: [nono](https://github.com/nicholasgasior/nono) for worker sandboxing (installed automatically via `brew install ninthwave`). ninthwave gracefully degrades without it — workers run unsandboxed but functional
 - Convention over configuration — sensible defaults, minimal config files
 
+## Test Safety
+
+- Tests have three layers of timeout protection: 5s per-test (bun default), 90s global process timeout (`test/setup-global.ts` via preload), and 120s shell-level timeout (pre-commit + CI).
+- `--smol` flag is used on all test runs for tighter GC. `--bail` fails fast on first failure.
+- `test/lint-tests.test.ts` scans all test files for dangerous patterns. It runs as part of the regular test suite — auto-enforced in pre-commit and CI.
+- **Lint rules:** `no-leaked-server` (Bun.serve without cleanup), `no-uncleared-interval` (setInterval without clear), `no-long-timeout` (setTimeout > 30s), `no-unreset-globals` (globalThis override without restore).
+- To suppress a lint rule: add `// lint-ignore: <rule-id>` on or above the flagged line.
+
 ## Dogfooding Mode
 
 This repo uses ninthwave to develop ninthwave. When working here, **dogfooding self-improvement mode is the default** — follow the full loop below unless explicitly asked to skip it.

@@ -15,4 +15,4 @@ jobs:
       - run: bun install
 
       - name: Run tests
-        run: bun test test/
+        run: timeout 120 bun test --smol --bail test/
