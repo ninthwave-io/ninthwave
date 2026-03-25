@@ -28,6 +28,7 @@ export interface DaemonState {
   startedAt: string;
   updatedAt: string;
   statusPaneRef?: string | null;
+  wipLimit?: number;
   items: DaemonStateItem[];
 }
 

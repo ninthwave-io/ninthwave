@@ -1455,6 +1455,7 @@ export async function cmdOrchestrate(
         try {
           const state = serializeOrchestratorState(items, process.pid, daemonStartedAt, {
             statusPaneRef,
+            wipLimit,
           });
           writeStateFile(projectRoot, state);
         } catch {
