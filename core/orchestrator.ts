@@ -3,7 +3,8 @@
 // executeAction bridges the pure state machine to external dependencies via injected deps.
 
 import { join } from "path";
-import type { TodoItem, Priority } from "./types.ts";
+import type { TodoItem, Priority, WorktreeInfo } from "./types.ts";
+import { getWorktreeInfo, listCrossRepoEntries } from "./cross-repo.ts";
 
 // ── Priority rank for merge queue ordering (lower = higher priority) ─
 
@@ -881,6 +882,10 @@ export class Orchestrator {
     const successfulRestacks = new Set<string>();
     const depBranch = `todo/${item.id}`;
 
+    // Cache cross-repo index for worktree lookups in sibling loops
+    const crossRepoIndex = join(ctx.worktreeDir, ".cross-repo-index");
+    const cachedEntries = listCrossRepoEntries(crossRepoIndex);
+
     for (const other of this.getAllItems()) {
       if (other.id === item.id) continue;
       if (!other.todo.dependencies.includes(item.id)) continue;
@@ -889,9 +894,9 @@ export class Orchestrator {
 
       restackedIds.add(other.id);
 
-      const otherRepoRoot = other.resolvedRepoRoot ?? ctx.projectRoot;
-      const otherWorktreeDir = join(otherRepoRoot, ".worktrees");
-      const otherWorktreePath = join(otherWorktreeDir, `todo-${other.id}`);
+      const otherWtInfo = getWorktreeInfo(other.id, crossRepoIndex, ctx.worktreeDir, cachedEntries);
+      const otherRepoRoot = otherWtInfo?.repoRoot ?? other.resolvedRepoRoot ?? ctx.projectRoot;
+      const otherWorktreePath = otherWtInfo?.worktreePath ?? join(otherRepoRoot, ".worktrees", `todo-${other.id}`);
       const otherBranch = `todo/${other.id}`;
 
       if (!deps.rebaseOnto || !deps.forcePush) {
@@ -946,18 +951,24 @@ export class Orchestrator {
       }
     }
 
-    // Post-merge daemon-rebase: proactively rebase ALL in-flight sibling PRs.
+    // Post-merge daemon-rebase: proactively rebase in-flight sibling PRs in the same repo.
     // This eliminates most conflicts before workers notice, reducing CI churn.
     // Skip restacked items — they were already rebased with --onto above.
+    // Skip items in different repos — their main didn't change from this merge.
     for (const other of this.getAllItems()) {
       if (other.id === item.id) continue;
       if (!WIP_STATES.has(other.state)) continue;
       if (!other.prNumber) continue;
       if (restackedIds.has(other.id)) continue;
 
-      const otherBranch = `todo/${other.id}`;
+      // Only rebase siblings in the same target repo — a merge in repo-B
+      // doesn't affect main in repo-A
       const otherRepoRoot2 = other.resolvedRepoRoot ?? ctx.projectRoot;
-      const otherWorktreePath = join(otherRepoRoot2, ".worktrees", `todo-${other.id}`);
+      if (otherRepoRoot2 !== repoRoot) continue;
+
+      const otherBranch = `todo/${other.id}`;
+      const otherWtInfo2 = getWorktreeInfo(other.id, crossRepoIndex, ctx.worktreeDir, cachedEntries);
+      const otherWorktreePath = otherWtInfo2?.worktreePath ?? join(otherRepoRoot2, ".worktrees", `todo-${other.id}`);
 
       // Try daemon-rebase first for all siblings
       let daemonSuccess = false;
@@ -1078,7 +1089,9 @@ export class Orchestrator {
       ? deps.closeWorkspace(item.workspaceRef)
       : null; // null = not attempted (no workspace to close)
 
-    const repoRoot = item.resolvedRepoRoot ?? ctx.projectRoot;
+    const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
+    const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
+    const repoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
     const worktreeDir = repoRoot !== ctx.projectRoot ? join(repoRoot, ".worktrees") : ctx.worktreeDir;
     const worktreeCleaned = deps.cleanSingleWorktree(item.id, worktreeDir, repoRoot);
 
@@ -1129,8 +1142,10 @@ export class Orchestrator {
 
     // Try daemon-side rebase if the dep is available
     if (deps.daemonRebase) {
-      const repoRoot = item.resolvedRepoRoot ?? ctx.projectRoot;
-      const worktreePath = join(repoRoot, ".worktrees", `todo-${item.id}`);
+      const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
+      const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
+      const repoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
+      const worktreePath = wtInfo?.worktreePath ?? join(repoRoot, ".worktrees", `todo-${item.id}`);
       try {
         const success = deps.daemonRebase(worktreePath, branch);
         if (success) {
@@ -1184,7 +1199,9 @@ export class Orchestrator {
     }
 
     // Clean the old worktree to prepare for a fresh launch
-    const repoRoot = item.resolvedRepoRoot ?? ctx.projectRoot;
+    const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
+    const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
+    const repoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
     const worktreeDir = repoRoot !== ctx.projectRoot ? join(repoRoot, ".worktrees") : ctx.worktreeDir;
     deps.cleanSingleWorktree(item.id, worktreeDir, repoRoot);
 

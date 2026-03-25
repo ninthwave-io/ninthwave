@@ -4873,7 +4873,7 @@ describe("Orchestrator", () => {
       );
     });
 
-    it("post-merge sibling rebase uses cross-repo worktree path", () => {
+    it("post-merge sibling rebase uses cross-repo worktree path for same-repo siblings", () => {
       const daemonRebase = vi.fn(() => true);
       const forcePush = vi.fn(() => true);
       const deps = mockDeps({ daemonRebase, forcePush });
@@ -4885,9 +4885,10 @@ describe("Orchestrator", () => {
       orch.getItem("X-1-6")!.prNumber = 46;
       orch.getItem("X-1-6")!.resolvedRepoRoot = "/path/to/target-repo";
 
+      // Sibling in the SAME repo — should be rebased
       orch.setState("X-1-7", "ci-pending");
       orch.getItem("X-1-7")!.prNumber = 47;
-      orch.getItem("X-1-7")!.resolvedRepoRoot = "/path/to/other-repo";
+      orch.getItem("X-1-7")!.resolvedRepoRoot = "/path/to/target-repo";
       orch.getItem("X-1-7")!.workspaceRef = "workspace:7";
 
       orch.executeAction(
@@ -4896,11 +4897,38 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      // Sibling rebase should use other-repo's worktree path
+      // Sibling rebase should use target-repo's worktree path
       expect(daemonRebase).toHaveBeenCalledWith(
-        "/path/to/other-repo/.worktrees/todo-X-1-7",
+        "/path/to/target-repo/.worktrees/todo-X-1-7",
         "todo/X-1-7",
       );
+    });
+
+    it("post-merge sibling rebase skips items in different repos", () => {
+      const daemonRebase = vi.fn(() => true);
+      const deps = mockDeps({ daemonRebase });
+
+      orch.addItem(makeTodo("X-1-6b"));
+      orch.addItem(makeTodo("X-1-7b", [], "medium"));
+
+      orch.setState("X-1-6b", "merging");
+      orch.getItem("X-1-6b")!.prNumber = 46;
+      orch.getItem("X-1-6b")!.resolvedRepoRoot = "/path/to/target-repo";
+
+      // Sibling in a DIFFERENT repo — should NOT be rebased
+      orch.setState("X-1-7b", "ci-pending");
+      orch.getItem("X-1-7b")!.prNumber = 47;
+      orch.getItem("X-1-7b")!.resolvedRepoRoot = "/path/to/other-repo";
+      orch.getItem("X-1-7b")!.workspaceRef = "workspace:7";
+
+      orch.executeAction(
+        { type: "merge", itemId: "X-1-6b", prNumber: 46 },
+        defaultCtx,
+        deps,
+      );
+
+      // daemonRebase should NOT be called for different-repo sibling
+      expect(daemonRebase).not.toHaveBeenCalled();
     });
 
     it("CI failure comment uses resolvedRepoRoot", () => {

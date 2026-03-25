@@ -6,7 +6,7 @@ import { die } from "../output.ts";
 import { prList, prView, prChecks, getRepoOwner, apiGet } from "../gh.ts";
 import * as gh from "../gh.ts";
 import type { WatchResult, Transition } from "../types.ts";
-import { getWorktreeInfo } from "../cross-repo.ts";
+import { listCrossRepoEntries } from "../cross-repo.ts";
 
 /** jq fragment: only count comments/reviews from trusted author associations. */
 export const TRUSTED_ASSOC = '(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")';
@@ -43,19 +43,10 @@ export function cmdWatchReady(
 
   // Iterate cross-repo worktrees (PRs live in target repos)
   const hubCheckedIds = new Set(results.map((r) => r.split("\t")[0]));
-  if (existsSync(crossRepoIndex)) {
-    try {
-      const content = readFileSync(crossRepoIndex, "utf-8");
-      for (const line of content.split("\n")) {
-        if (!line.trim()) continue;
-        const [id, targetRepo] = line.split("\t");
-        if (!id || !targetRepo || hubCheckedIds.has(id)) continue;
-        const statusLine = checkPrStatus(id, targetRepo);
-        if (statusLine) results.push(statusLine);
-      }
-    } catch {
-      // ignore
-    }
+  for (const entry of listCrossRepoEntries(crossRepoIndex)) {
+    if (hubCheckedIds.has(entry.todoId)) continue;
+    const statusLine = checkPrStatus(entry.todoId, entry.repoRoot);
+    if (statusLine) results.push(statusLine);
   }
 
   const output = results.join("\n");
@@ -261,19 +252,10 @@ export function getWatchReadyState(
 
   // Also check cross-repo worktrees
   const hubCheckedIds = new Set(results.map((r) => r.split("\t")[0]));
-  if (existsSync(crossRepoIndex)) {
-    try {
-      const content = readFileSync(crossRepoIndex, "utf-8");
-      for (const line of content.split("\n")) {
-        if (!line.trim()) continue;
-        const [id, targetRepo] = line.split("\t");
-        if (!id || !targetRepo || hubCheckedIds.has(id)) continue;
-        const statusLine = checkPrStatus(id, targetRepo);
-        if (statusLine) results.push(statusLine);
-      }
-    } catch {
-      // ignore
-    }
+  for (const entry of listCrossRepoEntries(crossRepoIndex)) {
+    if (hubCheckedIds.has(entry.todoId)) continue;
+    const statusLine = checkPrStatus(entry.todoId, entry.repoRoot);
+    if (statusLine) results.push(statusLine);
   }
 
   return results.join("\n");
