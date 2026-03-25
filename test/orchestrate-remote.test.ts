@@ -109,7 +109,7 @@ describe("orchestrateLoop — dashboard lifecycle", () => {
       dashboardPublicUrl: "https://my-project.ninthwave.sh/dashboard",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Dashboard comment should have been posted once
     const commentCalls = prCommentFn.mock.calls.filter((call) =>
@@ -161,7 +161,7 @@ describe("orchestrateLoop — dashboard lifecycle", () => {
     };
 
     // No dashboardPublicUrl — --remote not enabled
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // No dashboard comment should be posted (prComment only called for merge actions)
     const commentCalls = prCommentFn.mock.calls.filter((call) =>
@@ -220,7 +220,7 @@ describe("orchestrateLoop — dashboard lifecycle", () => {
       dashboardPublicUrl: "https://dashboard.example.com",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Only ONE dashboard comment should be posted across all items
     const commentCalls = prCommentFn.mock.calls.filter((call) =>
@@ -270,7 +270,7 @@ describe("orchestrateLoop — dashboard lifecycle", () => {
     // dashboardPublicUrl is undefined — simulates provider returning null
     const config: OrchestrateLoopConfig = {};
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // No dashboard comment posted
     const commentCalls = prCommentFn.mock.calls.filter((call) =>
@@ -324,7 +324,7 @@ describe("orchestrateLoop — dashboard lifecycle", () => {
     };
 
     // Should NOT throw — graceful degradation
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Item should still complete normally
     expect(orch.getItem("T-1-1")!.state).toBe("done");
@@ -407,7 +407,7 @@ describe("cleanup on shutdown", () => {
       dashboardPublicUrl: "https://dashboard.example.com",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Loop should complete normally with item done
     expect(orch.getItem("T-1-1")!.state).toBe("done");
@@ -442,7 +442,7 @@ describe("cleanup on shutdown", () => {
       dashboardPublicUrl: "https://dashboard.example.com",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config, abortController.signal);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 }, abortController.signal);
 
     // Shutdown log emitted
     expect(logs.some((l) => l.event === "shutdown")).toBe(true);

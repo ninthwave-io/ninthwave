@@ -887,6 +887,14 @@ export interface OrchestrateLoopConfig {
   aiTool?: string;
   /** Public dashboard URL (from session URL provider). When set, a PR comment is posted once per run. */
   dashboardPublicUrl?: string;
+  /**
+   * Max loop iterations before forced exit. Guards against event-loop starvation:
+   * when tests use `sleep: () => Promise.resolve()`, a stuck loop monopolizes the
+   * microtask queue and macrotask-based safety timers (setTimeout/setInterval) never
+   * fire — not even SIGKILL guards. This synchronous check is the only reliable defense.
+   * Undefined = no limit (production). Tests should always set a finite cap.
+   */
+  maxIterations?: number;
 }
 
 /**
@@ -941,7 +949,37 @@ export async function orchestrateLoop(
     supervisorActive: !!supervisorState,
   });
 
+  let __iterations = 0;
+  let __lastSnapshot: PollSnapshot | undefined;
+  let __lastActions: import("../orchestrator.ts").Action[] = [];
+  let __lastTransitionIter = 0;
   while (true) {
+    __iterations++;
+    if (config.maxIterations != null && __iterations > config.maxIterations) {
+      const items = orch.getAllItems();
+      wrappedLog({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "max_iterations_exceeded",
+        iterations: __iterations,
+        limit: config.maxIterations,
+        staleFor: __iterations - __lastTransitionIter,
+        itemDetails: items.map((i) => ({
+          id: i.id,
+          state: i.state,
+          lastTransition: i.lastTransition,
+          prNumber: i.prNumber,
+          ciFailCount: i.ciFailCount,
+          retryCount: i.retryCount,
+          workspaceRef: i.workspaceRef,
+        })),
+        lastSnapshot: __lastSnapshot,
+        lastActions: __lastActions.map((a) => ({ type: a.type, itemId: a.itemId })),
+        rssMB: Math.round(process.memoryUsage.rss() / (1024 * 1024)),
+      });
+      break;
+    }
+
     if (signal?.aborted) {
       wrappedLog({ ts: new Date().toISOString(), level: "info", event: "shutdown", reason: "SIGINT" });
       break;
@@ -982,14 +1020,18 @@ export async function orchestrateLoop(
 
     // Build snapshot from external state
     const snapshot = deps.buildSnapshot(orch, ctx.projectRoot, ctx.worktreeDir);
+    __lastSnapshot = snapshot;
 
     // Process transitions (pure state machine)
     const actions = orch.processTransitions(snapshot);
+    __lastActions = actions;
 
     // Log state transitions and sync status labels with external tracker
+    let __hadTransition = false;
     for (const item of orch.getAllItems()) {
       const prev = prevStates.get(item.id);
       if (prev && prev !== item.state) {
+        __hadTransition = true;
         const transitionLog: Record<string, unknown> = {
           ts: new Date().toISOString(),
           level: "info",
@@ -1018,6 +1060,8 @@ export async function orchestrateLoop(
         }
       }
     }
+
+    if (__hadTransition) __lastTransitionIter = __iterations;
 
     // Execute actions
     for (const action of actions) {

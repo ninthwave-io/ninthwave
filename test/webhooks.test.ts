@@ -599,7 +599,7 @@ describe("orchestrateLoop webhook integration", () => {
       notify,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Should have batch_complete when T-1 finishes (T-2 is still queued)
     const batchEvents = notifyCalls.filter((c) => c.event === "batch_complete");
@@ -650,7 +650,7 @@ describe("orchestrateLoop webhook integration", () => {
       notify,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     const ciEvents = notifyCalls.filter((c) => c.event === "ci_failed");
     expect(ciEvents.length).toBe(1);
@@ -689,7 +689,7 @@ describe("orchestrateLoop webhook integration", () => {
     };
 
     // Should complete without error
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
     expect(orch.getItem("T-1")?.state).toBe("done");
   });
 
@@ -728,7 +728,7 @@ describe("orchestrateLoop webhook integration", () => {
     };
 
     // Should complete without error even though webhooks fail
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
     expect(orch.getItem("T-1")?.state).toBe("done");
 
     // Wait for fire-and-forget promises to settle
@@ -772,7 +772,7 @@ describe("orchestrateLoop webhook integration", () => {
       notify,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     const completeEvents = notifyCalls.filter((c) => c.event === "orchestrate_complete");
     expect(completeEvents.length).toBe(1);

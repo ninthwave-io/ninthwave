@@ -227,6 +227,33 @@ function checkNoUnrestoredProcessExit(
   return violations;
 }
 
+function checkNoUnboundedOrchestrateLoop(
+  file: { name: string; content: string },
+): Violation[] {
+  const violations: Violation[] = [];
+  if (!file.content.includes("orchestrateLoop")) return violations;
+
+  const lines = file.content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (/orchestrateLoop\s*\(/.test(lines[i]!) && !isIgnored(lines, i, "no-unbounded-orchestrate-loop")) {
+      // Check surrounding context (10 lines before, 5 lines after) for maxIterations
+      const context = lines.slice(Math.max(0, i - 10), Math.min(lines.length, i + 6)).join("\n");
+      if (!context.includes("maxIterations")) {
+        violations.push({
+          file: file.name,
+          line: i + 1,
+          rule: "no-unbounded-orchestrate-loop",
+          message:
+            "orchestrateLoop() without maxIterations — a stuck loop starves macrotask timers " +
+            "(setTimeout/setInterval) so even SIGKILL guards never fire",
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
 // ── Run all rules ────────────────────────────────────────────────────
 
 function runAllRules(files: { name: string; content: string }[]): Violation[] {
@@ -238,6 +265,7 @@ function runAllRules(files: { name: string; content: string }[]): Violation[] {
       ...checkNoLongTimeout(file),
       ...checkNoUnresetGlobals(file),
       ...checkNoUnrestoredProcessExit(file),
+      ...checkNoUnboundedOrchestrateLoop(file),
     );
   }
   return violations;
@@ -526,6 +554,49 @@ try {
 }`,
       };
       const violations = checkNoUnrestoredProcessExit(file);
+      expect(violations.length).toBe(0);
+    });
+  });
+
+  describe("no-unbounded-orchestrate-loop", () => {
+    it("detects orchestrateLoop without maxIterations", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+await orchestrateLoop(orch, ctx, deps);`,
+      };
+      const violations = checkNoUnboundedOrchestrateLoop(file);
+      expect(violations.length).toBeGreaterThan(0);
+      expect(violations[0]!.rule).toBe("no-unbounded-orchestrate-loop");
+    });
+
+    it("passes when maxIterations is present", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+await orchestrateLoop(orch, ctx, deps, { maxIterations: 200 });`,
+      };
+      const violations = checkNoUnboundedOrchestrateLoop(file);
+      expect(violations.length).toBe(0);
+    });
+
+    it("passes when maxIterations is in config spread", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+await orchestrateLoop(orch, ctx, deps, { ...config, maxIterations: 200 });`,
+      };
+      const violations = checkNoUnboundedOrchestrateLoop(file);
+      expect(violations.length).toBe(0);
+    });
+
+    it("ignores files without orchestrateLoop", () => {
+      const file = {
+        name: "fixture.test.ts",
+        content: `
+describe("test", () => { it("works", () => {}); });`,
+      };
+      const violations = checkNoUnboundedOrchestrateLoop(file);
       expect(violations.length).toBe(0);
     });
   });

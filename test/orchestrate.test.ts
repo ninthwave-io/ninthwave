@@ -113,7 +113,7 @@ describe("orchestrateLoop", () => {
       actionDeps: mockActionDeps(),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Item should be fully done
     expect(orch.getItem("T-1-1")!.state).toBe("done");
@@ -189,7 +189,7 @@ describe("orchestrateLoop", () => {
       actionDeps: mockActionDeps(),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     expect(orch.getItem("A-1-1")!.state).toBe("done");
     expect(orch.getItem("A-1-2")!.state).toBe("done");
@@ -261,7 +261,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Both items completed, but W-1-1 launched before W-1-2
     expect(orch.getItem("W-1-1")!.state).toBe("done");
@@ -316,6 +316,7 @@ describe("orchestrateLoop", () => {
 
     await orchestrateLoop(orch, defaultCtx, deps, {
       repoUrl: "https://github.com/test-org/test-repo",
+      maxIterations: 200,
     });
 
     expect(orch.getItem("U-1-1")!.state).toBe("done");
@@ -381,7 +382,7 @@ describe("orchestrateLoop", () => {
       actionDeps: mockActionDeps(),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     expect(orch.getItem("S-1-1")!.state).toBe("stuck");
     expect(orch.getItem("S-1-2")!.state).toBe("done");
@@ -442,7 +443,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Both items completed
     expect(orch.getItem("CL-1-1")!.state).toBe("done");
@@ -491,7 +492,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // No sweep log emitted when nothing was cleaned
     expect(logs.some((l) => l.event === "worktree_cleanup_sweep")).toBe(false);
@@ -547,7 +548,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Loop completed despite error in cleanup
     expect(logs.some((l) => l.event === "orchestrate_complete")).toBe(true);
@@ -611,7 +612,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Both items completed
     expect(orch.getItem("WC-1-1")!.state).toBe("done");
@@ -677,7 +678,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Item completed
     expect(orch.getItem("WN-1-1")!.state).toBe("done");
@@ -747,7 +748,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, {}, abortController.signal);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 }, abortController.signal);
 
     // Verify SD-1-1 reached terminal state (done) and SD-1-2 is still in-flight
     const item1 = orch.getItem("SD-1-1")!;
@@ -779,7 +780,7 @@ describe("orchestrateLoop", () => {
       actionDeps: mockActionDeps(),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, {}, abortController.signal);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 }, abortController.signal);
 
     expect(logs.some((l) => l.event === "shutdown" && l.reason === "SIGINT")).toBe(true);
     // Loop exited cleanly — did not process to completion
@@ -820,7 +821,7 @@ describe("orchestrateLoop", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Item reaches done
     expect(orch.getItem("D-1-1")!.state).toBe("done");
@@ -854,7 +855,7 @@ describe("orchestrateLoop", () => {
       actionDeps: mockActionDeps(),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     const summaries = logs.filter((l) => l.event === "state_summary");
     expect(summaries.length).toBeGreaterThan(0);
@@ -1799,7 +1800,7 @@ describe("onPollComplete callback", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // Should have been called multiple times during the loop
     expect(pollCompleteCalls.length).toBeGreaterThan(0);
@@ -1830,7 +1831,7 @@ describe("onPollComplete callback", () => {
       // onPollComplete not set
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
     expect(orch.getItem("T-1-1")!.state).toBe("done");
   });
 });
@@ -1928,7 +1929,7 @@ describe("orchestrateLoop post-merge conflict detection", () => {
       actionDeps: mockActionDeps({ checkPrMergeable, sendMessage, warn }),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // checkPrMergeable should have been called for sibling PRs when T-1-1 merged
     expect(checkPrMergeable).toHaveBeenCalledWith(defaultCtx.projectRoot, 11);
@@ -1985,7 +1986,7 @@ describe("orchestrateLoop post-merge conflict detection", () => {
       actionDeps,
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // No rebase-for-conflicts messages should be sent
     const conflictRebaseCalls = sendMessage.mock.calls.filter(
@@ -2222,7 +2223,7 @@ describe("executeClean readScreen diagnostics", () => {
       actionDeps: mockActionDeps({ readScreen, warn }),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     expect(orch.getItem("MRG-1")!.state).toBe("done");
     // readScreen should NOT be called for merged items
@@ -2271,12 +2272,69 @@ describe("executeClean readScreen diagnostics", () => {
       actionDeps: mockActionDeps({ readScreen, warn }),
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     expect(orch.getItem("STK-1")!.state).toBe("stuck");
     // readScreen SHOULD be called for stuck items
     expect(readScreen).toHaveBeenCalled();
     // "Permanently stuck" warning SHOULD appear
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Permanently stuck"));
+  });
+
+  it("terminates via maxIterations when items are stuck in non-terminal state", async () => {
+    // This is the critical safety test: without maxIterations, a stuck item
+    // causes the while(true) loop to spin forever. Because tests use
+    // sleep: () => Promise.resolve() (microtask), the loop monopolizes the
+    // event loop and macrotask-based timers (setTimeout/setInterval) — including
+    // the SIGKILL safety guard — never fire.
+    const orch = new Orchestrator({ wipLimit: 1, mergeStrategy: "asap" });
+    orch.addItem(makeTodo("SPIN-1"));
+
+    let cycles = 0;
+    const logs: LogEntry[] = [];
+
+    const buildSnapshot = (o: Orchestrator): PollSnapshot => {
+      cycles++;
+      const readyIds: string[] = [];
+      for (const item of o.getAllItems()) {
+        if (item.state === "queued") readyIds.push(item.id);
+      }
+      // After launch, always return empty — item stuck in "launching" forever
+      return { items: [], readyIds };
+    };
+
+    const deps: OrchestrateLoopDeps = {
+      buildSnapshot,
+      sleep: () => Promise.resolve(),
+      log: (entry) => logs.push(entry),
+      actionDeps: mockActionDeps(),
+    };
+
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 50 });
+
+    // Guard fired — loop terminated
+    const exceeded = logs.find((l) => l.event === "max_iterations_exceeded");
+    expect(exceeded).toBeDefined();
+    expect(exceeded!.iterations).toBe(51);
+    expect(exceeded!.limit).toBe(50);
+
+    // Diagnostic fields present for root-cause analysis
+    expect(exceeded!.staleFor).toBeGreaterThan(0); // iterations since last transition
+    expect(exceeded!.itemDetails).toBeDefined();
+    const details = exceeded!.itemDetails as Array<{ id: string; state: string }>;
+    expect(details[0]!.id).toBe("SPIN-1");
+    expect(details[0]!.state).toBe("launching"); // stuck state is visible
+    expect(exceeded!.lastSnapshot).toBeDefined(); // last snapshot for debugging
+    expect(exceeded!.lastActions).toBeDefined(); // last actions attempted
+    expect(exceeded!.rssMB).toBeGreaterThan(0); // memory at time of failure
+
+    // Item is still in a non-terminal state (the loop was cut short)
+    const item = orch.getItem("SPIN-1")!;
+    expect(item.state).not.toBe("done");
+    expect(item.state).not.toBe("stuck");
+
+    // Completed quickly (not stuck for 90s)
+    expect(cycles).toBeGreaterThan(1);
+    expect(cycles).toBeLessThan(100);
   });
 });

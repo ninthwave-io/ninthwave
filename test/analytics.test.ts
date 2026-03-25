@@ -304,7 +304,7 @@ describe("orchestrateLoop analytics integration", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Metrics file was written
     expect(io.mkdirSync).toHaveBeenCalledWith("/tmp/.ninthwave/analytics", { recursive: true });
@@ -367,7 +367,7 @@ describe("orchestrateLoop analytics integration", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     const written = JSON.parse(io.writeFileSync.mock.calls[0][1]) as RunMetrics;
     expect(written.items[0].ciRetryCount).toBe(1);
@@ -405,7 +405,7 @@ describe("orchestrateLoop analytics integration", () => {
       // No analyticsIO provided
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // No analytics events
     expect(logs.some((l) => l.event === "analytics_written")).toBe(false);
@@ -456,7 +456,7 @@ describe("orchestrateLoop analytics integration", () => {
     };
 
     // Should not throw — analytics failure is non-fatal
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Item still completes
     expect(orch.getItem("T-1-1")!.state).toBe("done");
@@ -487,7 +487,7 @@ describe("orchestrateLoop analytics integration", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Metrics written even for zero items
     expect(io.writeFileSync).toHaveBeenCalledTimes(1);
@@ -990,7 +990,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Analytics were written
     expect(io.writeFileSync).toHaveBeenCalledTimes(1);
@@ -1042,7 +1042,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     expect(commitDeps.gitCommit).not.toHaveBeenCalled();
     expect(logs.some((l) => l.event === "analytics_commit_skipped")).toBe(true);
@@ -1091,7 +1091,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
     };
 
     // Should not throw
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Item still completes
     expect(orch.getItem("T-1-1")!.state).toBe("done");
@@ -1141,7 +1141,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Analytics were written but no commit events
     expect(io.writeFileSync).toHaveBeenCalledTimes(1);
@@ -1541,7 +1541,7 @@ describe("orchestrateLoop cost capture", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Cost was captured
     const costLog = logs.find((l) => l.event === "cost_captured");
@@ -1600,7 +1600,7 @@ describe("orchestrateLoop cost capture", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Metrics have null cost data (not 0)
     const written = JSON.parse(io.writeFileSync.mock.calls[0][1]) as RunMetrics;
@@ -1647,7 +1647,7 @@ describe("orchestrateLoop cost capture", () => {
       aiTool: "claude",
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Metrics have null cost data
     const written = JSON.parse(io.writeFileSync.mock.calls[0][1]) as RunMetrics;

@@ -683,7 +683,7 @@ describe("orchestrateLoop with supervisor", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Supervisor should have been called at least once (after 5+ min elapsed)
     expect(callLLM).toHaveBeenCalled();
@@ -715,7 +715,7 @@ describe("orchestrateLoop with supervisor", () => {
       // no supervisorDeps
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps);
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     // No supervisor events
     expect(logs.some((l) => l.event === "supervisor_tick")).toBe(false);
@@ -767,7 +767,7 @@ describe("orchestrateLoop with supervisor", () => {
     };
 
     // Should not throw — daemon continues
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Item should still complete
     expect(orch.getItem("T-1-1")!.state).toBe("done");
@@ -831,7 +831,7 @@ describe("orchestrateLoop with supervisor", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Supervisor action should have been logged
     expect(logs.some((l) => l.event === "supervisor_action" && l.actionType === "send-message")).toBe(true);
@@ -887,7 +887,7 @@ describe("orchestrateLoop with supervisor", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Friction files should have been written
     expect(writeFile).toHaveBeenCalled();
@@ -926,7 +926,7 @@ describe("orchestrateLoop with supervisor", () => {
       supervisor: { intervalMs: 999_999, maxLogEntries: 50 },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     const startEvent = logs.find((l) => l.event === "orchestrate_start");
     expect(startEvent).toBeDefined();
@@ -990,7 +990,7 @@ describe("orchestrateLoop with supervisor", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Verify backoff was applied — after 3 failures, interval should double
     // meaning fewer ticks than if base interval was always used
@@ -1049,7 +1049,7 @@ describe("orchestrateLoop with supervisor", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Should have a supervisor_disabled event
     const disabledLog = logs.find((l) => l.event === "supervisor_disabled");
@@ -1109,7 +1109,7 @@ describe("orchestrateLoop with supervisor", () => {
       },
     };
 
-    await orchestrateLoop(orch, defaultCtx, deps, config);
+    await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // LLM should NOT have been called (time never reached 10 min)
     expect(callLLM).not.toHaveBeenCalled();
