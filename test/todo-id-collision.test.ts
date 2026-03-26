@@ -413,6 +413,94 @@ describe("buildSnapshot: TODO ID collision safety", () => {
     expect(snap!.prState).toBeUndefined();
   });
 
+  it("reports merged when orchestrator already tracks the PR number (skips title check)", () => {
+    // This is the key fix: when the orchestrator has already assigned prNumber to an item
+    // (because it saw the PR created during this run), a title mismatch should NOT
+    // prevent merge detection. The worker may use a different PR title than the TODO title.
+    const orch = new Orchestrator();
+    orch.addItem(makeTodo("H-FOO-1", "update decompose skill output format"));
+    orch.setState("H-FOO-1", "ci-passed");
+    // Simulate: orchestrator already tracked this PR during the run
+    const item = orch.getItem("H-FOO-1")!;
+    item.prNumber = 42;
+
+    const mockCheckPr = (id: string) => {
+      if (id === "H-FOO-1") {
+        // Worker used a completely different PR title — should still detect merge
+        return "H-FOO-1\t42\tmerged\t\t\trefactor: remove legacy reference (TODO H-FOO-1)";
+      }
+      return null;
+    };
+
+    const noopMux = {
+      type: "cmux" as const,
+      isAvailable: () => true,
+      diagnoseUnavailable: () => "not available",
+      launchWorkspace: () => null,
+      splitPane: () => null,
+      sendMessage: () => true,
+      readScreen: () => "",
+      listWorkspaces: () => "",
+      closeWorkspace: () => true,
+    };
+
+    const snapshot = buildSnapshot(
+      orch,
+      "/tmp/test",
+      "/tmp/test/.worktrees",
+      noopMux,
+      () => null,
+      mockCheckPr,
+    );
+
+    const snap = snapshot.items.find((s) => s.id === "H-FOO-1");
+    expect(snap).toBeDefined();
+    // prState SHOULD be "merged" — prNumber matches, title check skipped
+    expect(snap!.prState).toBe("merged");
+  });
+
+  it("still rejects title mismatch when prNumber differs from merged PR", () => {
+    // When the orchestrator tracks a DIFFERENT PR number, the title check should still apply
+    const orch = new Orchestrator();
+    orch.addItem(makeTodo("H-FOO-1", "new work"));
+    orch.setState("H-FOO-1", "ci-passed");
+    const item = orch.getItem("H-FOO-1")!;
+    item.prNumber = 99; // Different PR number
+
+    const mockCheckPr = (id: string) => {
+      if (id === "H-FOO-1") {
+        return "H-FOO-1\t42\tmerged\t\t\tfix: old work (TODO H-FOO-1)";
+      }
+      return null;
+    };
+
+    const noopMux = {
+      type: "cmux" as const,
+      isAvailable: () => true,
+      diagnoseUnavailable: () => "not available",
+      launchWorkspace: () => null,
+      splitPane: () => null,
+      sendMessage: () => true,
+      readScreen: () => "",
+      listWorkspaces: () => "",
+      closeWorkspace: () => true,
+    };
+
+    const snapshot = buildSnapshot(
+      orch,
+      "/tmp/test",
+      "/tmp/test/.worktrees",
+      noopMux,
+      () => null,
+      mockCheckPr,
+    );
+
+    const snap = snapshot.items.find((s) => s.id === "H-FOO-1");
+    expect(snap).toBeDefined();
+    // prState should NOT be "merged" — prNumber doesn't match and title doesn't match
+    expect(snap!.prState).toBeUndefined();
+  });
+
   it("reports merged when PR title matches TODO title", () => {
     const orch = new Orchestrator();
     orch.addItem(makeTodo("H-FOO-1", "old work"));

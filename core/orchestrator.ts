@@ -93,6 +93,8 @@ export interface OrchestratorItem {
   stderrTail?: string;
   /** Number of consecutive polls where isWorkerAlive returned false. Used to debounce stuck detection — a single flaky listing shouldn't kill a healthy worker. */
   notAliveCount?: number;
+  /** Number of consecutive merge failures for this item. Resets on successful merge. */
+  mergeFailCount?: number;
 }
 
 export interface OrchestratorConfig {
@@ -118,6 +120,8 @@ export interface OrchestratorConfig {
   reviewAutoFix: "off" | "direct" | "pr";
   /** Whether the review worker can approve PRs on behalf of the orchestrator. Default: false. */
   reviewCanApprove: boolean;
+  /** Max merge failures before marking stuck. Default: 3. */
+  maxMergeRetries: number;
 }
 
 // Re-export ScreenHealthStatus from worker-health (canonical definition lives there)
@@ -279,6 +283,7 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
   reviewWipLimit: 2,
   reviewAutoFix: "off",
   reviewCanApprove: false,
+  maxMergeRetries: 3,
 };
 
 // ── Memory-aware WIP limit ──────────────────────────────────────────
@@ -1157,9 +1162,18 @@ export class Orchestrator {
     const repoRoot = item.resolvedRepoRoot ?? ctx.projectRoot;
     const merged = deps.prMerge(repoRoot, prNum);
     if (!merged) {
+      item.mergeFailCount = (item.mergeFailCount ?? 0) + 1;
+      if (item.mergeFailCount >= this.config.maxMergeRetries) {
+        this.transition(item, "stuck");
+        item.failureReason = `merge-failed: exceeded max merge retries (${this.config.maxMergeRetries}) for PR #${prNum}`;
+        return { success: false, error: `Merge failed ${item.mergeFailCount} times for PR #${prNum}, marking stuck` };
+      }
       this.transition(item, "ci-passed");
-      return { success: false, error: `Merge failed for PR #${prNum}` };
+      return { success: false, error: `Merge failed for PR #${prNum} (attempt ${item.mergeFailCount}/${this.config.maxMergeRetries})` };
     }
+
+    // Reset merge failure counter on success
+    item.mergeFailCount = 0;
 
     // Audit trail
     deps.prComment(

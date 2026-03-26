@@ -181,12 +181,21 @@ export function buildSnapshot(
         case "merged": {
           // Collision detection: verify the merged PR's title matches this TODO's title.
           // If titles don't match, this is an old PR from a previous TODO cycle — ignore it.
-          const mergedPrTitle = parts[5] ?? "";
-          const todoTitle = orchItem.todo.title;
-          if (mergedPrTitle && todoTitle && !prTitleMatchesTodo(mergedPrTitle, todoTitle)) {
-            // Title mismatch — treat as no-pr (stale merged PR from a different TODO)
-          } else {
+          // BUT: skip the title check if the orchestrator already tracks this PR number —
+          // that means we assigned it during this run, so it's definitely ours regardless
+          // of how the worker chose to title it.
+          const mergedPrNum = snap.prNumber;
+          const alreadyTracked = mergedPrNum != null && orchItem.prNumber === mergedPrNum;
+          if (alreadyTracked) {
             snap.prState = "merged";
+          } else {
+            const mergedPrTitle = parts[5] ?? "";
+            const todoTitle = orchItem.todo.title;
+            if (mergedPrTitle && todoTitle && !prTitleMatchesTodo(mergedPrTitle, todoTitle)) {
+              // Title mismatch — treat as no-pr (stale merged PR from a different TODO)
+            } else {
+              snap.prState = "merged";
+            }
           }
           break;
         }
@@ -1848,6 +1857,12 @@ export async function cmdOrchestrate(
     return;
   }
 
+  // Prevent duplicate orchestrator instances (foreground or daemon-child)
+  const existingPid = isDaemonRunning(projectRoot);
+  if (existingPid !== null && existingPid !== process.pid) {
+    die(`Another orchestrator is already running (PID ${existingPid}). Use 'ninthwave stop' first, or kill the stale process.`);
+  }
+
   // Compute memory-aware WIP default, allow --wip-limit to override
   const computedWipLimit = computeDefaultWipLimit();
   let wipLimit = wipLimitOverride ?? computedWipLimit;
@@ -2253,6 +2268,11 @@ export async function cmdOrchestrate(
     });
   }
 
+  // Write PID file for foreground mode too (prevents duplicate instances)
+  if (!isDaemonChild) {
+    writePidFile(projectRoot, process.pid);
+  }
+
   try {
     await orchestrateLoop(
       orch,
@@ -2316,9 +2336,9 @@ export async function cmdOrchestrate(
     // Always clean up state file on exit (written in both daemon and interactive mode)
     cleanStateFile(projectRoot);
 
-    // Clean up daemon-specific files when running as daemon child
+    // Clean up PID file on exit (both foreground and daemon child)
+    cleanPidFile(projectRoot);
     if (isDaemonChild) {
-      cleanPidFile(projectRoot);
       structuredLog({
         ts: new Date().toISOString(),
         level: "info",

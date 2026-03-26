@@ -950,6 +950,47 @@ describe("Orchestrator", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("Merge failed");
       expect(orch.getItem("H-1-1")!.state).toBe("ci-passed");
+      expect(orch.getItem("H-1-1")!.mergeFailCount).toBe(1);
+    });
+
+    it("merge: marks stuck after exceeding maxMergeRetries", () => {
+      const deps = mockDeps({ prMerge: vi.fn(() => false) });
+      orch.addItem(makeTodo("H-1-1"));
+      orch.setState("H-1-1", "merging");
+      const item = orch.getItem("H-1-1")!;
+      item.prNumber = 42;
+      // Simulate 2 prior failures (maxMergeRetries default is 3)
+      item.mergeFailCount = 2;
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-1", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("marking stuck");
+      expect(item.state).toBe("stuck");
+      expect(item.failureReason).toContain("merge-failed");
+      expect(item.mergeFailCount).toBe(3);
+    });
+
+    it("merge: resets mergeFailCount on success", () => {
+      const deps = mockDeps({ prMerge: vi.fn(() => true) });
+      orch.addItem(makeTodo("H-1-1"));
+      orch.setState("H-1-1", "merging");
+      const item = orch.getItem("H-1-1")!;
+      item.prNumber = 42;
+      item.mergeFailCount = 2;
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-1", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      expect(item.mergeFailCount).toBe(0);
     });
 
     it("merge: fails gracefully when no PR number", () => {
