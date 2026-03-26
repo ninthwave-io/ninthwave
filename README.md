@@ -11,15 +11,10 @@
   <a href="https://agentskills.io"><img src="https://img.shields.io/badge/Agent%20Skills-standard-purple" alt="Agent Skills" /></a>
 </p>
 
-<!-- PLACEHOLDER: docs/assets/pipeline-overview.png
-     LEFT: Icons stacked vertically: .ninthwave/todos/ (folder icon), Linear, ClickUp, GitHub Issues
-     CENTER: Arrows converge into a cmux screenshot showing orchestrator + 4 worker
-     sessions in the sidebar with colored status indicators
-     RIGHT: GitHub PR list with green merge checkmarks
-     Visual: work items in → parallel sessions → PRs out -->
 <p align="center">
-  <img src="docs/assets/pipeline-overview.svg" alt="ninthwave pipeline: work items in, parallel sessions, PRs out" width="800" />
+  <img src="docs/assets/hero.png" alt="ninthwave running in cmux: orchestrator with parallel worker sessions" width="800" />
 </p>
+<p align="center"><em>Work items in → parallel AI sessions → merged PRs out</em></p>
 
 ---
 
@@ -116,15 +111,6 @@ All items merged. Version bump: 1.4.0 → 1.5.0 (CHANGELOG updated)
 ```
 
 ## How It Works
-
-<!-- PLACEHOLDER: docs/assets/hero-demo.gif
-     Screen recording of cmux showing /work launching 4 parallel sessions.
-     Sidebar shows worker sessions with status progression:
-     Implementing → Testing → PR Created → Merged.
-     15-20 second loop. -->
-<p align="center">
-  <img src="docs/assets/hero-demo.svg" alt="ninthwave: parallel AI coding sessions in cmux" width="800" />
-</p>
 
 ### `/decompose`: Spec to Work Items
 
@@ -287,16 +273,6 @@ nw doctor
 ```
 
 Checks required tools (gh, AI tool, multiplexer, git config), recommended config (project setup, sandbox, pre-commit hook), and optional dependencies (cloudflared for remote access, webhook URL for notifications).
-
-<!-- PLACEHOLDER: docs/assets/pr-feedback-loop.png
-     Shows a GitHub PR titled "feat: Add onboarding checklist (H-UO-3)"
-     Visible: a reviewer comment requesting a change, a worker comment responding
-     with the fix, CI checks passing after the fix, merge button active.
-     Demonstrates: review feedback is automatically dispatched to the right worker
-     session. Workers address comments, push fixes, and respond on the PR. -->
-<p align="center">
-  <img src="docs/assets/pr-feedback-loop.svg" alt="PR feedback: workers address review comments automatically" width="700" />
-</p>
 
 ## Reference
 
