@@ -17,6 +17,12 @@
 - `closeWorkspace()` has destructive `delete-session` fallback
 - Hardcoded "cmux" in error message
 
+## Additional bug: ID collision false completion
+When TODOs reuse IDs from old cycles (H-MUX-1/H-MUX-2 existed from March 24), the orchestrator
+matches old merged PRs and fast-tracks new items to "done" without doing any work. Reconcile then
+deletes the TODO files. This caused a false success report and ~30 min of wasted debugging.
+
 ## Decomposed into
-- H-MUX-1: Fail fast when mux unavailable
-- H-MUX-2: Fix zellij session exit bug
+- H-MFV-1: Fail fast when mux unavailable (new ID to avoid collision)
+- H-MZJ-1: Fix zellij session exit bug (new ID to avoid collision)
+- H-MID-1: Fix orchestrator false completion on ID collision
