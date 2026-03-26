@@ -1668,9 +1668,12 @@ describe("launchStatusPane", () => {
   const zellijWorkspaceEnv: EnvAccessor = (key) =>
     key === "ZELLIJ_SESSION_NAME" ? "my-session" : undefined;
 
+  /** readState that simulates no previous daemon state. */
+  const noState = () => null;
+
   it("launches status pane via mux.launchWorkspace when not in a workspace", () => {
     const mux = mockMux();
-    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, noState);
 
     expect(ref).toBe("workspace:99");
     expect(mux.launchWorkspace).toHaveBeenCalledWith(
@@ -1686,7 +1689,7 @@ describe("launchStatusPane", () => {
 
   it("returns null when mux is not available", () => {
     const mux = mockMux({ isAvailable: () => false });
-    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, noState);
 
     expect(ref).toBeNull();
     expect(mux.launchWorkspace).not.toHaveBeenCalled();
@@ -1694,14 +1697,14 @@ describe("launchStatusPane", () => {
 
   it("returns null when launchWorkspace fails and not in a workspace", () => {
     const mux = mockMux({ launchWorkspace: vi.fn(() => null) });
-    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, noState);
 
     expect(ref).toBeNull();
   });
 
   it("splits pane when CMUX_WORKSPACE_ID is set", () => {
     const mux = mockMux();
-    const ref = launchStatusPane(mux, "/tmp/project", cmuxWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", cmuxWorkspaceEnv, noState);
 
     expect(ref).toBe("pane:1");
     expect(mux.splitPane).toHaveBeenCalledWith("ninthwave status --watch");
@@ -1710,7 +1713,7 @@ describe("launchStatusPane", () => {
 
   it("splits pane when TMUX env var is set", () => {
     const mux = mockMux();
-    const ref = launchStatusPane(mux, "/tmp/project", tmuxWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", tmuxWorkspaceEnv, noState);
 
     expect(ref).toBe("pane:1");
     expect(mux.splitPane).toHaveBeenCalledWith("ninthwave status --watch");
@@ -1719,7 +1722,7 @@ describe("launchStatusPane", () => {
 
   it("splits pane when ZELLIJ_SESSION_NAME is set", () => {
     const mux = mockMux();
-    const ref = launchStatusPane(mux, "/tmp/project", zellijWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", zellijWorkspaceEnv, noState);
 
     expect(ref).toBe("pane:1");
     expect(mux.splitPane).toHaveBeenCalledWith("ninthwave status --watch");
@@ -1728,7 +1731,7 @@ describe("launchStatusPane", () => {
 
   it("falls back to launchWorkspace when splitPane fails inside a workspace", () => {
     const mux = mockMux({ splitPane: vi.fn(() => null) });
-    const ref = launchStatusPane(mux, "/tmp/project", cmuxWorkspaceEnv);
+    const ref = launchStatusPane(mux, "/tmp/project", cmuxWorkspaceEnv, noState);
 
     expect(ref).toBe("workspace:99");
     expect(mux.splitPane).toHaveBeenCalledWith("ninthwave status --watch");
@@ -1736,6 +1739,112 @@ describe("launchStatusPane", () => {
       "/tmp/project",
       "ninthwave status --watch",
     );
+  });
+
+  // ── Status pane reuse tests ──────────────────────────────────────
+
+  it("reuses existing status pane when readScreen returns non-empty content", () => {
+    const readScreen = vi.fn(() => "ninthwave status output\nWIP: 2/5");
+    const mux = mockMux({ readScreen });
+    const stateWithPane: DaemonState = {
+      pid: 100,
+      startedAt: "2026-03-25T00:00:00Z",
+      updatedAt: "2026-03-25T00:01:00Z",
+      statusPaneRef: "workspace:42",
+      items: [],
+    };
+
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, () => stateWithPane);
+
+    expect(ref).toBe("workspace:42");
+    expect(readScreen).toHaveBeenCalledWith("workspace:42");
+    // Should NOT create a new workspace or split
+    expect(mux.launchWorkspace).not.toHaveBeenCalled();
+    expect(mux.splitPane).not.toHaveBeenCalled();
+    expect(mux.closeWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("closes stale pane and creates new when readScreen returns empty", () => {
+    const readScreen = vi.fn(() => "");
+    const mux = mockMux({ readScreen });
+    const stateWithStalePane: DaemonState = {
+      pid: 100,
+      startedAt: "2026-03-25T00:00:00Z",
+      updatedAt: "2026-03-25T00:01:00Z",
+      statusPaneRef: "workspace:42",
+      items: [],
+    };
+
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, () => stateWithStalePane);
+
+    expect(ref).toBe("workspace:99");
+    expect(readScreen).toHaveBeenCalledWith("workspace:42");
+    expect(mux.closeWorkspace).toHaveBeenCalledWith("workspace:42");
+    expect(mux.launchWorkspace).toHaveBeenCalledWith(
+      "/tmp/project",
+      "ninthwave status --watch",
+    );
+  });
+
+  it("closes stale pane and creates new when readScreen throws", () => {
+    const readScreen = vi.fn(() => { throw new Error("pane not found"); });
+    const mux = mockMux({ readScreen });
+    const stateWithGonePane: DaemonState = {
+      pid: 100,
+      startedAt: "2026-03-25T00:00:00Z",
+      updatedAt: "2026-03-25T00:01:00Z",
+      statusPaneRef: "workspace:42",
+      items: [],
+    };
+
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, () => stateWithGonePane);
+
+    expect(ref).toBe("workspace:99");
+    expect(mux.closeWorkspace).toHaveBeenCalledWith("workspace:42");
+    expect(mux.launchWorkspace).toHaveBeenCalled();
+  });
+
+  it("handles pane manually closed by user (readScreen empty + closeWorkspace fails)", () => {
+    const readScreen = vi.fn(() => "");
+    const closeWorkspace = vi.fn(() => { throw new Error("no such workspace"); });
+    const mux = mockMux({ readScreen, closeWorkspace });
+    const stateWithManuallyClosedPane: DaemonState = {
+      pid: 100,
+      startedAt: "2026-03-25T00:00:00Z",
+      updatedAt: "2026-03-25T00:01:00Z",
+      statusPaneRef: "workspace:42",
+      items: [],
+    };
+
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, () => stateWithManuallyClosedPane);
+
+    // Should gracefully handle the close failure and still create a new pane
+    expect(ref).toBe("workspace:99");
+    expect(mux.launchWorkspace).toHaveBeenCalled();
+  });
+
+  it("skips reuse when state file has null statusPaneRef", () => {
+    const mux = mockMux();
+    const stateWithNullRef: DaemonState = {
+      pid: 100,
+      startedAt: "2026-03-25T00:00:00Z",
+      updatedAt: "2026-03-25T00:01:00Z",
+      statusPaneRef: null,
+      items: [],
+    };
+
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, () => stateWithNullRef);
+
+    expect(ref).toBe("workspace:99");
+    expect(mux.launchWorkspace).toHaveBeenCalled();
+  });
+
+  it("skips reuse when no state file exists", () => {
+    const mux = mockMux();
+    const ref = launchStatusPane(mux, "/tmp/project", noWorkspaceEnv, () => null);
+
+    expect(ref).toBe("workspace:99");
+    expect(mux.launchWorkspace).toHaveBeenCalled();
   });
 });
 

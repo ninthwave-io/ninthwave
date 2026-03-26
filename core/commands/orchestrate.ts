@@ -1556,6 +1556,11 @@ export function closeStaleStatusPane(
 /**
  * Launch a dedicated status pane that runs `ninthwave status --watch`.
  *
+ * On startup, checks if a status pane from a previous daemon run is still
+ * alive (via the state file's `statusPaneRef` + `readScreen` probe). If the
+ * existing pane is responsive, reuses it instead of creating a new one. If
+ * the pane is stale/unresponsive, closes it first, then creates a new one.
+ *
  * When running inside an existing workspace (detected via CMUX_WORKSPACE_ID,
  * TMUX, or ZELLIJ_SESSION_NAME env vars), opens the status pane as a split
  * in the current workspace. Falls back to creating a new workspace when not
@@ -1567,8 +1572,29 @@ export function launchStatusPane(
   mux: Multiplexer,
   projectRoot: string,
   env: EnvAccessor = defaultEnv,
+  readState: (projectRoot: string) => DaemonState | null = readStateFile,
 ): string | null {
   if (!mux.isAvailable()) return null;
+
+  // Try to reuse existing status pane from previous daemon run
+  const oldState = readState(projectRoot);
+  if (oldState?.statusPaneRef) {
+    try {
+      const screen = mux.readScreen(oldState.statusPaneRef);
+      if (screen !== "") {
+        // Pane is alive and responsive — reuse it
+        return oldState.statusPaneRef;
+      }
+    } catch {
+      // readScreen threw — pane is stale
+    }
+    // Pane is stale/unresponsive — close it before creating a new one
+    try {
+      mux.closeWorkspace(oldState.statusPaneRef);
+    } catch {
+      // Best effort — pane may already be gone
+    }
+  }
 
   // When inside an existing workspace, split a pane instead of creating a new workspace
   if (isInsideWorkspace(env)) {
@@ -2194,12 +2220,9 @@ export async function cmdOrchestrate(
     ...(watchIntervalSecs !== undefined ? { watchIntervalMs: watchIntervalSecs * 1000 } : {}),
   };
 
-  // Close stale status pane from a previous daemon run before launching a new one
-  if (!isDaemonChild) {
-    closeStaleStatusPane(mux, projectRoot);
-  }
-
-  // Launch status pane if running inside a multiplexer (skip for daemon child — no terminal)
+  // Launch status pane if running inside a multiplexer (skip for daemon child — no terminal).
+  // launchStatusPane checks the state file for an existing pane and reuses it if responsive,
+  // or closes it and creates a new one if stale. No separate closeStaleStatusPane call needed.
   statusPaneRef = isDaemonChild ? null : launchStatusPane(mux, projectRoot);
   if (statusPaneRef) {
     structuredLog({
