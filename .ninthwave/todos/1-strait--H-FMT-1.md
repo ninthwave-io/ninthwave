@@ -1,13 +1,9 @@
----
-id: H-FMT-1
-priority: high
-domain: strait
-title: Fix cargo fmt violations across all source files
-repo: strait
-depends: []
----
+# Fix: Fix cargo fmt violations across all source files (H-FMT-1)
 
-# Fix cargo fmt violations across all source files
+**Priority:** High
+**Domain:** strait
+**Repo:** strait
+**Depends on:**
 
 ## Context
 CI is failing on strait because workers committed code without running `cargo fmt`. The `cargo fmt --check` step reports formatting diffs across: `audit.rs`, `ca.rs`, `credentials.rs`, `main.rs`, `mitm.rs`, `policy.rs`.
@@ -18,13 +14,4 @@ CI is failing on strait because workers committed code without running `cargo fm
 3. Verify `cargo test --all-features` still passes
 4. Verify `cargo clippy --all-features -- -D warnings` still passes
 
-## Key Files
-- `src/audit.rs`
-- `src/ca.rs`
-- `src/credentials.rs`
-- `src/main.rs`
-- `src/mitm.rs`
-- `src/policy.rs`
-
-## Estimated Complexity
-Small — just run `cargo fmt` and commit.
+Key files: `src/audit.rs`, `src/ca.rs`, `src/credentials.rs`, `src/main.rs`, `src/mitm.rs`, `src/policy.rs`
