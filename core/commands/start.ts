@@ -194,12 +194,15 @@ export function launchAiSession(
       initialPrompt = `${readFileSync(promptFile, "utf-8")}\n\nStart implementing this TODO now.`;
       break;
     case "copilot": {
-      const promptText = `${readFileSync(promptFile, "utf-8")}\n\nStart implementing this TODO now.`;
-      const safePrompt = sanitizeForShellQuoting(promptText);
-      const shellQuoted = run("bash", ["-c", 'printf %q "$1"', "--", safePrompt]);
-      const quotedPrompt =
-        shellQuoted.exitCode === 0 ? shellQuoted.stdout.trim() : JSON.stringify(safePrompt);
-      cmd = `copilot --agent=${agentName} --allow-all -i ${quotedPrompt}`;
+      // Write an extended prompt file with the "start" suffix — the original
+      // promptFile gets deleted in the finally block, but copilot's $(cat)
+      // needs the file to survive until the tmux shell reads it.
+      const copilotPromptFile = `${promptFile}.copilot`;
+      writeFileSync(
+        copilotPromptFile,
+        `${readFileSync(promptFile, "utf-8")}\n\nStart implementing this TODO now.`,
+      );
+      cmd = `copilot --agent=${agentName} --allow-all -i "$(cat '${copilotPromptFile}')" ; rm -f '${copilotPromptFile}'`;
       initialPrompt = ""; // embedded in cmd via -i — skip post-launch send
       break;
     }
