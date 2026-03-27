@@ -180,15 +180,16 @@ export function launchAiSession(
   options: { projectRoot?: string; agentName?: string } = {},
 ): string | null {
   const agentName = options.agentName ?? "todo-worker";
+  const wsName = `${id} ${safeTitle}`;
   let cmd = "";
   let initialPrompt = "Start";
 
   switch (tool) {
     case "claude":
-      cmd = `claude --name 'TODO ${id}: ${safeTitle}' --permission-mode bypassPermissions --agent ${agentName} --append-system-prompt "$(cat '${promptFile}')"`;
+      cmd = `claude --name '${wsName}' --permission-mode bypassPermissions --agent ${agentName} --append-system-prompt "$(cat '${promptFile}')"`;
       break;
     case "opencode":
-      cmd = `opencode --agent ${agentName} --title 'TODO ${id}: ${safeTitle}'`;
+      cmd = `opencode --agent ${agentName} --title '${wsName}'`;
       initialPrompt = `${readFileSync(promptFile, "utf-8")}\n\nStart implementing this TODO now.`;
       break;
     case "copilot": {
