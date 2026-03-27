@@ -34,9 +34,8 @@ import { type Multiplexer, getMux } from "../mux.ts";
 import { reconcile } from "./reconcile.ts";
 import { die } from "../output.ts";
 import { shouldEnterInteractive, runInteractiveFlow } from "../interactive.ts";
-import type { TodoItem, StatusSync } from "../types.ts";
+import type { TodoItem } from "../types.ts";
 import { prTitleMatchesTodo } from "../todo-utils.ts";
-import { ClickUpBackend, resolveClickUpConfig } from "../backends/clickup.ts";
 import { loadConfig } from "../config.ts";
 import {
   supervisorTick,
@@ -785,57 +784,6 @@ export function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<vo
   });
 }
 
-// ── Status sync helpers ──────────────────────────────────────────────
-
-/**
- * Sync status labels on an external tracker based on orchestrator state transitions.
- * Called after each state change to keep external status in sync.
- *
- * Label mapping:
- * - launching/implementing → "status:in-progress"
- * - pr-open/ci-pending/ci-passed/ci-failed → "status:pr-open"
- * - merged/done → remove all status labels and close issue
- */
-export function syncStatusLabels(
-  sync: StatusSync,
-  itemId: string,
-  from: string,
-  to: string,
-  log?: (entry: LogEntry) => void,
-): void {
-  switch (to) {
-    case "bootstrapping":
-    case "launching":
-    case "implementing":
-      sync.addStatusLabel(itemId, "status:in-progress");
-      break;
-
-    case "pr-open":
-    case "ci-pending":
-    case "ci-passed":
-    case "ci-failed":
-      sync.removeStatusLabel(itemId, "status:in-progress");
-      sync.addStatusLabel(itemId, "status:pr-open");
-      break;
-
-    case "merged":
-    case "done":
-      sync.removeStatusLabel(itemId, "status:in-progress");
-      sync.removeStatusLabel(itemId, "status:pr-open");
-      // Close the issue on merge (idempotent — already-closed is a no-op)
-      if (to === "merged") {
-        sync.markDone(itemId);
-        log?.({
-          ts: new Date().toISOString(),
-          level: "info",
-          event: "status_sync_close",
-          itemId,
-        });
-      }
-      break;
-  }
-}
-
 // ── Memory detection ──────────────────────────────────────────────
 
 /**
@@ -1176,8 +1124,6 @@ export interface OrchestrateLoopDeps {
   readScreen?: (ref: string, lines?: number) => string;
   /** Called after each poll cycle with current items. Used for daemon state persistence. */
   onPollComplete?: (items: OrchestratorItem[]) => void;
-  /** Optional status sync backend for synchronizing state with external work-item trackers (e.g., GitHub Issues). */
-  statusSync?: StatusSync;
   /** Dependencies for external PR review processing. When present and reviewExternal is enabled, external PRs are scanned and reviewed. */
   externalReviewDeps?: ExternalReviewDeps;
   /** Scan for TODO files. Required for watch mode — re-scans the todos directory to discover new items. */
@@ -1435,15 +1381,6 @@ export async function orchestrateLoop(
           transitionLog.baseBranch = item.baseBranch;
         }
         wrappedLog(transitionLog);
-
-        // Status sync: update external tracker labels on state transitions
-        if (deps.statusSync) {
-          try {
-            syncStatusLabels(deps.statusSync, item.id, prev, item.state, wrappedLog);
-          } catch {
-            // Non-fatal — status sync failure shouldn't block the orchestrator
-          }
-        }
       }
     }
 
@@ -1777,7 +1714,6 @@ export async function cmdOrchestrate(
   let daemonMode = false;
   let isDaemonChild = false;
   let noSandbox = false;
-  let clickupListId: string | undefined;
   let remoteFlag = false;
   let reviewEnabled = false;
   let reviewWipLimit: number | undefined;
@@ -1848,10 +1784,6 @@ export async function cmdOrchestrate(
       case "--_daemon-child":
         isDaemonChild = true;
         i += 1;
-        break;
-      case "--clickup-list":
-        clickupListId = args[i + 1];
-        i += 2;
         break;
       case "--remote":
         remoteFlag = true;
@@ -2260,21 +2192,6 @@ export async function cmdOrchestrate(
     });
   }
 
-  // Resolve ClickUp status sync if configured
-  const ckConfig = resolveClickUpConfig(clickupListId, (key) => projectConfig[key]);
-  const statusSync: StatusSync | undefined = ckConfig
-    ? new ClickUpBackend(ckConfig.listId, ckConfig.apiToken)
-    : undefined;
-
-  if (statusSync) {
-    log({
-      ts: new Date().toISOString(),
-      level: "info",
-      event: "clickup_sync_enabled",
-      listId: ckConfig!.listId,
-    });
-  }
-
   // Build external review deps when review_external is enabled
   const externalReviewDeps: ExternalReviewDeps | undefined = reviewExternalEnabled
     ? {
@@ -2318,7 +2235,6 @@ export async function cmdOrchestrate(
     analyticsCommit: { hasChanges, gitAdd, getStagedFiles, gitCommit, gitReset },
     readScreen: (ref, lines) => mux.readScreen(ref, lines),
     onPollComplete,
-    statusSync,
     externalReviewDeps,
     ...(watchMode ? { scanTodos: () => parseTodos(todosDir, worktreeDir) } : {}),
   };

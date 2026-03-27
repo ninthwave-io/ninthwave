@@ -78,27 +78,6 @@ export const WILDCARD_DEP_PATTERN = /[A-Z](?:[A-Za-z0-9]*-)*\*/g;
 export const DEFAULT_LOC_EXTENSIONS =
   "*.ex *.exs *.ts *.tsx *.js *.jsx *.py *.go *.rs *.rb *.java *.kt *.swift";
 
-// Task backend interface for external work-item sources.
-export interface TaskBackend {
-  /** List all work items from the backend. */
-  list(): TodoItem[];
-  /** Read a single work item by ID. */
-  read(id: string): TodoItem | undefined;
-  /** Mark a work item as done. */
-  markDone(id: string): boolean;
-}
-
-// Status sync interface for synchronizing orchestrator state with external work-item backends.
-// Label operations are idempotent — adding an existing label or removing a missing one is a no-op.
-export interface StatusSync {
-  /** Add a status label to a work item (e.g., "status:in-progress"). */
-  addStatusLabel(id: string, label: string): boolean;
-  /** Remove a status label from a work item. Skips gracefully if label is missing. */
-  removeStatusLabel(id: string, label: string): boolean;
-  /** Mark a work item as done (e.g., close the issue). Idempotent — already-done items are a no-op. */
-  markDone(id: string): boolean;
-}
-
 // File extension patterns for path extraction
 export const CODE_EXTENSIONS =
   /\.(ex|exs|ts|tsx|js|jsx|md|yml|yaml|json|conf|sh|py|go|rs|rb|java|kt|swift)$/;
