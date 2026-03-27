@@ -1,42 +1,19 @@
 // list command: display TODO items with optional filters.
 
 import { parseTodos } from "../parser.ts";
-import { die, warn, BOLD, RED, YELLOW, CYAN, DIM, RESET } from "../output.ts";
+import { die, BOLD, RED, YELLOW, CYAN, DIM, RESET } from "../output.ts";
 import type { TodoItem } from "../types.ts";
-import { GitHubIssuesBackend } from "../backends/github-issues.ts";
-import { ClickUpBackend, resolveClickUpConfig } from "../backends/clickup.ts";
-import { SentryBackend, resolveSentryConfig } from "../backends/sentry.ts";
-import {
-  PagerDutyBackend,
-  resolvePagerDutyConfig,
-} from "../backends/pagerduty.ts";
-import { LinearBackend, resolveLinearConfig } from "../backends/linear.ts";
-import { ghInRepo } from "../gh.ts";
-import { loadConfig } from "../config.ts";
-import {
-  discoverBackends,
-  type DiscoveredBackend,
-} from "../backend-registry.ts";
-
-/** Dependency injection for testability. */
-export interface ListDeps {
-  discoverBackends?: (projectRoot: string) => DiscoveredBackend[];
-}
 
 export function cmdList(
   args: string[],
   todosDir: string,
   worktreeDir: string,
-  projectRoot?: string,
-  deps?: ListDeps,
 ): void {
   let filterPriority = "";
   let filterDomain = "";
   let filterFeature = "";
   let showReady = false;
   let depth = 0; // 0 = no depth limit (when used with --ready, depth 1 is default)
-  let backend = "";
-  let clickupListId = "";
 
   // Parse args
   let i = 0;
@@ -66,132 +43,13 @@ export function cmdList(
         i += 2;
         break;
       }
-      case "--backend":
-        backend = args[i + 1] ?? "";
-        i += 2;
-        break;
-      case "--clickup-list":
-        clickupListId = args[i + 1] ?? "";
-        i += 2;
-        break;
       default:
         die(`Unknown option: ${args[i]}`);
     }
   }
 
-  // Build items list with source tracking
-  let items: TodoItem[];
-  const sourceMap = new Map<TodoItem, string>();
-  let showSource = false;
-
-  if (backend === "sentry") {
-    if (!projectRoot) die("Project root is required for sentry backend");
-    const config = loadConfig(projectRoot!);
-    const sentryConfig = resolveSentryConfig((key) => config[key]);
-    if (!sentryConfig) {
-      die(
-        "Sentry backend requires SENTRY_AUTH_TOKEN env var and " +
-          "sentry_org/sentry_project in .ninthwave/config or SENTRY_ORG/SENTRY_PROJECT env vars",
-      );
-    }
-    const b = new SentryBackend(
-      sentryConfig.org,
-      sentryConfig.project,
-      sentryConfig.authToken,
-    );
-    items = b.list();
-    for (const item of items) sourceMap.set(item, "sentry");
-    showSource = true;
-  } else if (backend === "pagerduty") {
-    if (!projectRoot) die("Project root is required for pagerduty backend");
-    const config = loadConfig(projectRoot!);
-    const pdConfig = resolvePagerDutyConfig((key) => config[key]);
-    if (!pdConfig) {
-      die(
-        "PagerDuty backend requires PAGERDUTY_API_TOKEN and " +
-          "PAGERDUTY_FROM_EMAIL env vars (or pagerduty_from_email in .ninthwave/config)",
-      );
-    }
-    const b = new PagerDutyBackend(
-      pdConfig.apiToken,
-      pdConfig.fromEmail,
-      undefined,
-      pdConfig.serviceId,
-    );
-    items = b.list();
-    for (const item of items) sourceMap.set(item, "pagerduty");
-    showSource = true;
-  } else if (backend === "github-issues") {
-    if (!projectRoot) die("Project root is required for github-issues backend");
-    const ghBackend = new GitHubIssuesBackend(
-      projectRoot!,
-      "ninthwave",
-      ghInRepo,
-    );
-    items = ghBackend.list();
-    for (const item of items) sourceMap.set(item, "github");
-    showSource = true;
-  } else if (backend === "clickup") {
-    if (!projectRoot) die("Project root is required for clickup backend");
-    const config = loadConfig(projectRoot!);
-    const ckConfig = resolveClickUpConfig(
-      clickupListId || undefined,
-      (key) => config[key],
-    );
-    if (!ckConfig) {
-      die(
-        "ClickUp backend requires CLICKUP_API_TOKEN env var and list ID " +
-          "(via --clickup-list flag or CLICKUP_LIST_ID in .ninthwave/config)",
-      );
-    }
-    const ckBackend = new ClickUpBackend(ckConfig!.listId, ckConfig!.apiToken);
-    items = ckBackend.list();
-    for (const item of items) sourceMap.set(item, "clickup");
-    showSource = true;
-  } else if (backend === "linear") {
-    if (!projectRoot) die("Project root is required for linear backend");
-    const config = loadConfig(projectRoot!);
-    const linearConfig = resolveLinearConfig((key) => config[key]);
-    if (!linearConfig) {
-      die(
-        "Linear backend requires LINEAR_API_KEY env var " +
-          "(or linear_api_key in .ninthwave/config)",
-      );
-    }
-    const linearBackend = new LinearBackend(
-      linearConfig.apiKey,
-      linearConfig.teamKey,
-    );
-    items = linearBackend.list();
-    for (const item of items) sourceMap.set(item, "linear");
-    showSource = true;
-  } else if (backend) {
-    die(`Unknown backend: ${backend}`);
-  } else {
-    // Default: local items + auto-discovered backends
-    items = parseTodos(todosDir, worktreeDir);
-
-    // Auto-discover external backends
-    if (projectRoot) {
-      const discover = deps?.discoverBackends ?? discoverBackends;
-      const discovered = discover(projectRoot);
-      if (discovered.length > 0) {
-        showSource = true;
-        for (const item of items) sourceMap.set(item, "local");
-        for (const { name, backend: b } of discovered) {
-          try {
-            const externalItems = b.list();
-            for (const eItem of externalItems) {
-              items.push(eItem);
-              sourceMap.set(eItem, name);
-            }
-          } catch {
-            warn(`Backend ${name} unavailable, showing local items only`);
-          }
-        }
-      }
-    }
-  }
+  // Build items list
+  let items: TodoItem[] = parseTodos(todosDir, worktreeDir);
 
   // Apply filters
   if (filterPriority) {
@@ -245,23 +103,14 @@ export function cmdList(
   }
 
   // Print table header
-  const sourceWidth = 12;
-  const sourceHeader = showSource
-    ? `${pad("SOURCE", sourceWidth)} `
-    : "";
   console.log(
-    `${BOLD}${sourceHeader}${pad("ID", 12)} ${pad("PRIORITY", 10)} ${pad("TITLE", 55)} ${pad("DOMAIN", 14)} ${pad("DEPENDS ON", 18)} ${pad("STATUS", 12)}${RESET}`,
+    `${BOLD}${pad("ID", 12)} ${pad("PRIORITY", 10)} ${pad("TITLE", 55)} ${pad("DOMAIN", 14)} ${pad("DEPENDS ON", 18)} ${pad("STATUS", 12)}${RESET}`,
   );
-  console.log("-".repeat(showSource ? 132 : 120));
+  console.log("-".repeat(120));
 
   let count = 0;
   for (const item of items) {
     if (!item.id) continue;
-
-    // Source label
-    const sourcePrefix = showSource
-      ? `${pad(`[${sourceMap.get(item) ?? "local"}]`, sourceWidth)} `
-      : "";
 
     // Color-code priority
     let pcolor = "";
@@ -310,7 +159,7 @@ export function cmdList(
     }
 
     console.log(
-      `${sourcePrefix}${pad(item.id, 12)} ${pcolor}${pad(item.priority, 10)}${RESET} ${pad(displayTitle, 55)} ${pad(item.domain, 14)} ${pad(displayDeps, 18)} ${scolor}${pad(item.status, 12)}${RESET}`,
+      `${pad(item.id, 12)} ${pcolor}${pad(item.priority, 10)}${RESET} ${pad(displayTitle, 55)} ${pad(item.domain, 14)} ${pad(displayDeps, 18)} ${scolor}${pad(item.status, 12)}${RESET}`,
     );
 
     count++;

@@ -48,7 +48,7 @@ export const COMMANDS: ReadonlyArray<[string, string]> = [
   ["setup [--global]", "Set up ninthwave in a project or globally"],
   ["version", "Print ninthwave version"],
   [
-    "list [--priority P] [--domain D] [--feature F] [--ready] [--backend B]",
+    "list [--priority P] [--domain D] [--feature F] [--ready]",
     "List TODO items",
   ],
   ["deps <ID>", "Show dependency chain"],
@@ -246,11 +246,7 @@ const needsTodos = ![
   "generate-todos",
 ].includes(command);
 
-// list --backend <name> sources from an external backend, not the todos directory
-const usesExternalBackend =
-  command === "list" && args.includes("--backend");
-
-if (needsTodos && !usesExternalBackend && !existsSync(todosDir)) {
+if (needsTodos && !existsSync(todosDir)) {
   die(`Todos directory not found at ${todosDir}`);
 }
 
@@ -259,7 +255,7 @@ switch (command) {
     cmdDoctor(projectRoot);
     break;
   case "list":
-    cmdList(args, todosDir, worktreeDir, projectRoot);
+    cmdList(args, todosDir, worktreeDir);
     break;
   case "deps":
     cmdDeps(args, todosDir, worktreeDir);

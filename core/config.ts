@@ -14,11 +14,6 @@ export const KNOWN_CONFIG_KEYS = new Set([
   "sandbox_extra_hosts",
   "proxy_policy",
   "proxy_credentials",
-  "CLICKUP_LIST_ID",
-  "sentry_org",
-  "sentry_project",
-  "pagerduty_service_id",
-  "pagerduty_from_email",
   "remote_sessions",
   "review_enabled",
   "review_wip_limit",
@@ -26,8 +21,6 @@ export const KNOWN_CONFIG_KEYS = new Set([
   "review_can_approve",
   "review_external",
   "github_token",
-  "linear_api_key",
-  "linear_team_key",
 ]);
 
 /**

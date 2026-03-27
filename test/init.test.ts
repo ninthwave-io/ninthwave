@@ -18,7 +18,6 @@ import {
   detectAITools,
   detectRepoType,
   detectSandbox,
-  detectObservabilityBackends,
   detectAll,
   generateConfig,
   initProject,
@@ -444,7 +443,6 @@ describe("generateConfig", () => {
       aiTools: ["claude"],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -460,7 +458,6 @@ describe("generateConfig", () => {
       aiTools: [],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -477,7 +474,6 @@ describe("generateConfig", () => {
       aiTools: [],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -493,7 +489,6 @@ describe("generateConfig", () => {
       aiTools: [],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -510,7 +505,6 @@ describe("generateConfig", () => {
       aiTools: [],
       repoType: "monorepo",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -526,7 +520,6 @@ describe("generateConfig", () => {
       aiTools: ["claude", "opencode"],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -542,7 +535,6 @@ describe("generateConfig", () => {
       aiTools: [],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -558,7 +550,6 @@ describe("generateConfig", () => {
       aiTools: [],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -575,7 +566,6 @@ describe("generateConfig", () => {
       aiTools: ["claude"],
       repoType: "single",
       sandbox: null,
-      observabilityBackends: [],
     };
 
     const config = generateConfig(detection);
@@ -609,132 +599,6 @@ describe("detectSandbox", () => {
   });
 });
 
-// --- detectObservabilityBackends ---
-
-describe("detectObservabilityBackends", () => {
-  it("detects Sentry when SENTRY_AUTH_TOKEN is set", () => {
-    const deps: InitDeps = {
-      getEnv: (key: string) =>
-        key === "SENTRY_AUTH_TOKEN" ? "test-token" : undefined,
-    };
-
-    const result = detectObservabilityBackends(deps);
-
-    expect(result).toEqual(["sentry"]);
-  });
-
-  it("detects PagerDuty when PAGERDUTY_API_TOKEN is set", () => {
-    const deps: InitDeps = {
-      getEnv: (key: string) =>
-        key === "PAGERDUTY_API_TOKEN" ? "test-token" : undefined,
-    };
-
-    const result = detectObservabilityBackends(deps);
-
-    expect(result).toEqual(["pagerduty"]);
-  });
-
-  it("detects both Sentry and PagerDuty", () => {
-    const deps: InitDeps = {
-      getEnv: (key: string) => {
-        if (key === "SENTRY_AUTH_TOKEN") return "sentry-token";
-        if (key === "PAGERDUTY_API_TOKEN") return "pd-token";
-        return undefined;
-      },
-    };
-
-    const result = detectObservabilityBackends(deps);
-
-    expect(result).toEqual(["sentry", "pagerduty"]);
-  });
-
-  it("returns empty array when no observability env vars are set", () => {
-    const deps: InitDeps = {
-      getEnv: () => undefined,
-    };
-
-    const result = detectObservabilityBackends(deps);
-
-    expect(result).toEqual([]);
-  });
-});
-
-// --- generateConfig with observability backends ---
-
-describe("generateConfig observability", () => {
-  it("writes Sentry config placeholders when sentry is detected", () => {
-    const detection: DetectionResult = {
-      ci: null,
-      testCommand: null,
-      mux: null,
-      aiTools: [],
-      repoType: "single",
-      sandbox: null,
-      observabilityBackends: ["sentry"],
-    };
-
-    const config = generateConfig(detection);
-
-    expect(config).toContain("# Sentry integration (SENTRY_AUTH_TOKEN detected)");
-    expect(config).toContain("# sentry_org=your-org");
-    expect(config).toContain("# sentry_project=your-project");
-  });
-
-  it("writes PagerDuty config placeholders when pagerduty is detected", () => {
-    const detection: DetectionResult = {
-      ci: null,
-      testCommand: null,
-      mux: null,
-      aiTools: [],
-      repoType: "single",
-      sandbox: null,
-      observabilityBackends: ["pagerduty"],
-    };
-
-    const config = generateConfig(detection);
-
-    expect(config).toContain("# PagerDuty integration (PAGERDUTY_API_TOKEN detected)");
-    expect(config).toContain("# pagerduty_service_id=your-service-id");
-    expect(config).toContain("# pagerduty_from_email=your@email.com");
-  });
-
-  it("writes both backend placeholders when both are detected", () => {
-    const detection: DetectionResult = {
-      ci: null,
-      testCommand: null,
-      mux: null,
-      aiTools: [],
-      repoType: "single",
-      sandbox: null,
-      observabilityBackends: ["sentry", "pagerduty"],
-    };
-
-    const config = generateConfig(detection);
-
-    expect(config).toContain("# Observability backends");
-    expect(config).toContain("# sentry_org=your-org");
-    expect(config).toContain("# pagerduty_service_id=your-service-id");
-  });
-
-  it("omits observability section when no backends detected", () => {
-    const detection: DetectionResult = {
-      ci: null,
-      testCommand: null,
-      mux: null,
-      aiTools: [],
-      repoType: "single",
-      sandbox: null,
-      observabilityBackends: [],
-    };
-
-    const config = generateConfig(detection);
-
-    expect(config).not.toContain("Observability backends");
-    expect(config).not.toContain("sentry_org");
-    expect(config).not.toContain("pagerduty_service_id");
-  });
-});
-
 // --- detectAll includes sandbox ---
 
 describe("detectAll", () => {
@@ -761,34 +625,6 @@ describe("detectAll", () => {
     const result = detectAll(projectDir, deps);
 
     expect(result.sandbox).toBeNull();
-  });
-
-  it("includes observabilityBackends when env vars are set", () => {
-    const projectDir = setupTempRepo();
-    const deps: InitDeps = {
-      commandExists: (() => false) as CommandChecker,
-      getEnv: (key: string) => {
-        if (key === "SENTRY_AUTH_TOKEN") return "token";
-        if (key === "PAGERDUTY_API_TOKEN") return "token";
-        return undefined;
-      },
-    };
-
-    const result = detectAll(projectDir, deps);
-
-    expect(result.observabilityBackends).toEqual(["sentry", "pagerduty"]);
-  });
-
-  it("returns empty observabilityBackends when no env vars set", () => {
-    const projectDir = setupTempRepo();
-    const deps: InitDeps = {
-      commandExists: (() => false) as CommandChecker,
-      getEnv: () => undefined,
-    };
-
-    const result = detectAll(projectDir, deps);
-
-    expect(result.observabilityBackends).toEqual([]);
   });
 });
 
