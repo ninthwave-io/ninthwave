@@ -62,12 +62,12 @@ This skill interactively selects TODO items, then delegates all orchestration to
 4. **Quick-start detection:** If there are reachable items and the user invoked `/work` without specifying particular items or filters, offer a streamlined entry:
 
    AskUserQuestion -- "N items reachable (M at depth 1, K at depth 2, ...). How deep do you want to go?"
-   - A) Full chain (depth N) with defaults (auto-merge ASAP, WIP 4, supervisor on) — recommended; the orchestrator queues deeper items until their deps merge
+   - A) Full chain (depth N) with defaults (auto-merge ASAP, WIP 4) — recommended; the orchestrator queues deeper items until their deps merge
    - B) Depth 1 only — just items that can start right now
    - C) Interactive selection — choose items by feature, priority, or domain
    - D) Dry run — show the batch plan without launching
 
-   **If user picks A:** Skip to step 6 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit / supervisor questions — use the defaults. Proceed directly to Phase 2.
+   **If user picks A:** Skip to step 6 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit questions — use the defaults. Proceed directly to Phase 2.
 
    **If user picks B:** Skip to step 6 with only depth-1 items selected, using defaults. Proceed directly to Phase 2.
 
@@ -131,14 +131,6 @@ This skill interactively selects TODO items, then delegates all orchestration to
 
     Store WIP_LIMIT (default: 4).
 
-12. **Supervisor mode:**
-
-    AskUserQuestion -- "Enable LLM supervisor? (monitors for anomalies, logs friction)"
-    - A) Yes (recommended for unattended runs) -- a separate AI session monitors the pipeline, detects anomalies, nudges stuck workers, and logs friction
-    - B) No (daemon only) -- deterministic daemon with no LLM oversight
-
-    Store SUPERVISOR_ENABLED (boolean, default: false).
-
 ---
 
 ### Phase 2: ORCHESTRATE
@@ -152,16 +144,6 @@ This skill interactively selects TODO items, then delegates all orchestration to
      --items <comma-separated-IDs> \
      --merge-strategy <MERGE_STRATEGY> \
      --wip-limit <WIP_LIMIT>
-   ```
-
-   If SUPERVISOR_ENABLED is true, append `--supervisor` to the command:
-
-   ```bash
-   ninthwave orchestrate \
-     --items <comma-separated-IDs> \
-     --merge-strategy <MERGE_STRATEGY> \
-     --wip-limit <WIP_LIMIT> \
-     --supervisor
    ```
 
    **Output modes:** When run in a TTY, the daemon shows an interactive TUI with a live status table. Use `--json` for structured JSON log lines (useful for piping to other tools or CI):
@@ -189,9 +171,6 @@ This skill interactively selects TODO items, then delegates all orchestration to
    - `action_execute` / `action_result` — launches, merges, cleanups
    - `orchestrate_complete` — all items reached terminal state (done or stuck)
    - `shutdown` — SIGINT received, clean exit
-   - `supervisor_event` — (supervisor mode only) the daemon sent an event to the supervisor session
-   - `supervisor_anomaly` — (supervisor mode only) supervisor detected an anomaly and sent a hint to a worker
-   - `supervisor_friction` — (supervisor mode only) supervisor logged a friction observation
 
 4. **When the orchestrator exits**, summarize results:
    - How many items completed successfully (done)
@@ -291,7 +270,7 @@ AskUserQuestion — "Batch complete. N items are now ready. Continue?"
 - B) Select items — go back to Phase 1 to pick specific items
 - C) Stop — exit the delivery loop
 
-**If the user chooses A:** Loop back to Phase 2 with the same MERGE_STRATEGY, WIP_LIMIT, and SUPERVISOR_ENABLED settings. Use the full list of ready items.
+**If the user chooses A:** Loop back to Phase 2 with the same MERGE_STRATEGY and WIP_LIMIT settings. Use the full list of ready items.
 
 **If the user chooses B:** Loop back to Phase 1 (SELECT) with fresh item selection.
 

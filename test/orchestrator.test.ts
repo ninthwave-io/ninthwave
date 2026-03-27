@@ -2879,7 +2879,7 @@ describe("Orchestrator", () => {
     });
 
     it("item-merged event fires only for merged state, not done (daemon parity)", () => {
-      // Simulates the daemon's supervisor event logic: only "merged" state
+      // Simulates the daemon's event logic: only "merged" state
       // should trigger an "item-merged" event, not the subsequent "done" state.
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "merging");

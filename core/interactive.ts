@@ -16,7 +16,6 @@ export interface InteractiveResult {
   itemIds: string[];
   mergeStrategy: MergeStrategy;
   wipLimit: number;
-  supervisor: boolean;
 }
 
 export interface InteractiveDeps {
@@ -236,18 +235,6 @@ export async function promptWipLimit(
   }
 }
 
-// ── Supervisor toggle ────────────────────────────────────────────────
-
-export async function promptSupervisor(
-  prompt: PromptFn,
-): Promise<boolean> {
-  console.log();
-  const answer = await prompt(
-    `${BOLD}Enable supervisor?${RESET} ${DIM}(LLM anomaly detection) [y/N]:${RESET} `,
-  );
-  return answer.toLowerCase() === "y" || answer.toLowerCase() === "yes";
-}
-
 // ── Summary + confirmation ───────────────────────────────────────────
 
 export async function confirmSummary(
@@ -267,9 +254,6 @@ export async function confirmSummary(
   }
   console.log(`  ${BOLD}Merge strategy:${RESET}  ${result.mergeStrategy}`);
   console.log(`  ${BOLD}WIP limit:${RESET}       ${result.wipLimit}`);
-  console.log(
-    `  ${BOLD}Supervisor:${RESET}      ${result.supervisor ? "enabled" : "disabled"}`,
-  );
   console.log();
 
   const answer = await prompt(
@@ -301,15 +285,11 @@ export async function runInteractiveFlow(
   // Step 3: WIP limit
   const wipLimit = await promptWipLimit(defaultWipLimit, prompt);
 
-  // Step 4: Supervisor toggle
-  const supervisor = await promptSupervisor(prompt);
-
-  // Step 5: Summary + confirmation
+  // Step 4: Summary + confirmation
   const result: InteractiveResult = {
     itemIds,
     mergeStrategy,
     wipLimit,
-    supervisor,
   };
 
   const confirmed = await confirmSummary(result, todos, prompt);

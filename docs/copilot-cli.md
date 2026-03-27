@@ -79,7 +79,6 @@ Both temp files are deleted by the launcher script before the session starts —
 | **Agent directory** | `.claude/agents/*.md` | `.github/agents/*.agent.md` |
 | **Session detection** | `CLAUDE_CODE_SESSION` env var | Process tree walk (no env var) |
 | **Post-launch send** | Not needed (prompt embedded) | Not needed (prompt embedded via `-i`) |
-| **Supervisor sessions** | Same `--agent supervisor` pattern | Same launcher script approach |
 
 ### What's the same
 

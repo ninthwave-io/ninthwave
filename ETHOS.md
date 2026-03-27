@@ -14,7 +14,7 @@ Sensible defaults, minimal config files. Cross-repo resolves via sibling directo
 
 ### 3. Deterministic core, advisory AI
 
-The orchestrator daemon is deterministic TypeScript — no LLM calls. The supervisor is advisory only: it observes, nudges, and logs, but never overrides the state machine. LLM output never bypasses deterministic logic.
+The orchestrator daemon is deterministic TypeScript — no LLM calls in the core pipeline. LLM output never bypasses deterministic logic.
 
 ### 4. Scope discipline
 

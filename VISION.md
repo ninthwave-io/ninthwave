@@ -31,7 +31,6 @@ v0.1.0 shipped March 2026. Twelve grind cycles (0-11) have shipped since then. S
 - Worker health monitoring — deterministic screen-based stall detection
 - Memory-aware WIP limits based on available RAM
 - Structured analytics with cost/token tracking
-- LLM supervisor (opt-in) — advisory layer that detects patterns the daemon can't
 - Monorepo workspace detection (pnpm/yarn/npm)
 - `nw doctor` health check command
 
@@ -71,17 +70,7 @@ Cloud-track items building on the shipped C-alpha foundation (localhost dashboar
 - **Persistent domains.** `*.yourproject.ninthwave.sh` subdomains via Cloudflare Access. Authentication via team SSO.
 - **Interactive mode.** Full TUI or chat-optimized view for remote session interaction. Reviewer jumps into a session from the PR link, remote pair debugging with a stuck worker.
 
-### D. LLM Supervisor
-
-An optional advisory layer on top of the deterministic daemon. Foundation shipped — core tick loop, prompt construction, response parsing, action application, friction file writing, error resilience with exponential backoff.
-
-**Remaining:**
-- Supervisor-generated friction entries auto-decomposed into TODOs (closes the loop between friction detection and work item creation)
-- Integration with external notification channels beyond log entries
-
-**Key principle:** The LLM makes itself less necessary over time. Each dogfooding cycle moves more intelligence from the supervisor into deterministic daemon logic.
-
-### E. Expand the Surface Area
+### D. Expand the Surface Area
 
 - **External task backends.** Removed in 0.2.0, future plugin candidates. Previously shipped: GitHub Issues, ClickUp, Sentry, PagerDuty. May return as separate packages.
 - **Cross-repo maturity.** Monorepo workspace support (pnpm/yarn/turborepo). Dependency ordering across repos.
@@ -91,7 +80,7 @@ An optional advisory layer on top of the deterministic daemon. Foundation shippe
 
 What ninthwave will not become:
 
-1. **Not an AI tool.** No LLM calls in the core pipeline. The supervisor is opt-in, advisory, and designed to shrink over time.
+1. **Not an AI tool.** No LLM calls in the core pipeline. The daemon is deterministic TypeScript.
 
 2. **Not a compute platform.** ninthwave never owns your compute, your code, or your AI tool billing. The one exception: optional managed domain routing for remote session access.
 

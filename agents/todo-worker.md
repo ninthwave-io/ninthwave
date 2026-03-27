@@ -325,8 +325,6 @@ cmux set-status "todo-YOUR_TODO_ID" "Awaiting Review" --icon "clock.fill" --colo
 
 Messages from the orchestrator daemon are prefixed with `[ORCHESTRATOR]`. These are deterministic, machine-generated messages (not AI-generated) in a structured format.
 
-When supervisor mode is enabled, you may also receive messages prefixed with `[SUPERVISOR]`. These are LLM-generated hints from the supervisor — an LLM that periodically reviews orchestrator state and detects anomalies. Supervisor hints are advisory: they may suggest a different approach, flag potential issues, or provide context about friction patterns. Treat them as helpful suggestions, not commands. If a supervisor hint conflicts with an orchestrator message, the orchestrator message takes priority.
-
 When you receive a message, it will be one of these categories:
 
 #### CI Fix Request

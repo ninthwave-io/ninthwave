@@ -82,10 +82,6 @@ function createFakeBundle(dir: string): string {
     join(bundleDir, "agents", "review-worker.md"),
     "# Review Worker Agent\n",
   );
-  writeFileSync(
-    join(bundleDir, "agents", "supervisor.md"),
-    "# Supervisor Agent\n",
-  );
 
   // Create VERSION file
   writeFileSync(join(bundleDir, "VERSION"), "0.1.0\n");
@@ -254,10 +250,9 @@ describe("checkPrerequisites — gh auth warning", () => {
 // --- AGENT_SOURCES / AGENT_DESCRIPTIONS ---
 
 describe("agent configuration", () => {
-  it("includes all three agent source files", () => {
+  it("includes all agent source files", () => {
     expect(AGENT_SOURCES).toContain("todo-worker.md");
     expect(AGENT_SOURCES).toContain("review-worker.md");
-    expect(AGENT_SOURCES).toContain("supervisor.md");
   });
 
   it("has descriptions for all agent sources", () => {
@@ -349,7 +344,6 @@ describe("discoverAgentSources", () => {
 
     expect(agents).toContain("todo-worker.md");
     expect(agents).toContain("review-worker.md");
-    expect(agents).toContain("supervisor.md");
   });
 
   it("only returns agents that exist on disk", () => {
@@ -357,13 +351,12 @@ describe("discoverAgentSources", () => {
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
     // Remove one agent
     const { unlinkSync: rmFile } = require("fs");
-    rmFile(join(bundleDir, "agents", "supervisor.md"));
+    rmFile(join(bundleDir, "agents", "review-worker.md"));
 
     const agents = discoverAgentSources(bundleDir);
 
     expect(agents).toContain("todo-worker.md");
-    expect(agents).toContain("review-worker.md");
-    expect(agents).not.toContain("supervisor.md");
+    expect(agents).not.toContain("review-worker.md");
   });
 });
 
@@ -449,7 +442,7 @@ describe("buildSymlinkPlan", () => {
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 
     const selection: AgentSelection = {
-      agents: ["todo-worker.md", "supervisor.md"],
+      agents: ["todo-worker.md", "review-worker.md"],
       toolDirs: [AGENT_TARGET_DIRS[0]!, AGENT_TARGET_DIRS[2]!], // .claude + .github
     };
 
@@ -458,9 +451,9 @@ describe("buildSymlinkPlan", () => {
     expect(plan).toHaveLength(4);
     const paths = plan.map((p) => p.displayPath);
     expect(paths).toContain(".claude/agents/todo-worker.md");
-    expect(paths).toContain(".claude/agents/supervisor.md");
+    expect(paths).toContain(".claude/agents/review-worker.md");
     expect(paths).toContain(".github/agents/todo-worker.agent.md");
-    expect(paths).toContain(".github/agents/supervisor.agent.md");
+    expect(paths).toContain(".github/agents/review-worker.agent.md");
   });
 });
 
@@ -560,7 +553,6 @@ describe("interactiveAgentSelection", () => {
     expect(selection).not.toBeNull();
     expect(selection!.agents).toContain("todo-worker.md");
     expect(selection!.agents).toContain("review-worker.md");
-    expect(selection!.agents).toContain("supervisor.md");
     // No tools detected → falls back to all tools
     expect(selection!.toolDirs).toHaveLength(AGENT_TARGET_DIRS.length);
   });
@@ -785,29 +777,6 @@ describe("setupProject", () => {
     expect(content).toBe("# Review Worker Agent\n");
   });
 
-  it("deploys supervisor.md in all agent directories", () => {
-    const projectDir = setupTempRepo();
-    const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
-
-    setupProject(projectDir, bundleDir, allPresentDeps);
-
-    expect(
-      existsSync(join(projectDir, ".claude/agents/supervisor.md")),
-    ).toBe(true);
-    expect(
-      existsSync(join(projectDir, ".opencode/agents/supervisor.md")),
-    ).toBe(true);
-    expect(
-      existsSync(join(projectDir, ".github/agents/supervisor.agent.md")),
-    ).toBe(true);
-
-    const content = readFileSync(
-      join(projectDir, ".claude/agents/supervisor.md"),
-      "utf-8",
-    );
-    expect(content).toBe("# Supervisor Agent\n");
-  });
-
   it("creates agent files as symlinks, not copies", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -851,7 +820,6 @@ describe("setupProject", () => {
 
     // Should NOT have other agents
     expect(existsSync(join(projectDir, ".claude/agents/review-worker.md"))).toBe(false);
-    expect(existsSync(join(projectDir, ".claude/agents/supervisor.md"))).toBe(false);
   });
 
   it("creates .gitignore with .worktrees/ entry", () => {
@@ -1312,7 +1280,6 @@ describe("setupProject — symlink gitignore entries", () => {
     mkdirSync(join(projectDir, "agents"), { recursive: true });
     writeFileSync(join(projectDir, "agents", "todo-worker.md"), "# Todo Worker\n");
     writeFileSync(join(projectDir, "agents", "review-worker.md"), "# Review Worker\n");
-    writeFileSync(join(projectDir, "agents", "supervisor.md"), "# Supervisor\n");
 
     setupProject(projectDir, projectDir, allPresentDeps);
 
@@ -1454,20 +1421,19 @@ describe("setupProject — agent selection", () => {
     setupProject(projectDir, bundleDir, {
       ...allPresentDeps,
       agentSelection: {
-        agents: ["supervisor.md"],
+        agents: ["review-worker.md"],
         toolDirs: [AGENT_TARGET_DIRS[0]!, AGENT_TARGET_DIRS[2]!], // .claude + .github
       },
     });
 
-    // supervisor in .claude and .github
-    expect(existsSync(join(projectDir, ".claude/agents/supervisor.md"))).toBe(true);
-    expect(existsSync(join(projectDir, ".github/agents/supervisor.agent.md"))).toBe(true);
+    // review-worker in .claude and .github
+    expect(existsSync(join(projectDir, ".claude/agents/review-worker.md"))).toBe(true);
+    expect(existsSync(join(projectDir, ".github/agents/review-worker.agent.md"))).toBe(true);
 
-    // No supervisor in .opencode
-    expect(existsSync(join(projectDir, ".opencode/agents/supervisor.md"))).toBe(false);
+    // No review-worker in .opencode
+    expect(existsSync(join(projectDir, ".opencode/agents/review-worker.md"))).toBe(false);
 
     // No other agents anywhere
     expect(existsSync(join(projectDir, ".claude/agents/todo-worker.md"))).toBe(false);
-    expect(existsSync(join(projectDir, ".claude/agents/review-worker.md"))).toBe(false);
   });
 });
