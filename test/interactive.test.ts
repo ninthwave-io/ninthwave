@@ -7,7 +7,6 @@ import {
   promptItems,
   promptMergeStrategy,
   promptWipLimit,
-  promptSupervisor,
   confirmSummary,
   runInteractiveFlow,
   type PromptFn,
@@ -246,30 +245,6 @@ describe("promptWipLimit", () => {
   });
 });
 
-// ── promptSupervisor ─────────────────────────────────────────────────
-
-describe("promptSupervisor", () => {
-  it("returns true for 'y'", async () => {
-    const result = await promptSupervisor(makePrompt(["y"]));
-    expect(result).toBe(true);
-  });
-
-  it("returns true for 'yes'", async () => {
-    const result = await promptSupervisor(makePrompt(["yes"]));
-    expect(result).toBe(true);
-  });
-
-  it("returns false for 'n'", async () => {
-    const result = await promptSupervisor(makePrompt(["n"]));
-    expect(result).toBe(false);
-  });
-
-  it("returns false for empty input (default N)", async () => {
-    const result = await promptSupervisor(makePrompt([""]));
-    expect(result).toBe(false);
-  });
-});
-
 // ── confirmSummary ───────────────────────────────────────────────────
 
 describe("confirmSummary", () => {
@@ -278,7 +253,6 @@ describe("confirmSummary", () => {
     itemIds: ["A-1"],
     mergeStrategy: "asap",
     wipLimit: 3,
-    supervisor: false,
   };
 
   it("returns true on Y (default)", async () => {
@@ -306,15 +280,14 @@ describe("runInteractiveFlow", () => {
   ];
 
   it("returns complete result for valid flow", async () => {
-    // Answers: select items "1 2", merge strategy "1" (asap), wip limit "5", supervisor "n", confirm ""
-    const prompt = makePrompt(["1 2", "1", "5", "n", ""]);
+    // Answers: select items "1 2", merge strategy "1" (asap), wip limit "5", confirm ""
+    const prompt = makePrompt(["1 2", "1", "5", ""]);
     const result = await runInteractiveFlow(todos, 3, { prompt });
 
     expect(result).not.toBeNull();
     expect(result!.itemIds).toEqual(["A-1", "B-2"]);
     expect(result!.mergeStrategy).toBe("asap");
     expect(result!.wipLimit).toBe(5);
-    expect(result!.supervisor).toBe(false);
   });
 
   it("returns null when user quits at item selection", async () => {
@@ -324,8 +297,8 @@ describe("runInteractiveFlow", () => {
   });
 
   it("returns null when user cancels at confirmation", async () => {
-    // Answers: select items "1", merge strategy "1", wip limit "", supervisor "n", confirm "n"
-    const prompt = makePrompt(["1", "1", "", "n", "n"]);
+    // Answers: select items "1", merge strategy "1", wip limit "", confirm "n"
+    const prompt = makePrompt(["1", "1", "", "n"]);
     const result = await runInteractiveFlow(todos, 3, { prompt });
     expect(result).toBeNull();
   });
@@ -336,14 +309,13 @@ describe("runInteractiveFlow", () => {
     expect(result).toBeNull();
   });
 
-  it("enables supervisor when user says yes", async () => {
-    // Answers: select "all", merge "2" (approved), wip "7", supervisor "y", confirm ""
-    const prompt = makePrompt(["all", "2", "7", "y", ""]);
+  it("completes flow with approved strategy and custom wip", async () => {
+    // Answers: select "all", merge "2" (approved), wip "7", confirm ""
+    const prompt = makePrompt(["all", "2", "7", ""]);
     const result = await runInteractiveFlow(todos, 3, { prompt });
 
     expect(result).not.toBeNull();
     expect(result!.mergeStrategy).toBe("approved");
     expect(result!.wipLimit).toBe(7);
-    expect(result!.supervisor).toBe(true);
   });
 });

@@ -2,7 +2,6 @@
 // Parses args, reconstructs state from disk/GitHub, runs the poll→transition→execute loop,
 // emits structured JSON logs, and handles graceful SIGINT/SIGTERM shutdown.
 // Supports daemon mode (--daemon) for background operation with state persistence.
-// Optionally runs an LLM supervisor tick for anomaly detection and friction logging.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, openSync, appendFileSync } from "fs";
 import { join, basename } from "path";
@@ -25,7 +24,7 @@ import {
 import { parseTodos } from "../parser.ts";
 import { resolveRepo, getWorktreeInfo, bootstrapRepo } from "../cross-repo.ts";
 import { checkPrStatus, scanExternalPRs } from "./watch.ts";
-import { launchSingleItem, launchReviewWorker, detectAiTool, launchSupervisorSession } from "./start.ts";
+import { launchSingleItem, launchReviewWorker, detectAiTool } from "./start.ts";
 import { getWorkerHealthStatus } from "../worker-health.ts";
 import { cleanSingleWorktree } from "./clean.ts";
 import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken } from "../gh.ts";
@@ -37,9 +36,6 @@ import { shouldEnterInteractive, runInteractiveFlow } from "../interactive.ts";
 import type { TodoItem } from "../types.ts";
 import { prTitleMatchesTodo } from "../todo-utils.ts";
 import { loadConfig } from "../config.ts";
-import {
-  shouldActivateSupervisor,
-} from "../supervisor.ts";
 import { preflight } from "../preflight.ts";
 import {
   collectRunMetrics,
@@ -301,7 +297,6 @@ export function buildSnapshot(
       }
       const commitTime = getLastCommitTime(repoRoot, `todo/${orchItem.id}`);
       snap.lastCommitTime = commitTime;
-      // Also store on the orchestrator item so the supervisor can read it
       orchItem.lastCommitTime = commitTime;
     }
 
@@ -1086,10 +1081,6 @@ export interface OrchestrateLoopDeps {
 export interface OrchestrateLoopConfig {
   /** Override adaptive poll interval (milliseconds). */
   pollIntervalMs?: number;
-  /** Supervisor session workspace reference (present when supervisor is active). */
-  supervisorSessionRef?: string;
-  /** Interval between supervisor heartbeat messages in milliseconds. Default: 300000 (5 minutes). */
-  supervisorHeartbeatMs?: number;
   /** GitHub repo URL (e.g., "https://github.com/owner/repo") for constructing PR URLs. */
   repoUrl?: string;
   /** Directory to write analytics metrics files. When set, metrics are emitted on run completion. */
@@ -1113,55 +1104,7 @@ export interface OrchestrateLoopConfig {
 }
 
 /**
- * Send a fire-and-forget event message to the supervisor session.
- * Logs a warning if delivery fails but never blocks the orchestrate loop.
- */
-export function sendSupervisorEvent(
-  supervisorRef: string | undefined,
-  sendMessage: (ref: string, msg: string) => boolean,
-  event: Record<string, unknown>,
-  log: (entry: LogEntry) => void,
-): void {
-  if (!supervisorRef) return;
-  const message = `[ORCHESTRATOR] ${JSON.stringify(event)}`;
-  try {
-    const sent = sendMessage(supervisorRef, message);
-    if (!sent) {
-      log({
-        ts: new Date().toISOString(),
-        level: "warn",
-        event: "supervisor_send_failed",
-        supervisorEvent: event.type as string,
-      });
-    }
-  } catch {
-    // Fire-and-forget — supervisor message failure never blocks the loop
-  }
-}
-
-/**
- * Build a full state summary for supervisor heartbeat messages.
- */
-export function buildSupervisorHeartbeat(items: OrchestratorItem[]): Record<string, unknown> {
-  return {
-    type: "heartbeat",
-    items: items.map((item) => ({
-      id: item.id,
-      state: item.state,
-      title: item.todo.title,
-      prNumber: item.prNumber ?? null,
-      workspaceRef: item.workspaceRef ?? null,
-      ciFailCount: item.ciFailCount,
-      elapsedMs: Date.now() - new Date(item.lastTransition).getTime(),
-      lastCommitTime: item.lastCommitTime ?? null,
-    })),
-    timestamp: new Date().toISOString(),
-  };
-}
-
-/**
  * Main event loop. Polls, detects transitions, executes actions, sleeps.
- * Sends event messages to the supervisor session on state transitions and periodic heartbeats.
  * Exits when all items reach terminal state or signal is aborted.
  */
 export async function orchestrateLoop(
@@ -1172,10 +1115,6 @@ export async function orchestrateLoop(
   signal?: AbortSignal,
 ): Promise<void> {
   const { log } = deps;
-
-  // Supervisor heartbeat tracking
-  let lastSupervisorHeartbeat = Date.now();
-  const supervisorHeartbeatMs = config.supervisorHeartbeatMs ?? 300_000;
 
   // Initialize external review state from persisted file
   let externalReviews: ExternalReviewItem[] = [];
@@ -1201,14 +1140,12 @@ export async function orchestrateLoop(
     items: orch.getAllItems().map((i) => i.id),
     wipLimit: orch.config.wipLimit,
     mergeStrategy: orch.config.mergeStrategy,
-    supervisorActive: !!config.supervisorSessionRef,
   });
 
   let __iterations = 0;
   let __lastSnapshot: PollSnapshot | undefined;
   let __lastActions: import("../orchestrator.ts").Action[] = [];
   let __lastTransitionIter = 0;
-  const __mergedEventEmitted = new Set<string>();
   while (true) {
     __iterations++;
     if (config.maxIterations != null && __iterations > config.maxIterations) {
@@ -1331,11 +1268,11 @@ export async function orchestrateLoop(
     const snapshot = deps.buildSnapshot(orch, ctx.projectRoot, ctx.worktreeDir);
     __lastSnapshot = snapshot;
 
-// Process transitions (pure state machine)
+    // Process transitions (pure state machine)
     const actions = orch.processTransitions(snapshot);
     __lastActions = actions;
 
-    // Log state transitions and send supervisor events
+    // Log state transitions
     let __hadTransition = false;
     for (const item of orch.getAllItems()) {
       const prev = prevStates.get(item.id);
@@ -1358,50 +1295,14 @@ export async function orchestrateLoop(
           transitionLog.baseBranch = item.baseBranch;
         }
         log(transitionLog);
-
-        // Send supervisor event for key transitions
-        if (item.state === "ci-failed") {
-          sendSupervisorEvent(config.supervisorSessionRef, deps.actionDeps.sendMessage, {
-            type: "ci-failed",
-            itemId: item.id,
-            prNumber: item.prNumber,
-            ciFailCount: item.ciFailCount,
-            failureReason: item.failureReason,
-          }, log);
-        } else if (item.state === "merged" || item.state === "done") {
-          if (!__mergedEventEmitted.has(item.id)) {
-            __mergedEventEmitted.add(item.id);
-            sendSupervisorEvent(config.supervisorSessionRef, deps.actionDeps.sendMessage, {
-              type: "item-merged",
-              itemId: item.id,
-              prNumber: item.prNumber,
-            }, log);
-          }
-        } else if (item.state === "stuck") {
-          sendSupervisorEvent(config.supervisorSessionRef, deps.actionDeps.sendMessage, {
-            type: "item-stuck",
-            itemId: item.id,
-            reason: item.failureReason ?? "unknown",
-          }, log);
-        }
       }
     }
 
     if (__hadTransition) __lastTransitionIter = __iterations;
 
-    // Execute actions and notify supervisor of launches
+    // Execute actions
     for (const action of actions) {
       handleActionExecution(action, orch, ctx, deps, log, costData);
-
-      if (action.type === "launch") {
-        const orchItem = orch.getItem(action.itemId);
-        sendSupervisorEvent(config.supervisorSessionRef, deps.actionDeps.sendMessage, {
-          type: "item-launched",
-          itemId: action.itemId,
-          workspaceRef: orchItem?.workspaceRef ?? null,
-          baseBranch: action.baseBranch ?? null,
-        }, log);
-      }
     }
 
     // Log state summary
@@ -1411,20 +1312,6 @@ export async function orchestrateLoop(
       states[item.state]!.push(item.id);
     }
     log({ ts: new Date().toISOString(), level: "debug", event: "state_summary", states });
-
-    // ── Supervisor heartbeat ─────────────────────────────────────
-    if (config.supervisorSessionRef) {
-      const now = Date.now();
-      if (now - lastSupervisorHeartbeat >= supervisorHeartbeatMs) {
-        sendSupervisorEvent(
-          config.supervisorSessionRef,
-          deps.actionDeps.sendMessage,
-          buildSupervisorHeartbeat(orch.getAllItems()),
-          log,
-        );
-        lastSupervisorHeartbeat = now;
-      }
-    }
 
     // ── External PR review processing ───────────────────────────
     if (config.reviewExternal && deps.externalReviewDeps) {
@@ -1568,8 +1455,6 @@ export async function cmdOrchestrate(
   let mergeStrategy: MergeStrategy = "asap";
   let wipLimitOverride: number | undefined;
   let pollIntervalOverride: number | undefined;
-  let supervisorFlag = false;
-  let supervisorIntervalSecs: number | undefined;
   let frictionDir: string | undefined;
   let daemonMode = false;
   let isDaemonChild = false;
@@ -1611,14 +1496,6 @@ export async function cmdOrchestrate(
         break;
       case "--orchestrator-ws":
         // Reserved for future use — workspace ref for the orchestrator itself
-        i += 2;
-        break;
-      case "--supervisor":
-        supervisorFlag = true;
-        i += 1;
-        break;
-      case "--supervisor-interval":
-        supervisorIntervalSecs = parseInt(args[i + 1] ?? "300", 10);
         i += 2;
         break;
       case "--friction-log":
@@ -1765,7 +1642,6 @@ export async function cmdOrchestrate(
     itemIds = result.itemIds;
     mergeStrategy = result.mergeStrategy;
     wipLimit = result.wipLimit;
-    supervisorFlag = result.supervisor;
   }
 
   log({
@@ -1929,68 +1805,6 @@ export async function cmdOrchestrate(
   };
   process.on("SIGTERM", sigtermHandler);
 
-  // Resolve supervisor configuration
-  const supervisorActive = shouldActivateSupervisor(supervisorFlag, projectRoot);
-  const supervisorHeartbeatMs = supervisorIntervalSecs
-    ? supervisorIntervalSecs * 1000
-    : 300_000;
-
-  // Launch or recover supervisor session
-  let supervisorSessionRef: string | undefined;
-  if (supervisorActive && !isDaemonChild) {
-    // Crash recovery: check saved state for existing supervisor session
-    if (savedDaemonState?.supervisorSessionRef) {
-      const workspaceList = mux.listWorkspaces();
-      if (workspaceList.includes(savedDaemonState.supervisorSessionRef)) {
-        supervisorSessionRef = savedDaemonState.supervisorSessionRef;
-        log({
-          ts: new Date().toISOString(),
-          level: "info",
-          event: "supervisor_session_recovered",
-          ref: supervisorSessionRef,
-        });
-      }
-    }
-
-    // Launch new supervisor session if no existing one was recovered
-    if (!supervisorSessionRef) {
-      try {
-        const items = orch.getAllItems().map((i) => ({
-          id: i.id,
-          state: i.state,
-          workspaceRef: i.workspaceRef,
-          prNumber: i.prNumber,
-          title: i.todo.title,
-        }));
-        supervisorSessionRef = launchSupervisorSession(projectRoot, mux, aiTool, {
-          items,
-          mergeStrategy: orch.config.mergeStrategy,
-          wipLimit: orch.config.wipLimit,
-          frictionDir,
-        }) ?? undefined;
-      } catch (e: unknown) {
-        // Graceful degradation: supervisor launch failure is non-fatal
-        const msg = e instanceof Error ? e.message : String(e);
-        log({
-          ts: new Date().toISOString(),
-          level: "warn",
-          event: "supervisor_launch_failed",
-          error: msg,
-        });
-      }
-    }
-
-    log({
-      ts: new Date().toISOString(),
-      level: "info",
-      event: "supervisor_enabled",
-      sessionRef: supervisorSessionRef ?? null,
-      heartbeatMs: supervisorHeartbeatMs,
-      frictionDir: frictionDir ?? null,
-      autoActivated: !supervisorFlag,
-    });
-  }
-
   // Resolve config-file flags
   const projectConfig = loadConfig(projectRoot);
   const reviewExternalEnabled = reviewExternal || projectConfig["review_external"] === "true";
@@ -2017,7 +1831,6 @@ export async function cmdOrchestrate(
     });
   }
   const initialState = serializeOrchestratorState(orch.getAllItems(), process.pid, daemonStartedAt, {
-    supervisorSessionRef: supervisorSessionRef ?? null,
     wipLimit,
   });
   writeStateFile(projectRoot, initialState);
@@ -2026,7 +1839,6 @@ export async function cmdOrchestrate(
     try {
       const state = serializeOrchestratorState(items, process.pid, daemonStartedAt, {
         statusPaneRef: null,
-        supervisorSessionRef: supervisorSessionRef ?? null,
         wipLimit,
       });
       writeStateFile(projectRoot, state);
@@ -2107,7 +1919,6 @@ export async function cmdOrchestrate(
 
   const loopConfig: OrchestrateLoopConfig = {
     ...(pollIntervalOverride ? { pollIntervalMs: pollIntervalOverride } : {}),
-    ...(supervisorSessionRef ? { supervisorSessionRef, supervisorHeartbeatMs } : {}),
     ...(repoUrl ? { repoUrl } : {}),
     analyticsDir,
     aiTool,
@@ -2136,21 +1947,6 @@ export async function cmdOrchestrate(
       abortController.signal,
     );
   } finally {
-    // Close supervisor session
-    if (supervisorSessionRef) {
-      try {
-        mux.closeWorkspace(supervisorSessionRef);
-        log({
-          ts: new Date().toISOString(),
-          level: "info",
-          event: "supervisor_session_closed",
-          ref: supervisorSessionRef,
-        });
-      } catch {
-        // Non-fatal — best-effort cleanup
-      }
-    }
-
     // Close workspaces for terminal items only (done, stuck, merged).
     // In-flight workers (implementing, ci-pending, etc.) may still be actively
     // running — leave their workspaces open so they survive orchestrator restarts.

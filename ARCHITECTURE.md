@@ -12,8 +12,7 @@ See also: [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and coding co
 2. [Data Flow](#data-flow)
 3. [Key Abstractions](#key-abstractions)
 4. [Extension Points](#extension-points)
-5. [Supervisor Architecture](#supervisor-architecture)
-6. [Worker Lifecycle](#worker-lifecycle)
+5. [Worker Lifecycle](#worker-lifecycle)
 
 ---
 
@@ -111,7 +110,6 @@ ninthwave orchestrate (event loop, ~10s poll)
   │   ├─ rebase   → git.ts daemonRebase
   │   ├─ clean    → clean.ts cleanSingleWorktree
   │   └─ launch-review → start.ts launchReviewWorker
-  └─ every 5min: supervisor heartbeat sent to supervisor session (optional, --supervisor flag)
 
 Post-merge
   ├─ worktree and workspace cleaned up
@@ -177,38 +175,6 @@ Concrete implementations: `CmuxAdapter`, `TmuxAdapter`, `ZellijAdapter`. Auto-de
 4. Add tests in `test/mycommand.test.ts`.
 
 ---
-
-## Supervisor Architecture
-
-The orchestrator has two layers:
-
-### Deterministic Daemon
-
-The core event loop in [`core/commands/orchestrate.ts`](core/commands/orchestrate.ts). Pure TypeScript — no LLM. Runs every ~10 seconds:
-
-1. Poll GitHub (PR state, CI status, review decision) and the multiplexer (worker liveness, screen content).
-2. Call `processTransitions()` — the pure state machine returns a list of `Action` objects.
-3. Execute each action via `executeAction()` (launch workers, merge PRs, send messages, rebase branches).
-4. Persist state to `~/.ninthwave/state/<project>/state.json` for daemon resilience.
-
-The daemon supports two output modes:
-
-- **TUI mode** (default when stdout is a TTY): renders a live status table using [`core/status-render.ts`](core/status-render.ts), with keyboard shortcuts for interacting with the pipeline.
-- **JSON mode** (`--json` flag): emits structured JSON log lines, suitable for piping to other tools or CI environments.
-
-The daemon can also run in the background (`--daemon` flag). In daemon mode, state survives restarts.
-
-### Optional LLM Supervisor (Session-Based)
-
-The supervisor runs as a **separate AI session** alongside the daemon, not as an inline LLM call. The agent prompt lives in [`agents/supervisor.md`](agents/supervisor.md); activation logic is in [`core/supervisor.ts`](core/supervisor.ts).
-
-1. The daemon launches a supervisor session via `launchSupervisorSession()` in [`core/commands/start.ts`](core/commands/start.ts).
-2. The daemon sends structured event messages to the supervisor session on state transitions and periodic heartbeats (default: every 5 minutes).
-3. The supervisor session observes pipeline state, detects anomalies (stalled workers, CI cycling), nudges workers via `cmux send`, and logs friction to `.ninthwave/friction/`.
-
-This session-based approach gives the supervisor full tool access (bash, file I/O, git) and multi-turn reasoning — unlike the previous inline `claude --print` approach which was limited to single-shot responses.
-
-The supervisor is activated explicitly via `--supervisor` flag, or automatically in dogfooding mode (when `skills/work/SKILL.md` exists).
 
 ---
 

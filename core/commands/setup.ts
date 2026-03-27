@@ -239,14 +239,12 @@ const SKILLS = ["work", "decompose", "todo-preview", "ninthwave-upgrade"];
 export const AGENT_SOURCES = [
   "todo-worker.md",
   "review-worker.md",
-  "supervisor.md",
 ];
 
 /** Human-readable descriptions for each agent file. */
 export const AGENT_DESCRIPTIONS: Record<string, string> = {
   "todo-worker.md": "implementation agent for batch TODO processing",
   "review-worker.md": "PR code review agent",
-  "supervisor.md": "pipeline monitoring agent",
 };
 
 /** AI tool target directories where agent symlinks are created. */
@@ -258,7 +256,7 @@ export const AGENT_TARGET_DIRS = [
 
 /** Agent selection result: which agents to install and which tool directories to target. */
 export interface AgentSelection {
-  /** Agent source filenames to install (e.g., ["todo-worker.md", "supervisor.md"]) */
+  /** Agent source filenames to install (e.g., ["todo-worker.md", "review-worker.md"]) */
   agents: string[];
   /** Tool target directory indices into AGENT_TARGET_DIRS */
   toolDirs: { dir: string; suffix: string; tool: string }[];
