@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "child_process";
-import { writeFileSync } from "fs";
+import { writeFileSync, realpathSync } from "fs";
 import { setupTempRepo, registerCleanup } from "./helpers.ts";
 import { run } from "../core/shell.ts";
 import {
@@ -23,6 +23,7 @@ import {
   gitCommit,
   hasChanges,
   rebaseOnto,
+  findWorktreeForBranch,
   REMOTE_REF_GONE_RE,
 } from "../core/git.ts";
 
@@ -543,6 +544,53 @@ describe("git.ts error handling", () => {
       // Verify our regex matches the exact stderr from the current git version
       const output = `${result.stderr}\n${result.stdout}`;
       expect(REMOTE_REF_GONE_RE.test(output)).toBe(true);
+    });
+  });
+
+  // ── findWorktreeForBranch() — tested directly ────────────────────────
+
+  describe("findWorktreeForBranch()", () => {
+    it("returns null when no worktree has the branch checked out", () => {
+      const repo = setupTempRepo();
+      initWithCommit(repo);
+      expect(findWorktreeForBranch(repo, "nonexistent-branch")).toBeNull();
+    });
+
+    it("returns the worktree path when the branch is checked out", () => {
+      const repo = setupTempRepo();
+      initWithCommit(repo);
+      const wtPath = `${repo}-wt`;
+      run("git", ["-C", repo, "worktree", "add", wtPath, "-b", "test-branch"]);
+
+      const result = findWorktreeForBranch(repo, "test-branch");
+      // git worktree list resolves symlinks (e.g., /var → /private/var on macOS)
+      expect(result).toBe(realpathSync(wtPath));
+
+      // Cleanup
+      run("git", ["-C", repo, "worktree", "remove", wtPath, "--force"]);
+    });
+
+    it("finds a branch checked out in a deeply nested worktree path", () => {
+      const repo = setupTempRepo();
+      initWithCommit(repo);
+      const wtPath = `${repo}/.claude/worktrees/agent-abc123`;
+      run("git", ["-C", repo, "worktree", "add", wtPath, "-b", "todo/H-NTF-1"]);
+
+      const result = findWorktreeForBranch(repo, "todo/H-NTF-1");
+      expect(result).toBe(realpathSync(wtPath));
+
+      // Cleanup
+      run("git", ["-C", repo, "worktree", "remove", wtPath, "--force"]);
+    });
+
+    it("returns null for a branch that exists but is not checked out in any worktree", () => {
+      const repo = setupTempRepo();
+      initWithCommit(repo);
+      run("git", ["-C", repo, "branch", "orphan-branch"]);
+
+      // Branch exists but is not checked out anywhere (main checkout doesn't count
+      // unless we're looking for "main")
+      expect(findWorktreeForBranch(repo, "orphan-branch")).toBeNull();
     });
   });
 

@@ -14,6 +14,9 @@ import {
   deleteBranch,
   deleteRemoteBranch,
   createWorktree,
+  attachWorktree,
+  removeWorktree,
+  findWorktreeForBranch,
 } from "../git.ts";
 import { type Multiplexer, getMux, waitForReady } from "../mux.ts";
 import { sendWithReadyWait } from "../worker-health.ts";
@@ -433,24 +436,65 @@ export function launchSingleItem(
       }
     }
 
-    // Handle branch collision
+    // Handle branch collision — the branch may be checked out in an external
+    // worktree (e.g., .claude/worktrees/ from a prior agent session). git branch -D
+    // refuses to delete branches checked out in any worktree, so we must remove
+    // the external worktree first.
+    let reuseExistingBranch = false;
     if (branchExists(targetRepo, branchName)) {
       warn(
-        `Branch ${branchName} already exists in ${basename(targetRepo)}. Deleting stale branch.`,
+        `Branch ${branchName} already exists in ${basename(targetRepo)}. Checking for existing work.`,
       );
-      try {
-        deleteBranch(targetRepo, branchName);
-      } catch {
-        // ignore
+
+      // Check if the branch is checked out in a worktree outside our control
+      const externalWt = findWorktreeForBranch(targetRepo, branchName);
+      if (externalWt && externalWt !== worktreePath) {
+        warn(
+          `Branch ${branchName} is checked out in external worktree: ${externalWt}. Removing it.`,
+        );
+        try {
+          removeWorktree(targetRepo, externalWt, /* force */ true);
+        } catch (e) {
+          warn(
+            `Failed to remove external worktree ${externalWt}: ${e instanceof Error ? e.message : e}. Attempting branch deletion anyway.`,
+          );
+        }
+      }
+
+      // Check if there's an open PR for this branch — if so, a prior session
+      // already did the work. Reuse the branch to preserve the PR and its commits.
+      const openPrs = prList(targetRepo, branchName, "open");
+      if (openPrs.length > 0) {
+        info(
+          `Open PR #${openPrs[0]!.number} found for ${branchName}. Reusing existing branch to preserve prior work.`,
+        );
+        reuseExistingBranch = true;
+      } else {
+        try {
+          deleteBranch(targetRepo, branchName);
+        } catch (e) {
+          // If deletion still fails, the createWorktree below will fail with
+          // a clear error rather than a silent launch-failed.
+          warn(
+            `Failed to delete branch ${branchName}: ${e instanceof Error ? e.message : e}`,
+          );
+        }
       }
     }
 
-    info(
-      `Creating worktree for ${item.id} on branch ${branchName} in ${basename(targetRepo)}`,
-    );
-    // When stacking, create worktree from the dependency branch; otherwise from HEAD (default)
-    const startPoint = baseBranch ? `origin/${baseBranch}` : "HEAD";
-    createWorktree(targetRepo, worktreePath, branchName, startPoint);
+    if (reuseExistingBranch) {
+      info(
+        `Attaching worktree for ${item.id} to existing branch ${branchName} in ${basename(targetRepo)}`,
+      );
+      attachWorktree(targetRepo, worktreePath, branchName);
+    } else {
+      info(
+        `Creating worktree for ${item.id} on branch ${branchName} in ${basename(targetRepo)}`,
+      );
+      // When stacking, create worktree from the dependency branch; otherwise from HEAD (default)
+      const startPoint = baseBranch ? `origin/${baseBranch}` : "HEAD";
+      createWorktree(targetRepo, worktreePath, branchName, startPoint);
+    }
   }
 
   // Track cross-repo items in the index

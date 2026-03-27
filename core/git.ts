@@ -34,6 +34,15 @@ export function createWorktree(
   git(repoRoot, ["worktree", "add", worktreePath, "-b", branchName, startPoint]);
 }
 
+/** Attach a worktree to an existing branch (no -b flag). */
+export function attachWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  branchName: string,
+): void {
+  git(repoRoot, ["worktree", "add", worktreePath, branchName]);
+}
+
 /** Remove a git worktree. */
 export function removeWorktree(
   repoRoot: string,
@@ -90,6 +99,33 @@ export function branchExists(repoRoot: string, branch: string): boolean {
 /** Delete a local branch (force). */
 export function deleteBranch(repoRoot: string, branch: string): void {
   git(repoRoot, ["branch", "-D", branch]);
+}
+
+/**
+ * Find the worktree path that has a given branch checked out.
+ * Returns the worktree path, or null if no worktree has this branch.
+ *
+ * Uses `git worktree list --porcelain` to discover all worktrees,
+ * including those created by external tools (e.g., `.claude/worktrees/`).
+ */
+export function findWorktreeForBranch(repoRoot: string, branch: string): string | null {
+  const result = run("git", ["-C", repoRoot, "worktree", "list", "--porcelain"]);
+  if (result.exitCode !== 0) return null;
+
+  // Porcelain output groups entries separated by blank lines.
+  // Each group has: worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>
+  let currentPath: string | null = null;
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      currentPath = line.slice("worktree ".length);
+    } else if (line.startsWith("branch refs/heads/") && currentPath) {
+      const branchName = line.slice("branch refs/heads/".length);
+      if (branchName === branch) return currentPath;
+    } else if (line === "") {
+      currentPath = null;
+    }
+  }
+  return null;
 }
 
 /** Patterns that indicate the remote branch was already deleted.
