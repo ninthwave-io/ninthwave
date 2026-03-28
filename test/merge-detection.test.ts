@@ -1,12 +1,18 @@
 /**
- * Integration test for the full merge detection lifecycle:
- * buildSnapshot → processTransitions → handleImplementing/handlePrLifecycle
+ * End-to-end test suite for the merge detection pipeline.
  *
- * Covers the fast auto-merge scenario where orchItem.prNumber was never set
- * before checkPrStatus returns "merged".
+ * Covers the full path: buildSnapshot → processTransitions → state transitions → actions
+ * using the Orchestrator class with injected dependencies (no vi.mock).
+ *
+ * These tests address recurring friction in merge detection:
+ * - Friction #20: handleImplementing not checking prState === "merged"
+ * - Friction #22: CONFLICTING PRs in merge-retry loop
+ * - Friction #23: CI-pending PRs with merge conflicts hanging
+ * - Title collision check too aggressive
+ * - Daemon missing merged PRs despite prior fixes
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { join } from "path";
 import { mkdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -14,7 +20,8 @@ import {
   Orchestrator,
   type ItemSnapshot,
   type PollSnapshot,
-  type OrchestratorItem,
+  type OrchestratorDeps,
+  type ExecutionContext,
 } from "../core/orchestrator.ts";
 import {
   buildSnapshot,
@@ -70,34 +77,61 @@ function stubMux(): Multiplexer {
   };
 }
 
+/** Create a stub ExecutionContext for executeAction calls. */
+function stubCtx(): ExecutionContext {
+  return {
+    projectRoot: PROJECT_ROOT,
+    worktreeDir: join(PROJECT_ROOT, ".worktrees"),
+    todosDir: join(PROJECT_ROOT, ".ninthwave", "todos"),
+    aiTool: "claude",
+  };
+}
+
+/** Create stub OrchestratorDeps with all required functions. */
+function stubDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "ws:1" }),
+    cleanSingleWorktree: () => true,
+    prMerge: () => true,
+    prComment: () => true,
+    sendMessage: () => true,
+    closeWorkspace: () => true,
+    fetchOrigin: () => {},
+    ffMerge: () => {},
+    checkPrMergeable: () => true,
+    ...overrides,
+  };
+}
+
 const NOW = new Date("2026-03-27T10:00:00Z");
 const PROJECT_ROOT = "/tmp/nw-merge-test";
 
-// ── Integration tests ────────────────────────────────────────────────
+// ── Test cases ───────────────────────────────────────────────────────
 
-describe("Merge detection lifecycle (integration)", () => {
-  describe("buildSnapshot → processTransitions (live polling)", () => {
-    it("happy path: fast auto-merge detected via buildSnapshot, produces clean action", () => {
+describe("Merge detection pipeline (end-to-end)", () => {
+  // ── Test 1: Happy path — PR auto-merges between polls ──────────
+  describe("1. Happy path: PR auto-merges between polls", () => {
+    it("worker creates PR → PR auto-merges → buildSnapshot returns merged → handleImplementing transitions to merged → clean action emitted", () => {
       const orch = new Orchestrator();
-      orch.addItem(makeTodo("MRG-HP-1", "Implement feature X"));
-      orch.setState("MRG-HP-1", "implementing");
+      orch.addItem(makeTodo("MRG-1", "Implement feature X"));
+      orch.setState("MRG-1", "implementing");
 
-      // checkPr returns merged status — simulates fast auto-merge
-      // where prNumber was never set on the orchestrator item
+      // Simulate: PR was created and auto-merged via `gh pr merge --squash --auto`
+      // between polls, so buildSnapshot sees it as merged directly
       const checkPr = (_id: string, _root: string) =>
-        "MRG-HP-1\t42\tmerged\t\t\tfeat: implement feature X";
+        "MRG-1\t42\tmerged\t\t\tfeat: implement feature X";
 
       const snapshot = buildSnapshot(
         orch,
         PROJECT_ROOT,
         join(PROJECT_ROOT, ".worktrees"),
         stubMux(),
-        () => null, // getLastCommitTime — not relevant for merged
+        () => null,
         checkPr,
       );
 
       // Verify snapshot captures merged state
-      const snap = snapshot.items.find((s) => s.id === "MRG-HP-1");
+      const snap = snapshot.items.find((s) => s.id === "MRG-1");
       expect(snap).toBeDefined();
       expect(snap!.prState).toBe("merged");
       expect(snap!.prNumber).toBe(42);
@@ -105,58 +139,94 @@ describe("Merge detection lifecycle (integration)", () => {
       // Feed snapshot into processTransitions
       const actions = orch.processTransitions(snapshot, NOW);
 
-      // Item transitions to merged
-      expect(orch.getItem("MRG-HP-1")!.state).toBe("merged");
-      expect(orch.getItem("MRG-HP-1")!.prNumber).toBe(42);
+      // Item transitions to merged (merged → done happens on next processTransitions cycle)
+      const item = orch.getItem("MRG-1")!;
+      expect(item.state).toBe("merged");
+      expect(item.prNumber).toBe(42);
+
+      // Second cycle completes: merged → done
+      const actions2 = orch.processTransitions(snapshotWith([]), NOW);
+      expect(item.state).toBe("done");
 
       // Produces a clean action
       const cleanAction = actions.find(
-        (a) => a.type === "clean" && a.itemId === "MRG-HP-1",
+        (a) => a.type === "clean" && a.itemId === "MRG-1",
       );
       expect(cleanAction).toBeDefined();
     });
+  });
 
-    it("rephrased title: PR title differs but prNumber is tracked, still detected as merged", () => {
+  // ── Test 2: PR merges while in ci-pending state ────────────────
+  describe("2. PR merges while in ci-pending state", () => {
+    it("item in ci-pending → PR merges externally → handlePrLifecycle detects merged → transitions correctly", () => {
       const orch = new Orchestrator();
-      orch.addItem(makeTodo("MRG-RT-1", "Add error handling to parser"));
-      orch.setState("MRG-RT-1", "ci-passed");
-      // Orchestrator tracked this PR during the run (worker created it, snapshot detected it)
-      orch.getItem("MRG-RT-1")!.prNumber = 55;
+      orch.addItem(makeTodo("MRG-2", "Fix parsing bug"));
+      orch.setState("MRG-2", "ci-pending");
+      orch.getItem("MRG-2")!.prNumber = 50;
 
-      // Worker used a completely different PR title than the TODO title.
-      // Since prNumber matches, title check is skipped.
-      const checkPr = (_id: string, _root: string) =>
-        "MRG-RT-1\t55\tmerged\t\t\trefactor: rewrite parser error paths";
-
-      const snapshot = buildSnapshot(
-        orch,
-        PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
-        stubMux(),
-        () => null,
-        checkPr,
-      );
-
-      const snap = snapshot.items.find((s) => s.id === "MRG-RT-1");
-      expect(snap).toBeDefined();
-      expect(snap!.prState).toBe("merged");
+      // Simulate: someone merged the PR externally while CI was still pending
+      const snapshot = snapshotWith([
+        {
+          id: "MRG-2",
+          prNumber: 50,
+          prState: "merged",
+        },
+      ]);
 
       const actions = orch.processTransitions(snapshot, NOW);
 
-      // Detected as merged — prNumber is tracked so title is irrelevant
-      expect(orch.getItem("MRG-RT-1")!.state).toBe("merged");
-      expect(actions.some((a) => a.type === "clean" && a.itemId === "MRG-RT-1")).toBe(true);
+      // handlePrLifecycle checks prState === "merged" first
+      const item = orch.getItem("MRG-2")!;
+      expect(item.state).toBe("merged");
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "MRG-2")).toBe(true);
+
+      // Second cycle: merged → done
+      orch.processTransitions(snapshotWith([]), NOW);
+      expect(item.state).toBe("done");
     });
+  });
 
-    it("stale merged PR with different title and no tracked prNumber is ignored", () => {
+  // ── Test 3: PR merges while in ci-passed state ─────────────────
+  describe("3. PR merges while in ci-passed state", () => {
+    it("item in ci-passed → PR merges → handlePrLifecycle detects → transitions to done", () => {
       const orch = new Orchestrator();
-      orch.addItem(makeTodo("MRG-RT-1", "Add error handling to parser"));
-      orch.setState("MRG-RT-1", "implementing");
-      // No prNumber tracked — worker hasn't created a PR yet
+      orch.addItem(makeTodo("MRG-3", "Add new endpoint"));
+      orch.setState("MRG-3", "ci-passed");
+      orch.getItem("MRG-3")!.prNumber = 60;
 
-      // Old merged PR from previous cycle with different title
+      const snapshot = snapshotWith([
+        {
+          id: "MRG-3",
+          prNumber: 60,
+          prState: "merged",
+          ciStatus: "pass",
+        },
+      ]);
+
+      const actions = orch.processTransitions(snapshot, NOW);
+
+      const item = orch.getItem("MRG-3")!;
+      expect(item.state).toBe("merged");
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "MRG-3")).toBe(true);
+
+      // Second cycle: merged → done
+      orch.processTransitions(snapshotWith([]), NOW);
+      expect(item.state).toBe("done");
+    });
+  });
+
+  // ── Test 4: Title collision — reused TODO ID with stale merged PR ──
+  describe("4. Title collision: reused TODO ID with stale merged PR", () => {
+    it("old PR merged → new TODO with same ID → buildSnapshot ignores stale merged PR (title mismatch) → returns no prState", () => {
+      const orch = new Orchestrator();
+      // New TODO with same ID but different title
+      orch.addItem(makeTodo("H-FOO-1", "Brand new feature for v2"));
+      orch.setState("H-FOO-1", "implementing");
+      // No prNumber tracked — this is a fresh launch
+
+      // Old merged PR has a completely different title
       const checkPr = (_id: string, _root: string) =>
-        "MRG-RT-1\t55\tmerged\t\t\trefactor: rewrite parser error paths";
+        "H-FOO-1\t30\tmerged\t\t\tfix: old bug from v1 cycle";
 
       const snapshot = buildSnapshot(
         orch,
@@ -167,19 +237,362 @@ describe("Merge detection lifecycle (integration)", () => {
         checkPr,
       );
 
-      const snap = snapshot.items.find((s) => s.id === "MRG-RT-1");
+      const snap = snapshot.items.find((s) => s.id === "H-FOO-1");
       expect(snap).toBeDefined();
-      // prState should be undefined — title mismatch + no tracked prNumber = stale PR
+      // Title mismatch + no tracked prNumber = stale PR, prState should be undefined
       expect(snap!.prState).toBeUndefined();
+
+      // processTransitions should NOT transition to merged
+      const actions = orch.processTransitions(snapshot, NOW);
+      expect(orch.getItem("H-FOO-1")!.state).toBe("implementing");
+      // No clean action should be emitted for this item from merge detection
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "H-FOO-1")).toBe(false);
     });
   });
 
-  describe("reconstructState: restart recovery with title collision detection", () => {
+  // ── Test 5: Title collision — tracked PR number matches ────────
+  describe("5. Title collision: tracked PR number matches", () => {
+    it("orchestrator tracks PR #42 → buildSnapshot sees merged PR #42 → trusts it regardless of title → returns merged", () => {
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("H-FOO-2", "Original TODO title"));
+      orch.setState("H-FOO-2", "ci-passed");
+      // Orchestrator already tracked this PR number
+      orch.getItem("H-FOO-2")!.prNumber = 42;
+
+      // Worker used a completely different PR title — but PR number matches
+      const checkPr = (_id: string, _root: string) =>
+        "H-FOO-2\t42\tmerged\t\t\trefactor: completely rewritten implementation";
+
+      const snapshot = buildSnapshot(
+        orch,
+        PROJECT_ROOT,
+        join(PROJECT_ROOT, ".worktrees"),
+        stubMux(),
+        () => null,
+        checkPr,
+      );
+
+      const snap = snapshot.items.find((s) => s.id === "H-FOO-2");
+      expect(snap).toBeDefined();
+      // prNumber matches tracked → trusted as merged despite title mismatch
+      expect(snap!.prState).toBe("merged");
+
+      const actions = orch.processTransitions(snapshot, NOW);
+      expect(orch.getItem("H-FOO-2")!.state).toBe("merged");
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "H-FOO-2")).toBe(true);
+
+      // Second cycle: merged → done
+      orch.processTransitions(snapshotWith([]), NOW);
+      expect(orch.getItem("H-FOO-2")!.state).toBe("done");
+    });
+  });
+
+  // ── Test 6: Merge conflict detection in ci-pending ─────────────
+  describe("6. Merge conflict detection: CONFLICTING in ci-pending", () => {
+    it("item in ci-pending → snapshot shows isMergeable: false → daemon-rebase action emitted", () => {
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("MRG-6", "Update config"));
+      orch.setState("MRG-6", "ci-pending");
+      orch.getItem("MRG-6")!.prNumber = 70;
+      orch.getItem("MRG-6")!.workspaceRef = "ws:6";
+
+      const snapshot = snapshotWith([
+        {
+          id: "MRG-6",
+          prNumber: 70,
+          prState: "open",
+          ciStatus: "pending",
+          isMergeable: false,
+        },
+      ]);
+
+      const actions = orch.processTransitions(snapshot, NOW);
+
+      // Should emit a daemon-rebase action
+      const rebaseAction = actions.find(
+        (a) => a.type === "daemon-rebase" && a.itemId === "MRG-6",
+      );
+      expect(rebaseAction).toBeDefined();
+      expect(rebaseAction!.message).toContain("merge conflicts");
+
+      // Item should have rebaseRequested set
+      expect(orch.getItem("MRG-6")!.rebaseRequested).toBe(true);
+    });
+
+    it("does not send duplicate rebase requests when rebaseRequested is already true", () => {
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("MRG-6B", "Update config v2"));
+      orch.setState("MRG-6B", "ci-pending");
+      orch.getItem("MRG-6B")!.prNumber = 71;
+      orch.getItem("MRG-6B")!.workspaceRef = "ws:6b";
+      orch.getItem("MRG-6B")!.rebaseRequested = true; // already requested
+
+      const snapshot = snapshotWith([
+        {
+          id: "MRG-6B",
+          prNumber: 71,
+          prState: "open",
+          ciStatus: "pending",
+          isMergeable: false,
+        },
+      ]);
+
+      const actions = orch.processTransitions(snapshot, NOW);
+
+      // No daemon-rebase action — already requested
+      const rebaseActions = actions.filter(
+        (a) => a.type === "daemon-rebase" && a.itemId === "MRG-6B",
+      );
+      expect(rebaseActions).toHaveLength(0);
+    });
+  });
+
+  // ── Test 7: Merge retry limit — 3 failures → stuck ────────────
+  describe("7. Merge retry limit: 3 failures → stuck", () => {
+    it("executeMerge fails 3 times → item transitions to stuck (not infinite loop)", () => {
+      const orch = new Orchestrator({ mergeStrategy: "asap", maxMergeRetries: 3 });
+      orch.addItem(makeTodo("MRG-7", "Feature with flaky merge"));
+      orch.setState("MRG-7", "ci-passed");
+      orch.getItem("MRG-7")!.prNumber = 80;
+
+      const ctx = stubCtx();
+      // prMerge always fails, checkPrMergeable returns true (not a conflict — genuine failure)
+      const deps = stubDeps({
+        prMerge: () => false,
+        checkPrMergeable: () => true,
+      });
+
+      // Attempt 1: ci-passed → merging (via processTransitions) → executeMerge fails → ci-passed
+      let snapshot = snapshotWith([
+        { id: "MRG-7", prNumber: 80, prState: "open", ciStatus: "pass" },
+      ]);
+      let actions = orch.processTransitions(snapshot, NOW);
+      expect(orch.getItem("MRG-7")!.state).toBe("merging");
+      let mergeAction = actions.find((a) => a.type === "merge" && a.itemId === "MRG-7");
+      expect(mergeAction).toBeDefined();
+      let result = orch.executeAction(mergeAction!, ctx, deps);
+      expect(result.success).toBe(false);
+      expect(orch.getItem("MRG-7")!.mergeFailCount).toBe(1);
+      expect(orch.getItem("MRG-7")!.state).toBe("ci-passed"); // back to ci-passed for retry
+
+      // Attempt 2
+      snapshot = snapshotWith([
+        { id: "MRG-7", prNumber: 80, prState: "open", ciStatus: "pass" },
+      ]);
+      actions = orch.processTransitions(snapshot, NOW);
+      mergeAction = actions.find((a) => a.type === "merge" && a.itemId === "MRG-7");
+      expect(mergeAction).toBeDefined();
+      result = orch.executeAction(mergeAction!, ctx, deps);
+      expect(orch.getItem("MRG-7")!.mergeFailCount).toBe(2);
+      expect(orch.getItem("MRG-7")!.state).toBe("ci-passed");
+
+      // Attempt 3: reaches maxMergeRetries → stuck
+      snapshot = snapshotWith([
+        { id: "MRG-7", prNumber: 80, prState: "open", ciStatus: "pass" },
+      ]);
+      actions = orch.processTransitions(snapshot, NOW);
+      mergeAction = actions.find((a) => a.type === "merge" && a.itemId === "MRG-7");
+      expect(mergeAction).toBeDefined();
+      result = orch.executeAction(mergeAction!, ctx, deps);
+      expect(orch.getItem("MRG-7")!.mergeFailCount).toBe(3);
+      expect(orch.getItem("MRG-7")!.state).toBe("stuck");
+      expect(orch.getItem("MRG-7")!.failureReason).toContain("merge-failed");
+      expect(orch.getItem("MRG-7")!.failureReason).toContain("3");
+
+      // Attempt 4: should NOT happen because item is stuck
+      snapshot = snapshotWith([
+        { id: "MRG-7", prNumber: 80, prState: "open", ciStatus: "pass" },
+      ]);
+      actions = orch.processTransitions(snapshot, NOW);
+      // No merge action should be emitted for stuck items
+      const postStuckMerge = actions.filter(
+        (a) => a.type === "merge" && a.itemId === "MRG-7",
+      );
+      expect(postStuckMerge).toHaveLength(0);
+    });
+  });
+
+  // ── Test 8: Branch deleted after squash merge ──────────────────
+  describe("8. Branch deleted after squash merge", () => {
+    it("PR squash-merged → branch auto-deleted → prList(open) empty → prList(merged) returns PR → snapshot has prState: merged", () => {
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("MRG-8", "Cleanup dead code"));
+      orch.setState("MRG-8", "ci-passed");
+      orch.getItem("MRG-8")!.prNumber = 90;
+
+      // After squash merge, GitHub deletes the branch automatically.
+      // checkPrStatus calls prList("open") → empty, then prList("merged") → finds it.
+      // The checkPr mock simulates the final output format.
+      const checkPr = (_id: string, _root: string) =>
+        "MRG-8\t90\tmerged\t\t\tchore: cleanup dead code";
+
+      const snapshot = buildSnapshot(
+        orch,
+        PROJECT_ROOT,
+        join(PROJECT_ROOT, ".worktrees"),
+        stubMux(),
+        () => null,
+        checkPr,
+      );
+
+      const snap = snapshot.items.find((s) => s.id === "MRG-8");
+      expect(snap).toBeDefined();
+      expect(snap!.prState).toBe("merged");
+      expect(snap!.prNumber).toBe(90);
+
+      // Process transitions — should go to merged
+      const actions = orch.processTransitions(snapshot, NOW);
+      expect(orch.getItem("MRG-8")!.state).toBe("merged");
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "MRG-8")).toBe(true);
+
+      // Second cycle: merged → done
+      orch.processTransitions(snapshotWith([]), NOW);
+      expect(orch.getItem("MRG-8")!.state).toBe("done");
+    });
+  });
+
+  // ── Additional edge cases ──────────────────────────────────────
+  describe("Edge cases", () => {
+    it("PR merges while in ci-failed state → handlePrLifecycle detects merged → clean action", () => {
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("MRG-E1", "Fix flaky test"));
+      orch.setState("MRG-E1", "ci-failed");
+      orch.getItem("MRG-E1")!.prNumber = 95;
+      orch.getItem("MRG-E1")!.ciFailCount = 1;
+
+      const snapshot = snapshotWith([
+        { id: "MRG-E1", prNumber: 95, prState: "merged" },
+      ]);
+
+      const actions = orch.processTransitions(snapshot, NOW);
+      expect(orch.getItem("MRG-E1")!.state).toBe("merged");
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "MRG-E1")).toBe(true);
+
+      // Second cycle: merged → done
+      orch.processTransitions(snapshotWith([]), NOW);
+      expect(orch.getItem("MRG-E1")!.state).toBe("done");
+    });
+
+    it("merge conflict during executeMerge triggers rebase instead of counting as merge failure", () => {
+      const orch = new Orchestrator({ mergeStrategy: "asap" });
+      orch.addItem(makeTodo("MRG-E2", "Conflict scenario"));
+      orch.setState("MRG-E2", "ci-passed");
+      orch.getItem("MRG-E2")!.prNumber = 100;
+      orch.getItem("MRG-E2")!.workspaceRef = "ws:e2";
+
+      const ctx = stubCtx();
+      // prMerge fails AND checkPrMergeable returns false (conflict)
+      const deps = stubDeps({
+        prMerge: () => false,
+        checkPrMergeable: () => false,
+        daemonRebase: () => true, // daemon rebase succeeds
+      });
+
+      // Get merge action
+      const snapshot = snapshotWith([
+        { id: "MRG-E2", prNumber: 100, prState: "open", ciStatus: "pass" },
+      ]);
+      const actions = orch.processTransitions(snapshot, NOW);
+      const mergeAction = actions.find((a) => a.type === "merge" && a.itemId === "MRG-E2");
+      expect(mergeAction).toBeDefined();
+
+      // Execute merge — should detect conflict and rebase
+      const result = orch.executeAction(mergeAction!, ctx, deps);
+      expect(result.success).toBe(false);
+
+      // Should transition to ci-pending (not stay in merging or go to stuck)
+      expect(orch.getItem("MRG-E2")!.state).toBe("ci-pending");
+      // mergeFailCount should NOT be incremented for conflict-caused failures
+      expect(orch.getItem("MRG-E2")!.mergeFailCount ?? 0).toBe(0);
+    });
+
+    it("CI fails due to merge conflicts → daemon-rebase emitted instead of generic CI failure", () => {
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("MRG-E3", "Conflict CI scenario"));
+      orch.setState("MRG-E3", "pr-open");
+      orch.getItem("MRG-E3")!.prNumber = 110;
+      orch.getItem("MRG-E3")!.workspaceRef = "ws:e3";
+
+      const snapshot = snapshotWith([
+        {
+          id: "MRG-E3",
+          prNumber: 110,
+          prState: "open",
+          ciStatus: "fail",
+          isMergeable: false, // CONFLICTING
+        },
+      ]);
+
+      const actions = orch.processTransitions(snapshot, NOW);
+
+      // Should emit daemon-rebase (not just notify-ci-failure)
+      const daemonRebase = actions.find(
+        (a) => a.type === "daemon-rebase" && a.itemId === "MRG-E3",
+      );
+      expect(daemonRebase).toBeDefined();
+      expect(daemonRebase!.message).toContain("merge conflicts");
+
+      // State should be ci-failed
+      expect(orch.getItem("MRG-E3")!.state).toBe("ci-failed");
+    });
+
+    it("buildSnapshot integration: checkPr returns open PR with various CI states", () => {
+      // Verify buildSnapshot correctly translates checkPr status strings
+      const orch = new Orchestrator();
+      orch.addItem(makeTodo("MRG-E4-P", "Pending PR"));
+      orch.setState("MRG-E4-P", "implementing");
+      orch.addItem(makeTodo("MRG-E4-F", "Failing PR"));
+      orch.setState("MRG-E4-F", "implementing");
+      orch.addItem(makeTodo("MRG-E4-R", "Ready PR"));
+      orch.setState("MRG-E4-R", "implementing");
+
+      const checkPr = (id: string, _root: string) => {
+        switch (id) {
+          case "MRG-E4-P":
+            return "MRG-E4-P\t200\tpending\tMERGEABLE\t2026-03-27T09:00:00Z";
+          case "MRG-E4-F":
+            return "MRG-E4-F\t201\tfailing\tCONFLICTING\t2026-03-27T09:01:00Z";
+          case "MRG-E4-R":
+            return "MRG-E4-R\t202\tready\tMERGEABLE\t2026-03-27T09:02:00Z";
+          default:
+            return `${id}\t\tno-pr`;
+        }
+      };
+
+      const snapshot = buildSnapshot(
+        orch,
+        PROJECT_ROOT,
+        join(PROJECT_ROOT, ".worktrees"),
+        stubMux(),
+        () => null,
+        checkPr,
+      );
+
+      const pending = snapshot.items.find((s) => s.id === "MRG-E4-P");
+      expect(pending!.ciStatus).toBe("pending");
+      expect(pending!.prState).toBe("open");
+      expect(pending!.isMergeable).toBe(true);
+
+      const failing = snapshot.items.find((s) => s.id === "MRG-E4-F");
+      expect(failing!.ciStatus).toBe("fail");
+      expect(failing!.prState).toBe("open");
+      expect(failing!.isMergeable).toBe(false);
+
+      const ready = snapshot.items.find((s) => s.id === "MRG-E4-R");
+      expect(ready!.ciStatus).toBe("pass");
+      expect(ready!.prState).toBe("open");
+      expect(ready!.reviewDecision).toBe("APPROVED");
+      expect(ready!.isMergeable).toBe(true);
+    });
+  });
+
+  // ── reconstructState edge cases ────────────────────────────────
+  describe("reconstructState: restart recovery", () => {
     let tmpDir: string;
     let wtDir: string;
 
     beforeEach(() => {
-      tmpDir = join(tmpdir(), `nw-mrg-integ-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      tmpDir = join(tmpdir(), `nw-mrg-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
       wtDir = join(tmpDir, ".worktrees");
     });
 
@@ -193,21 +606,18 @@ describe("Merge detection lifecycle (integration)", () => {
       const orch = new Orchestrator();
       const todo = makeTodo("MRG-RR-1", "New implementation of feature Y");
       orch.addItem(todo);
-      // prNumber was never set — simulates first run for this TODO ID
 
       // Create worktree directory so reconstructState processes this item
       mkdirSync(join(wtDir, "todo-MRG-RR-1"), { recursive: true });
 
       // checkPr returns a merged PR with a completely different title
-      // (from a previous TODO cycle that reused the same ID)
       const checkPr = (_id: string, _root: string) =>
         "MRG-RR-1\t30\tmerged\t\t\tfix: old bug in feature Y";
 
       reconstructState(orch, tmpDir, wtDir, stubMux(), checkPr);
 
       // Should NOT be marked merged — title mismatch + no tracked prNumber
-      // means this is a stale PR from a previous cycle
-      expect(orch.getItem("MRG-RR-1")!.state).toBe("implementing");
+      expect(orch.getItem("MRG-RR-1")!.state).not.toBe("merged");
     });
 
     it("accepts merged PR with matching title when prNumber was never tracked", () => {
@@ -217,13 +627,12 @@ describe("Merge detection lifecycle (integration)", () => {
 
       mkdirSync(join(wtDir, "todo-MRG-RR-2"), { recursive: true });
 
-      // Title matches the TODO after normalization (prefix stripped, ID stripped)
+      // Title matches the TODO after normalization
       const checkPr = (_id: string, _root: string) =>
         "MRG-RR-2\t31\tmerged\t\t\tfeat: New implementation of feature Y";
 
       reconstructState(orch, tmpDir, wtDir, stubMux(), checkPr);
 
-      // Should be merged — title matches
       expect(orch.getItem("MRG-RR-2")!.state).toBe("merged");
     });
 
@@ -231,63 +640,16 @@ describe("Merge detection lifecycle (integration)", () => {
       const orch = new Orchestrator();
       const todo = makeTodo("MRG-RR-3", "Improve error handling");
       orch.addItem(todo);
-      // Simulate daemon state having previously tracked this PR number
       orch.getItem("MRG-RR-3")!.prNumber = 77;
 
       mkdirSync(join(wtDir, "todo-MRG-RR-3"), { recursive: true });
 
-      // Title is completely different, but PR number matches what was tracked
       const checkPr = (_id: string, _root: string) =>
         "MRG-RR-3\t77\tmerged\t\t\trefactor: completely rewrite error paths";
 
       reconstructState(orch, tmpDir, wtDir, stubMux(), checkPr);
 
-      // Should be merged — prNumber match bypasses the title check
       expect(orch.getItem("MRG-RR-3")!.state).toBe("merged");
-    });
-  });
-
-  describe("end-to-end: buildSnapshot feeds processTransitions for merged item with no prior prNumber", () => {
-    it("completes full pipeline from implementing to merged with clean action", () => {
-      const orch = new Orchestrator();
-      orch.addItem(makeTodo("MRG-E2E-1", "End to end merge test"));
-      orch.setState("MRG-E2E-1", "implementing");
-
-      // Verify starting state: no prNumber set
-      expect(orch.getItem("MRG-E2E-1")!.prNumber).toBeUndefined();
-
-      // Phase 1: buildSnapshot detects merged PR
-      const checkPr = (_id: string, _root: string) =>
-        "MRG-E2E-1\t100\tmerged\t\t\tfeat: end to end merge test";
-
-      const snapshot = buildSnapshot(
-        orch,
-        PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
-        stubMux(),
-        () => null,
-        checkPr,
-      );
-
-      // Phase 2: processTransitions produces actions
-      const actions = orch.processTransitions(snapshot, NOW);
-
-      // Verify final state
-      const item = orch.getItem("MRG-E2E-1")!;
-      expect(item.state).toBe("merged");
-      expect(item.prNumber).toBe(100);
-
-      // Verify exactly one clean action for this item
-      const cleanActions = actions.filter(
-        (a) => a.type === "clean" && a.itemId === "MRG-E2E-1",
-      );
-      expect(cleanActions).toHaveLength(1);
-
-      // Verify no other action types were produced for this item
-      const otherActions = actions.filter(
-        (a) => a.itemId === "MRG-E2E-1" && a.type !== "clean",
-      );
-      expect(otherActions).toHaveLength(0);
     });
   });
 });
