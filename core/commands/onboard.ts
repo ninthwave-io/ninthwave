@@ -1,9 +1,12 @@
-// `ninthwave` first-run onboarding — interactive flow for uninitialized projects.
+// `ninthwave` no-args handling — adapts to project state.
 //
-// When `ninthwave` is run with no arguments in a directory that isn't set up yet
-// (no .ninthwave/ directory), this replaces the default help behavior with an
-// interactive flow that detects tools, runs setup, and launches the AI tool
-// inside the chosen multiplexer.
+// When `ninthwave` is run with no arguments, detects the project state and
+// routes to the appropriate flow:
+// 1. No git repo → help text
+// 2. No .ninthwave/ → first-run onboarding (init flow)
+// 3. .ninthwave/ exists, no TODOs → guidance message
+// 4. TODOs exist, no daemon → checkbox picker with run/watch options
+// 5. Daemon running → live status view
 
 import { createInterface } from "readline";
 import { existsSync } from "fs";
@@ -13,13 +16,18 @@ import {
   DIM,
   GREEN,
   YELLOW,
+  CYAN,
   RED,
   RESET,
 } from "../output.ts";
 import { run } from "../shell.ts";
-import type { RunResult } from "../types.ts";
+import type { RunResult, TodoItem } from "../types.ts";
 import { initProject } from "./init.ts";
 import { getBundleDir } from "../paths.ts";
+import { isDaemonRunning } from "../daemon.ts";
+import { parseTodos } from "../parser.ts";
+import { promptItems } from "../interactive.ts";
+import { printHelp } from "../help.ts";
 
 // ── AI tool descriptors ─────────────────────────────────────────────
 
@@ -86,6 +94,21 @@ export interface OnboardDeps {
   runShell?: ShellRunner;
   sleep?: SleepFn;
   getBundleDir?: () => string;
+}
+
+// ── No-args dependency injection ───────────────────────────────────
+
+export interface NoArgsDeps extends OnboardDeps {
+  isTTY?: boolean;
+  existsSync?: typeof existsSync;
+  parseTodos?: (todosDir: string, worktreeDir: string) => TodoItem[];
+  isDaemonRunning?: (projectRoot: string) => number | null;
+  promptItems?: (todos: TodoItem[], prompt: PromptFn) => Promise<string[]>;
+  promptAction?: (prompt: PromptFn) => Promise<"run" | "watch" | "quit">;
+  runSelected?: (ids: string[], todosDir: string, worktreeDir: string, projectRoot: string) => Promise<void>;
+  runWatch?: (args: string[], todosDir: string, worktreeDir: string, projectRoot: string) => Promise<void>;
+  runStatusWatch?: (worktreeDir: string, projectRoot: string) => Promise<void>;
+  printHelp?: () => void;
 }
 
 const defaultCommandExists: CommandChecker = (cmd: string): boolean => {
@@ -362,6 +385,34 @@ export async function onboard(
   // cmux: GUI app, workspace is already visible — no attach needed
 }
 
+// ── Action picker ──────────────────────────────────────────────────
+
+/**
+ * After the user selects TODO items, ask whether to run selected items
+ * or watch all items with the orchestrator.
+ */
+export async function promptAction(
+  prompt: PromptFn,
+): Promise<"run" | "watch" | "quit"> {
+  console.log();
+  console.log(`  ${BOLD}1${RESET}. ${CYAN}Run selected${RESET}  ${DIM}— launch parallel sessions for chosen items${RESET}`);
+  console.log(`  ${BOLD}2${RESET}. ${CYAN}Watch all${RESET}     ${DIM}— start the orchestrator for all items${RESET}`);
+  console.log();
+
+  while (true) {
+    const answer = await prompt(`${BOLD}Choose [1-2]: ${RESET}`);
+
+    if (answer.toLowerCase() === "q" || answer.toLowerCase() === "quit") {
+      return "quit";
+    }
+
+    if (answer === "1" || answer.toLowerCase() === "run") return "run";
+    if (answer === "2" || answer.toLowerCase() === "watch") return "watch";
+
+    console.log(`  ${YELLOW}Enter 1, 2, or "q" to quit.${RESET}`);
+  }
+}
+
 // ── CLI entry point ─────────────────────────────────────────────────
 
 /**
@@ -380,4 +431,108 @@ export function shouldOnboard(projectDir: string | null): boolean {
  */
 export async function cmdOnboard(projectDir: string): Promise<void> {
   await onboard(projectDir);
+}
+
+// ── No-args handler ────────────────────────────────────────────────
+
+/**
+ * Handle `nw` with no arguments. Detects project state and routes to
+ * the appropriate interactive flow:
+ *
+ * 1. Non-TTY → print help text
+ * 2. No git repo → print help text
+ * 3. No `.ninthwave/` → first-run onboarding (init flow)
+ * 4. `.ninthwave/` exists, no TODOs → guidance message
+ * 5. TODOs exist, daemon running → live status view
+ * 6. TODOs exist, no daemon → checkbox picker + action choice
+ */
+export async function cmdNoArgs(
+  projectRoot: string | null,
+  deps: NoArgsDeps = {},
+): Promise<void> {
+  const isTTY = deps.isTTY ?? (process.stdin.isTTY === true);
+  const checkExists = deps.existsSync ?? existsSync;
+  const doParseT = deps.parseTodos ?? parseTodos;
+  const checkDaemon = deps.isDaemonRunning ?? isDaemonRunning;
+  const doPromptItems = deps.promptItems ?? promptItems;
+  const doPromptAction = deps.promptAction ?? promptAction;
+  const prompt = deps.prompt ?? defaultPrompt;
+  const helpFn = deps.printHelp ?? printHelp;
+
+  // Non-TTY: always print grouped help text
+  if (!isTTY) {
+    helpFn();
+    return;
+  }
+
+  // State 1: No git repo
+  if (!projectRoot) {
+    helpFn();
+    return;
+  }
+
+  // State 2: No .ninthwave/ dir → first-run onboarding
+  if (!checkExists(join(projectRoot, ".ninthwave"))) {
+    await onboard(projectRoot, deps);
+    return;
+  }
+
+  const todosDir = join(projectRoot, ".ninthwave", "todos");
+  const worktreeDir = join(projectRoot, ".worktrees");
+
+  // State 3: .ninthwave/ exists but no TODO files
+  let todos: TodoItem[] = [];
+  if (checkExists(todosDir)) {
+    todos = doParseT(todosDir, worktreeDir);
+  }
+
+  if (todos.length === 0) {
+    console.log();
+    console.log(`${BOLD}ninthwave${RESET} is set up, but there are no TODO items.`);
+    console.log();
+    console.log(`  Get started:`);
+    console.log(`    ${DIM}•${RESET} Use ${BOLD}/decompose${RESET} in your AI tool to break down a feature`);
+    console.log(`    ${DIM}•${RESET} Create TODO files manually in ${BOLD}.ninthwave/todos/${RESET}`);
+    console.log();
+    return;
+  }
+
+  // State 4: Daemon running → live status view
+  const daemonPid = checkDaemon(projectRoot);
+  if (daemonPid !== null) {
+    console.log(`${DIM}Orchestrator is running (PID ${daemonPid}). Showing live status...${RESET}`);
+    console.log();
+    if (deps.runStatusWatch) {
+      await deps.runStatusWatch(worktreeDir, projectRoot);
+    } else {
+      // Dynamic import to avoid circular deps
+      const { cmdStatusWatch } = await import("./status.ts");
+      await cmdStatusWatch(worktreeDir, projectRoot);
+    }
+    return;
+  }
+
+  // State 5: TODOs exist, no daemon → checkbox picker
+  const selectedIds = await doPromptItems(todos, prompt);
+  if (selectedIds.length === 0) return;
+
+  const action = await doPromptAction(prompt);
+  if (action === "quit") return;
+
+  if (action === "run") {
+    if (deps.runSelected) {
+      await deps.runSelected(selectedIds, todosDir, worktreeDir, projectRoot);
+    } else {
+      const { cmdRunItems } = await import("./launch.ts");
+      await cmdRunItems(selectedIds, todosDir, worktreeDir, projectRoot);
+    }
+  } else {
+    // "watch" — launch orchestrator for all items
+    if (deps.runWatch) {
+      await deps.runWatch([], todosDir, worktreeDir, projectRoot);
+    } else {
+      const { cmdWatch } = await import("./orchestrate.ts");
+      await cmdWatch([], todosDir, worktreeDir, projectRoot);
+    }
+  }
 }

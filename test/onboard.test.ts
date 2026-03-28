@@ -1,4 +1,4 @@
-// Tests for `ninthwave` first-run onboarding flow (core/commands/onboard.ts).
+// Tests for `ninthwave` first-run onboarding and no-args flows (core/commands/onboard.ts).
 
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
@@ -15,11 +15,15 @@ import {
   launchSession,
   shouldOnboard,
   onboard,
+  cmdNoArgs,
+  promptAction,
   AI_TOOLS,
   MUX_OPTIONS,
   type CommandChecker,
   type OnboardDeps,
+  type NoArgsDeps,
 } from "../core/commands/onboard.ts";
+import type { TodoItem } from "../core/types.ts";
 
 afterEach(() => {
   cleanupTempRepos();
@@ -420,5 +424,269 @@ describe("onboard", () => {
     const output = logs.join("\n");
     expect(output).toContain("Failed to launch session");
     expect(output).toContain("Try manually");
+  });
+});
+
+// ── promptAction ───────────────────────────────────────────────────
+
+describe("promptAction", () => {
+  it("returns 'run' for input 1", async () => {
+    const result = await promptAction(async () => "1");
+    expect(result).toBe("run");
+  });
+
+  it("returns 'watch' for input 2", async () => {
+    const result = await promptAction(async () => "2");
+    expect(result).toBe("watch");
+  });
+
+  it("returns 'run' for text 'run'", async () => {
+    const result = await promptAction(async () => "run");
+    expect(result).toBe("run");
+  });
+
+  it("returns 'watch' for text 'watch'", async () => {
+    const result = await promptAction(async () => "watch");
+    expect(result).toBe("watch");
+  });
+
+  it("returns 'quit' for 'q'", async () => {
+    const result = await promptAction(async () => "q");
+    expect(result).toBe("quit");
+  });
+
+  it("retries on invalid input then accepts valid choice", async () => {
+    let calls = 0;
+    const result = await promptAction(async () => {
+      calls++;
+      if (calls === 1) return "invalid";
+      return "1";
+    });
+    expect(result).toBe("run");
+    expect(calls).toBe(2);
+  });
+});
+
+// ── cmdNoArgs ──────────────────────────────────────────────────────
+
+describe("cmdNoArgs", () => {
+  /** Helper to build a fake TodoItem */
+  function fakeTodo(id: string, title: string): TodoItem {
+    return {
+      id,
+      title,
+      priority: "medium",
+      source: "test",
+      domain: "test",
+      description: "",
+      dependencies: [],
+      dependents: [],
+      files: [],
+      filename: `2-test--${id}.md`,
+      inProgress: false,
+    };
+  }
+
+  it("prints help when not in a TTY", async () => {
+    let helpCalled = false;
+    await cmdNoArgs("/some/project", {
+      isTTY: false,
+      printHelp: () => { helpCalled = true; },
+    });
+    expect(helpCalled).toBe(true);
+  });
+
+  it("prints help when projectRoot is null (no git repo)", async () => {
+    let helpCalled = false;
+    await cmdNoArgs(null, {
+      isTTY: true,
+      printHelp: () => { helpCalled = true; },
+    });
+    expect(helpCalled).toBe(true);
+  });
+
+  it("runs onboarding when .ninthwave/ does not exist", async () => {
+    const projectDir = setupTempRepo();
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await cmdNoArgs(projectDir, {
+        isTTY: true,
+        existsSync: (p: string) => !p.includes(".ninthwave"),
+        commandExists: () => false, // Will exit early at mux detection
+        prompt: async () => "",
+        runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
+        sleep: () => {},
+        getBundleDir: () => "/fake",
+      });
+    } finally {
+      console.log = origLog;
+    }
+
+    const output = logs.join("\n");
+    // Onboard flow starts with welcome message
+    expect(output).toContain("Welcome to ninthwave");
+  });
+
+  it("shows guidance when .ninthwave/ exists but no TODOs", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave", "todos"), { recursive: true });
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await cmdNoArgs(projectDir, {
+        isTTY: true,
+        parseTodos: () => [],
+        isDaemonRunning: () => null,
+      });
+    } finally {
+      console.log = origLog;
+    }
+
+    const output = logs.join("\n");
+    expect(output).toContain("no TODO items");
+    expect(output).toContain("/decompose");
+    expect(output).toContain(".ninthwave/todos/");
+  });
+
+  it("shows guidance when .ninthwave/ exists but todos dir missing", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave"), { recursive: true });
+    // No todos/ subdirectory
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await cmdNoArgs(projectDir, {
+        isTTY: true,
+        isDaemonRunning: () => null,
+      });
+    } finally {
+      console.log = origLog;
+    }
+
+    const output = logs.join("\n");
+    expect(output).toContain("no TODO items");
+  });
+
+  it("routes to status view when daemon is running", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave", "todos"), { recursive: true });
+
+    let statusWatchCalled = false;
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await cmdNoArgs(projectDir, {
+        isTTY: true,
+        parseTodos: () => [fakeTodo("H-1", "Test item")],
+        isDaemonRunning: () => 12345,
+        runStatusWatch: async () => { statusWatchCalled = true; },
+      });
+    } finally {
+      console.log = origLog;
+    }
+
+    expect(statusWatchCalled).toBe(true);
+    const output = logs.join("\n");
+    expect(output).toContain("Orchestrator is running");
+    expect(output).toContain("12345");
+  });
+
+  it("shows checkbox picker and runs selected items", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave", "todos"), { recursive: true });
+
+    const todos = [
+      fakeTodo("H-FOO-1", "First task"),
+      fakeTodo("H-FOO-2", "Second task"),
+    ];
+    let runSelectedCalled = false;
+    let runSelectedIds: string[] = [];
+
+    await cmdNoArgs(projectDir, {
+      isTTY: true,
+      parseTodos: () => todos,
+      isDaemonRunning: () => null,
+      promptItems: async () => ["H-FOO-1"],
+      promptAction: async () => "run",
+      runSelected: async (ids) => {
+        runSelectedCalled = true;
+        runSelectedIds = ids;
+      },
+    });
+
+    expect(runSelectedCalled).toBe(true);
+    expect(runSelectedIds).toEqual(["H-FOO-1"]);
+  });
+
+  it("shows checkbox picker and launches watch for 'watch' action", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave", "todos"), { recursive: true });
+
+    const todos = [fakeTodo("H-FOO-1", "Task")];
+    let watchCalled = false;
+
+    await cmdNoArgs(projectDir, {
+      isTTY: true,
+      parseTodos: () => todos,
+      isDaemonRunning: () => null,
+      promptItems: async () => ["H-FOO-1"],
+      promptAction: async () => "watch",
+      runWatch: async () => { watchCalled = true; },
+    });
+
+    expect(watchCalled).toBe(true);
+  });
+
+  it("exits gracefully when user quits at item selection", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave", "todos"), { recursive: true });
+
+    let actionCalled = false;
+    let runCalled = false;
+
+    await cmdNoArgs(projectDir, {
+      isTTY: true,
+      parseTodos: () => [fakeTodo("H-1", "Task")],
+      isDaemonRunning: () => null,
+      promptItems: async () => [], // User quit
+      promptAction: async () => { actionCalled = true; return "run"; },
+      runSelected: async () => { runCalled = true; },
+    });
+
+    // Should not proceed to action prompt or run
+    expect(actionCalled).toBe(false);
+    expect(runCalled).toBe(false);
+  });
+
+  it("exits gracefully when user quits at action prompt", async () => {
+    const projectDir = setupTempRepo();
+    mkdirSync(join(projectDir, ".ninthwave", "todos"), { recursive: true });
+
+    let runCalled = false;
+    let watchCalled = false;
+
+    await cmdNoArgs(projectDir, {
+      isTTY: true,
+      parseTodos: () => [fakeTodo("H-1", "Task")],
+      isDaemonRunning: () => null,
+      promptItems: async () => ["H-1"],
+      promptAction: async () => "quit",
+      runSelected: async () => { runCalled = true; },
+      runWatch: async () => { watchCalled = true; },
+    });
+
+    expect(runCalled).toBe(false);
+    expect(watchCalled).toBe(false);
   });
 });
