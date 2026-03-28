@@ -931,6 +931,7 @@ export function mapDaemonItemState(orchState: string, flags?: { rebaseRequested?
     case "verifying":
       return "ci-pending";
     case "review-pending":
+    case "reviewing":
     case "ci-passed":
       return "review";
     case "pr-open":
