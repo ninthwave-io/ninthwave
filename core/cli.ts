@@ -6,7 +6,7 @@ import { join } from "path";
 import { die } from "./output.ts";
 import { run } from "./shell.ts";
 import { lookupCommand, printHelp, printCommandHelp } from "./help.ts";
-import { shouldOnboard, cmdOnboard } from "./commands/onboard.ts";
+import { cmdNoArgs } from "./commands/onboard.ts";
 import { TODO_ID_CLI_PATTERN, cmdRunItems } from "./commands/launch.ts";
 
 // ── Project root resolution ──────────────────────────────────────────
@@ -40,7 +40,7 @@ if (command === "--help" || command === "-h") {
   process.exit(0);
 }
 
-// No args: check if this is an uninitialized project → launch onboarding
+// No args: detect project state and route to the appropriate flow
 if (!command) {
   // Try to detect project root without dying on failure
   const gitResult = run("git", [
@@ -53,13 +53,7 @@ if (!command) {
       ? gitResult.stdout.replace(/\/.git$/, "")
       : null;
 
-  if (shouldOnboard(projectRoot)) {
-    await cmdOnboard(projectRoot!);
-    process.exit(0);
-  }
-
-  // Already set up or not in a git repo — show help
-  printHelp();
+  await cmdNoArgs(projectRoot);
   process.exit(0);
 }
 
