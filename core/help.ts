@@ -35,6 +35,7 @@ import { cmdStop } from "./commands/stop.ts";
 import { cmdRetry } from "./commands/retry.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdHeartbeat } from "./commands/heartbeat.ts";
+import { cmdLogs } from "./commands/logs.ts";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -243,6 +244,29 @@ export const COMMAND_REGISTRY: ReadonlyArray<CommandEntry> = [
       "--all": "Show all-time analytics instead of recent",
     },
     examples: ["nw analytics", "nw analytics --all"],
+  },
+  {
+    name: "logs",
+    usage: "logs [--follow] [--item ID] [--level warn|error] [--lines N]",
+    description: "View orchestration log entries",
+    group: "diagnostic",
+    needsRoot: true,
+    needsTodos: false,
+    handler: async (ctx) => { await cmdLogs(ctx.args, ctx.projectRoot); },
+    flags: {
+      "--follow, -f": "Tail the log file, printing new entries as they appear",
+      "--item": "Filter entries to those containing the specified item ID",
+      "--level": "Filter by minimum severity level (warn or error)",
+      "--lines, -n": "Show last N entries (default: 50)",
+    },
+    examples: [
+      "nw logs",
+      "nw logs -f",
+      "nw logs --item H-FOO-1",
+      "nw logs --level warn",
+      "nw logs -n 100",
+      "nw logs -f --item H-FOO-1 --level error",
+    ],
   },
 
   // ── Advanced ────────────────────────────────────────────────────────
