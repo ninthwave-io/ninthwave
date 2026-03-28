@@ -56,6 +56,8 @@ export interface DaemonStateItem {
   verifyFailCount?: number;
   /** cmux workspace reference for the verifier worker session. */
   verifyWorkspaceRef?: string;
+  /** Absolute path to the preserved worktree directory (set for stuck items). */
+  worktreePath?: string;
 }
 
 export interface DaemonState {
@@ -475,6 +477,7 @@ export function serializeOrchestratorState(
       ...(item.mergeCommitSha ? { mergeCommitSha: item.mergeCommitSha } : {}),
       ...(item.verifyFailCount ? { verifyFailCount: item.verifyFailCount } : {}),
       ...(item.verifyWorkspaceRef ? { verifyWorkspaceRef: item.verifyWorkspaceRef } : {}),
+      ...(item.worktreePath ? { worktreePath: item.worktreePath } : {}),
     })),
   };
 }

@@ -691,6 +691,72 @@ describe("orchestrateLoop", () => {
     expect(sweepLog).toBeDefined();
   });
 
+  it("final cleanup sweep skips worktree removal for stuck items (H-WR-2)", async () => {
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap", maxRetries: 0 });
+    orch.addItem(makeWorkItem("SK-1-1"));
+    orch.addItem(makeWorkItem("SK-1-2"));
+
+    let cycle = 0;
+    const logs: LogEntry[] = [];
+    const cleanedItemIds: string[] = [];
+
+    const buildSnapshot = (o: Orchestrator): PollSnapshot => {
+      cycle++;
+      const readyIds: string[] = [];
+      const items: ItemSnapshot[] = [];
+
+      for (const item of o.getAllItems()) {
+        if (item.state === "queued") {
+          readyIds.push(item.id);
+          continue;
+        }
+        if (item.state === "done" || item.state === "stuck") continue;
+
+        if (item.state === "launching") {
+          items.push({ id: item.id, workerAlive: true });
+        } else if (item.state === "implementing") {
+          // SK-1-1: normal lifecycle → merge
+          if (item.id === "SK-1-1") {
+            items.push({ id: item.id, prNumber: cycle, prState: "open", ciStatus: "pass" });
+          }
+          // SK-1-2: worker dies → stuck (debounce requires 3 consecutive false checks)
+          if (item.id === "SK-1-2") {
+            items.push({ id: item.id, workerAlive: false });
+          }
+        } else if (item.state === "merging" || item.state === "merged") {
+          items.push({ id: item.id, prState: "merged" });
+        }
+      }
+
+      return { items, readyIds };
+    };
+
+    const actionDeps = mockActionDeps({
+      cleanSingleWorktree: vi.fn((id: string) => {
+        cleanedItemIds.push(id);
+        return true;
+      }),
+    });
+
+    const deps: OrchestrateLoopDeps = {
+      buildSnapshot,
+      sleep: () => Promise.resolve(),
+      log: (entry) => logs.push(entry),
+      actionDeps,
+    };
+
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
+
+    // SK-1-1 is done (merged successfully)
+    expect(orch.getItem("SK-1-1")!.state).toBe("done");
+    // SK-1-2 is stuck (worker died without retries)
+    expect(orch.getItem("SK-1-2")!.state).toBe("stuck");
+
+    // Final cleanup sweep should clean SK-1-1 (done) but NOT SK-1-2 (stuck)
+    expect(cleanedItemIds).toContain("SK-1-1");
+    expect(cleanedItemIds).not.toContain("SK-1-2");
+  });
+
   it("shutdown closes workspaces only for terminal items, not in-flight", async () => {
     const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "auto" });
     orch.addItem(makeWorkItem("SD-1-1"));

@@ -964,7 +964,8 @@ function handleRunComplete(
   runStartTime: string,
   costData: Map<string, CostSummary>,
 ): void {
-  // Final cleanup sweep: close workspaces and remove worktrees for managed items
+  // Final cleanup sweep: close workspaces and remove worktrees for managed items.
+  // Stuck items preserve their worktree so users can inspect partial work.
   const cleanedIds: string[] = [];
   for (const item of allItems) {
     try {
@@ -972,6 +973,9 @@ function handleRunComplete(
       if (item.workspaceRef) {
         deps.actionDeps.closeWorkspace(item.workspaceRef);
       }
+      // Preserve worktrees for stuck items — users can inspect partial work
+      // and clean manually with `nw clean <ID>` when done.
+      if (item.state === "stuck") continue;
       const cleaned = deps.actionDeps.cleanSingleWorktree(
         item.id,
         ctx.worktreeDir,

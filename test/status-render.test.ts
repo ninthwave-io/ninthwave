@@ -303,6 +303,28 @@ describe("formatTelemetrySuffix", () => {
     const item = makeStatusItem({ state: "merged" });
     expect(formatTelemetrySuffix(item)).toBe("");
   });
+
+  it("shows worktree path for stuck items", () => {
+    const item = makeStatusItem({
+      state: "stuck",
+      worktreePath: "/tmp/project/.worktrees/ninthwave-H-FOO-1",
+    });
+    const result = stripAnsi(formatTelemetrySuffix(item));
+    expect(result).toContain("worktree: /tmp/project/.worktrees/ninthwave-H-FOO-1");
+  });
+
+  it("does not show worktree path for stuck items without worktreePath", () => {
+    const item = makeStatusItem({ state: "stuck" });
+    expect(formatTelemetrySuffix(item)).toBe("");
+  });
+
+  it("does not show worktree path for non-stuck items", () => {
+    const item = makeStatusItem({
+      state: "implementing",
+      worktreePath: "/tmp/project/.worktrees/ninthwave-H-FOO-1",
+    });
+    expect(formatTelemetrySuffix(item)).toBe("");
+  });
 });
 
 describe("pad", () => {
