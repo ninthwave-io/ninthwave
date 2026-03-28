@@ -66,6 +66,7 @@ import {
   stateFilePath,
   userStateDir,
   migrateRuntimeState,
+  rotateLogs,
   type DaemonIO,
   type DaemonState,
   type ExternalReviewItem,
@@ -1708,6 +1709,10 @@ export function forkDaemon(
   }
 
   const logPath = logFilePath(projectRoot);
+
+  // Rotate logs at daemon startup to bound total log storage (~20MB max)
+  rotateLogs(logPath);
+
   const logFd = openFn(logPath, "a");
 
   const child = spawnFn(process.argv[0]!, [process.argv[1]!, "orchestrate", ...childArgs], {

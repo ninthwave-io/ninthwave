@@ -13,6 +13,7 @@ import {
   formatLogEntry,
   parseLogsArgs,
   readLogs,
+  readEntriesWithRotated,
   followLog,
   type LogsIO,
   type LogsOptions,
@@ -510,5 +511,133 @@ describe("followLog", () => {
     expect(output[0]).toContain("H-FOO-1");
 
     cleanup();
+  });
+});
+
+// ── readEntriesWithRotated ─────────────────────────────────────────
+
+describe("readEntriesWithRotated", () => {
+  it("reads entries from current log only when no rotated files exist", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    writeFileSync(logPath, [
+      logLine({ event: "current_1" }),
+      logLine({ event: "current_2" }),
+    ].join("\n"));
+
+    const entries = readEntriesWithRotated(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(entries).toHaveLength(2);
+    expect(entries[0]!.event).toBe("current_1");
+    expect(entries[1]!.event).toBe("current_2");
+  });
+
+  it("reads entries from rotated files in chronological order", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    // .2 is oldest, .1 is next, current is newest
+    writeFileSync(`${logPath}.2`, logLine({ event: "oldest" }) + "\n");
+    writeFileSync(`${logPath}.1`, logLine({ event: "middle" }) + "\n");
+    writeFileSync(logPath, logLine({ event: "newest" }) + "\n");
+
+    const entries = readEntriesWithRotated(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(entries).toHaveLength(3);
+    expect(entries[0]!.event).toBe("oldest");
+    expect(entries[1]!.event).toBe("middle");
+    expect(entries[2]!.event).toBe("newest");
+  });
+
+  it("returns entries from rotated files even when current log is missing", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    // No current log file, but rotated files exist
+    writeFileSync(`${logPath}.1`, logLine({ event: "from_rotation" }) + "\n");
+
+    const entries = readEntriesWithRotated(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.event).toBe("from_rotation");
+  });
+
+  it("returns empty array when no log files exist", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+
+    const entries = readEntriesWithRotated(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(entries).toHaveLength(0);
+  });
+
+  it("applies item filter across rotated files", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    writeFileSync(`${logPath}.1`, logLine({ event: "old", itemId: "H-FOO-1" }) + "\n");
+    writeFileSync(logPath, [
+      logLine({ event: "new_match", itemId: "H-FOO-1" }),
+      logLine({ event: "new_other", itemId: "H-BAR-2" }),
+    ].join("\n"));
+
+    const entries = readEntriesWithRotated(logPath, { follow: false, item: "H-FOO-1", level: null, lines: 50 });
+    expect(entries).toHaveLength(2);
+    expect(entries[0]!.event).toBe("old");
+    expect(entries[1]!.event).toBe("new_match");
+  });
+
+  it("stops discovering rotated files at first gap", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    writeFileSync(logPath, logLine({ event: "current" }) + "\n");
+    writeFileSync(`${logPath}.1`, logLine({ event: "rot1" }) + "\n");
+    // Skip .2, write .3 — should not be found
+    writeFileSync(`${logPath}.3`, logLine({ event: "rot3_orphan" }) + "\n");
+
+    const entries = readEntriesWithRotated(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(entries).toHaveLength(2);
+    expect(entries.map(e => e.event)).toEqual(["rot1", "current"]);
+  });
+});
+
+// ── readLogs with rotated files ────────────────────────────────────
+
+describe("readLogs with rotated files", () => {
+  it("reads from rotated files when --lines exceeds current file entries", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    // 2 entries in current, 3 in .1 — requesting 5 should get all
+    writeFileSync(`${logPath}.1`, [
+      logLine({ event: "old_1" }),
+      logLine({ event: "old_2" }),
+      logLine({ event: "old_3" }),
+    ].join("\n") + "\n");
+    writeFileSync(logPath, [
+      logLine({ event: "new_1" }),
+      logLine({ event: "new_2" }),
+    ].join("\n"));
+
+    const result = readLogs(logPath, { follow: false, item: null, level: null, lines: 10 });
+    expect(result).toHaveLength(5);
+    expect(result[0]).toContain("old_1");
+    expect(result[4]).toContain("new_2");
+  });
+
+  it("shows entries from rotated files when current log is deleted (post-rotation)", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+    // Only rotated file exists — simulates right after rotation before new writes
+    writeFileSync(`${logPath}.1`, [
+      logLine({ event: "rotated_entry_1" }),
+      logLine({ event: "rotated_entry_2" }),
+    ].join("\n"));
+
+    const result = readLogs(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(result).toHaveLength(2);
+    expect(result[0]).toContain("rotated_entry_1");
+    expect(result[1]).toContain("rotated_entry_2");
+  });
+
+  it("returns no-logs message when neither current nor rotated files exist", () => {
+    const dir = trackTempDir();
+    const logPath = join(dir, "orchestrator.log");
+
+    const result = readLogs(logPath, { follow: false, item: null, level: null, lines: 50 });
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain("No orchestration logs found");
   });
 });
