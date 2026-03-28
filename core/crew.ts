@@ -68,9 +68,9 @@ export interface HeartbeatAckMessage {
 
 export interface ReconnectStateMessage {
   type: "reconnect_state";
-  resumed: string[];    // TODOs still claimed by this daemon — resume as-is
-  released: string[];   // TODOs released but unclaimed — re-claim
-  reclaimed: string[];  // TODOs re-claimed by another daemon — kill worker
+  resumed: string[];    // TODOs still claimed by this daemon -- resume as-is
+  released: string[];   // TODOs released but unclaimed -- re-claim
+  reclaimed: string[];  // TODOs re-claimed by another daemon -- kill worker
 }
 
 export interface ErrorMessage {
@@ -213,7 +213,7 @@ export function resolveOperatorId(
   try {
     email = deps.exec("git config user.email");
   } catch {
-    // git config user.email not set — fall back to empty string
+    // git config user.email not set -- fall back to empty string
   }
 
   // Persist for future restarts
@@ -445,11 +445,11 @@ export class WebSocketCrewBroker implements CrewBroker {
       }
 
       case "complete_ack":
-        // No-op — fire-and-forget
+        // No-op -- fire-and-forget
         break;
 
       case "heartbeat_ack":
-        // No-op — confirms server is alive
+        // No-op -- confirms server is alive
         break;
 
       case "reconnect_state":

@@ -179,7 +179,7 @@ describe("prTitleMatchesWorkItem", () => {
   });
 
   it("rejects substring matches (not exact)", () => {
-    // PR title is a substring of item title — should be treated as mismatch
+    // PR title is a substring of item title -- should be treated as mismatch
     expect(
       prTitleMatchesWorkItem("old work", "old work extended"),
     ).toBe(false);
@@ -322,7 +322,7 @@ describe("reconstructState: item ID collision safety", () => {
     reconstructState(orch, tmpDir, wtDir, undefined, mockCheckPr);
 
     const item = orch.getItem("H-FOO-1")!;
-    // Should NOT be "merged" — the title doesn't match
+    // Should NOT be "merged" -- the title doesn't match
     expect(item.state).toBe("implementing");
   });
 
@@ -412,7 +412,7 @@ describe("buildSnapshot: item ID collision safety", () => {
 
     const snap = snapshot.items.find((s) => s.id === "H-FOO-1");
     expect(snap).toBeDefined();
-    // prState should be undefined — title mismatch means this is a stale PR
+    // prState should be undefined -- title mismatch means this is a stale PR
     expect(snap!.prState).toBeUndefined();
   });
 
@@ -430,7 +430,7 @@ describe("buildSnapshot: item ID collision safety", () => {
 
     const mockCheckPr = (id: string) => {
       if (id === "H-FOO-1") {
-        // Worker used a completely different PR title — should still detect merge
+        // Worker used a completely different PR title -- should still detect merge
         return "H-FOO-1\t42\tmerged\t\t\trefactor: remove legacy reference (H-FOO-1)";
       }
       return null;
@@ -459,19 +459,19 @@ describe("buildSnapshot: item ID collision safety", () => {
 
     const snap = snapshot.items.find((s) => s.id === "H-FOO-1");
     expect(snap).toBeDefined();
-    // prState SHOULD be "merged" — prNumber matches, title check skipped
+    // prState SHOULD be "merged" -- prNumber matches, title check skipped
     expect(snap!.prState).toBe("merged");
   });
 
   it("ignores stale merged PR when prNumber differs and title doesn't match", () => {
     // When the orchestrator tracks prNumber=99 but finds a merged PR #42 with a
-    // different title, it should ignore it — this is an old PR from a previous cycle.
+    // different title, it should ignore it -- this is an old PR from a previous cycle.
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-FOO-1", "new work"));
     orch.setState("H-FOO-1", "ci-passed");
     orch.getItem("H-FOO-1")!.reviewCompleted = true;
     const item = orch.getItem("H-FOO-1")!;
-    item.prNumber = 99; // Different PR number — not the one that merged
+    item.prNumber = 99; // Different PR number -- not the one that merged
 
     const mockCheckPr = (id: string) => {
       if (id === "H-FOO-1") {
@@ -503,7 +503,7 @@ describe("buildSnapshot: item ID collision safety", () => {
 
     const snap = snapshot.items.find((s) => s.id === "H-FOO-1");
     expect(snap).toBeDefined();
-    // prState should be undefined — title mismatch + different PR number
+    // prState should be undefined -- title mismatch + different PR number
     expect(snap!.prState).toBeUndefined();
   });
 

@@ -158,7 +158,7 @@ export function cleanPidFile(
     try {
       io.unlinkSync(filePath);
     } catch {
-      // ignore — best effort
+      // ignore -- best effort
     }
   }
 }
@@ -190,7 +190,7 @@ export function isDaemonRunning(
   const pid = readPidFile(projectRoot, io);
   if (pid === null) return null;
   if (check(pid)) return pid;
-  // Stale PID file — clean up
+  // Stale PID file -- clean up
   cleanPidFile(projectRoot, io);
   cleanStateFile(projectRoot, io);
   return null;
@@ -234,7 +234,7 @@ export function cleanStateFile(
     try {
       io.unlinkSync(filePath);
     } catch {
-      // ignore — best effort
+      // ignore -- best effort
     }
   }
 }
@@ -269,7 +269,7 @@ export function archiveStateFile(
       // Use startedAt to identify which run this was from
       timestamp = state.startedAt.replace(/[:.]/g, "-");
     } catch {
-      // Invalid JSON — use current time as fallback
+      // Invalid JSON -- use current time as fallback
       timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     }
 
@@ -286,7 +286,7 @@ export function archiveStateFile(
 
     return archivePath;
   } catch {
-    // Best-effort — archiving failure should not block the new daemon
+    // Best-effort -- archiving failure should not block the new daemon
     return null;
   }
 }
@@ -551,7 +551,7 @@ export function rotateLogs(
   try {
     io.renameSync(logPath, `${logPath}.1`);
   } catch {
-    // best-effort — if rename fails, log will just keep growing
+    // best-effort -- if rename fails, log will just keep growing
     return false;
   }
 
@@ -577,10 +577,10 @@ const RUNTIME_STATE_FILES = [
  * This is a one-time, idempotent migration:
  * - Only moves files that exist in the old location and NOT in the new location
  * - Removes old files after successful copy
- * - Best-effort — failures are silently ignored (files will be recreated)
+ * - Best-effort -- failures are silently ignored (files will be recreated)
  * - Also migrates the `state-archive/` directory
  *
- * Safe to call repeatedly — no-ops when nothing to migrate.
+ * Safe to call repeatedly -- no-ops when nothing to migrate.
  */
 export function migrateRuntimeState(projectRoot: string): void {
   const newDir = userStateDir(projectRoot);
@@ -606,10 +606,10 @@ export function migrateRuntimeState(projectRoot: string): void {
         writeFileSync(newPath, readFileSync(oldPath, "utf-8"), "utf-8");
         unlinkSync(oldPath);
       } catch {
-        // best-effort — file will be recreated on next write
+        // best-effort -- file will be recreated on next write
       }
     } else if (existsSync(oldPath) && existsSync(newPath)) {
-      // New location already has the file — just clean up old copy
+      // New location already has the file -- just clean up old copy
       try {
         unlinkSync(oldPath);
       } catch {
@@ -646,7 +646,7 @@ export function migrateRuntimeState(projectRoot: string): void {
         // best-effort
       }
     } catch {
-      // best-effort — archive will be recreated
+      // best-effort -- archive will be recreated
     }
   }
 }

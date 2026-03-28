@@ -18,7 +18,7 @@ See also: [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and coding co
 
 ## Orchestrator State Machine
 
-Each TODO item moves through a state machine defined in [`core/orchestrator.ts`](core/orchestrator.ts). The `processTransitions` function is pure — it takes a poll snapshot and returns actions to execute; no side effects.
+Each TODO item moves through a state machine defined in [`core/orchestrator.ts`](core/orchestrator.ts). The `processTransitions` function is pure -- it takes a poll snapshot and returns actions to execute; no side effects.
 
 ### States
 
@@ -122,7 +122,7 @@ Key files: [`core/parser.ts`](core/parser.ts) (read todos), [`core/commands/laun
 
 ## Key Abstractions
 
-### `Multiplexer` — `core/mux.ts`
+### `Multiplexer` -- `core/mux.ts`
 
 Abstracts terminal multiplexer operations behind a clean interface.
 
@@ -153,7 +153,7 @@ Concrete implementation: `CmuxAdapter`. Auto-detection via `getMux()` checks `CM
    export type MuxType = "cmux" | "mymux";
    ```
 2. Implement the `Multiplexer` interface as a new class in `core/mux.ts` (follow `CmuxAdapter` as a template).
-3. Add detection logic in `detectMuxType()` — check an env var or binary.
+3. Add detection logic in `detectMuxType()` -- check an env var or binary.
 4. Add a case in `getMux()` to return the new adapter.
 5. Add tests in `test/mux.test.ts`.
 
@@ -186,11 +186,11 @@ Each TODO item gets an isolated AI coding session managed as follows:
 
 `launchSingleItem()` in [`core/commands/launch.ts`](core/commands/launch.ts):
 
-1. `git worktree add .worktrees/todo-<ID> -b todo/<ID>` — isolated checkout.
-2. `allocatePartition(id)` — assigns a unique port range and DB prefix for test isolation.
-3. `seedAgentFiles(worktreePath, hubRoot)` — copies `implementer.md` to `.claude/agents/`, `.opencode/agents/`, `.github/agents/` inside the worktree.
-4. `mux.launchWorkspace(worktreePath, command, todoId)` — spawns the session; returns a workspace ref (e.g., `"workspace:1"` for cmux, `"nw-H-1-1-3"` for tmux).
-5. `sendWithReadyWait(mux, ref, prompt, ...)` — waits for the AI prompt, sends the implementer instructions, verifies the worker starts processing.
+1. `git worktree add .worktrees/todo-<ID> -b todo/<ID>` -- isolated checkout.
+2. `allocatePartition(id)` -- assigns a unique port range and DB prefix for test isolation.
+3. `seedAgentFiles(worktreePath, hubRoot)` -- copies `implementer.md` to `.claude/agents/`, `.opencode/agents/`, `.github/agents/` inside the worktree.
+4. `mux.launchWorkspace(worktreePath, command, todoId)` -- spawns the session; returns a workspace ref (e.g., `"workspace:1"` for cmux, `"nw-H-1-1-3"` for tmux).
+5. `sendWithReadyWait(mux, ref, prompt, ...)` -- waits for the AI prompt, sends the implementer instructions, verifies the worker starts processing.
 
 The workspace ref is stored in `OrchestratorItem.workspaceRef` for later messaging and cleanup.
 
@@ -207,6 +207,6 @@ Timeout thresholds (configurable via `OrchestratorConfig`): 30 minutes for a wor
 
 `cleanSingleWorktree(id, ...)` in [`core/commands/clean.ts`](core/commands/clean.ts):
 
-1. `mux.closeWorkspace(workspaceRef)` — closes the terminal session.
-2. `git worktree remove .worktrees/todo-<ID>` — removes the checkout.
-3. `releasePartition(id)` — frees the port/DB allocation.
+1. `mux.closeWorkspace(workspaceRef)` -- closes the terminal session.
+2. `git worktree remove .worktrees/todo-<ID>` -- removes the checkout.
+3. `releasePartition(id)` -- frees the port/DB allocation.

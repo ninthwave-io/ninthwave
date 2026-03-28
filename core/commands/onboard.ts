@@ -1,4 +1,4 @@
-// `ninthwave` no-args handling — adapts to project state.
+// `ninthwave` no-args handling -- adapts to project state.
 //
 // When `ninthwave` is run with no arguments, detects the project state and
 // routes to the appropriate flow:
@@ -238,7 +238,7 @@ export async function onboard(
   // ── Step 1: Welcome ─────────────────────────────────────────────
   console.log();
   console.log(
-    `${BOLD}Welcome to ninthwave${RESET} — from spec to merged PRs, automatically.`,
+    `${BOLD}Welcome to ninthwave${RESET} -- from spec to merged PRs, automatically.`,
   );
   console.log();
 
@@ -342,7 +342,7 @@ export async function onboard(
     );
     for (const pkg of detection.workspace.packages) {
       const cmd = pkg.testCmd || "no test command";
-      console.log(`  ${pkg.name} ${DIM}(${pkg.path})${RESET} — ${cmd}`);
+      console.log(`  ${pkg.name} ${DIM}(${pkg.path})${RESET} -- ${cmd}`);
     }
     console.log();
     const confirm = await prompt(
@@ -386,7 +386,7 @@ export async function onboard(
   );
   console.log();
 
-  // cmux: GUI app, workspace is already visible — no attach needed
+  // cmux: GUI app, workspace is already visible -- no attach needed
 }
 
 // ── CLI entry point ─────────────────────────────────────────────────
@@ -403,7 +403,7 @@ export function shouldOnboard(projectDir: string | null): boolean {
 }
 
 /**
- * CLI entry point — resolves project root and runs onboarding.
+ * CLI entry point -- resolves project root and runs onboarding.
  */
 export async function cmdOnboard(projectDir: string): Promise<void> {
   await onboard(projectDir);
@@ -519,7 +519,7 @@ export async function cmdNoArgs(
       await cmdWatch(watchArgs, workDir, worktreeDir, projectRoot);
     }
   } else {
-    // "launch" — prompt for item selection, then run selected
+    // "launch" -- prompt for item selection, then run selected
     const selectedIds = await doPromptItems(todos, prompt);
     if (selectedIds.length === 0) return;
 

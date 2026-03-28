@@ -101,7 +101,7 @@ export function cleanupStalePartitions(
       continue;
     }
 
-    // Worktree not found anywhere — stale lock
+    // Worktree not found anywhere -- stale lock
     try {
       unlinkSync(path);
     } catch {

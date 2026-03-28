@@ -9,7 +9,7 @@
 
 H-CP-20 was being rebased by the orchestrator after a CI failure. The TUI showed the item state as "CI Pending" and the cmux workspace sidebar also showed "CI Pending / CI running". Neither indicated that a rebase was in progress.
 
-The user expected to see a "Rebasing" state — instead, two different views both showed "CI Pending" which is misleading when the actual operation is a rebase (no CI is running during a rebase).
+The user expected to see a "Rebasing" state -- instead, two different views both showed "CI Pending" which is misleading when the actual operation is a rebase (no CI is running during a rebase).
 
 ## Expected behavior
 

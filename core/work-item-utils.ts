@@ -278,7 +278,7 @@ export function normalizeTitleForComparison(title: string): string {
  * Check if a PR title matches a TODO title.
  *
  * Returns true only if the normalized titles are an exact match.
- * Substring matches are intentionally rejected — a PR titled "old work"
+ * Substring matches are intentionally rejected -- a PR titled "old work"
  * should not match a TODO titled "old work extended".
  */
 export function prTitleMatchesWorkItem(prTitle: string, todoTitle: string): boolean {

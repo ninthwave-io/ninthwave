@@ -33,7 +33,7 @@ export interface ViewOptions {
   repoUrl?: string;
   /** Crew mode status info. When present, renders crew status panel and DAEMON column. */
   crewStatus?: CrewStatusInfo;
-  /** Current merge strategy — used for footer indicator in TUI mode. */
+  /** Current merge strategy -- used for footer indicator in TUI mode. */
   mergeStrategy?: MergeStrategy;
   /** When true, footer shows "Press Ctrl-C again to exit" instead of strategy indicator. */
   ctrlCPending?: boolean;
@@ -720,7 +720,7 @@ export function computeSessionMetrics(
  */
 export function formatCrewStatusPanel(status: CrewStatusInfo): string {
   if (!status.connected) {
-    return `  ${BOLD}Crew: ${status.crewCode}${RESET} ${RED}| OFFLINE — reconnecting...${RESET}`;
+    return `  ${BOLD}Crew: ${status.crewCode}${RESET} ${RED}| OFFLINE -- reconnecting...${RESET}`;
   }
   return `  ${BOLD}Crew: ${status.crewCode}${RESET} | Daemons: ${status.daemonCount} | Avail: ${status.availableCount} | Claimed: ${status.claimedCount} | Done: ${status.completedCount}`;
 }
@@ -1124,7 +1124,7 @@ export function formatTitleMetrics(
     metricParts.push(`Session: ${formatAge(metrics.sessionDurationMs)}`);
   }
 
-  // No metrics or terminal too narrow — plain title
+  // No metrics or terminal too narrow -- plain title
   if (metricParts.length === 0 || termWidth < 60) {
     return title;
   }
@@ -1134,12 +1134,12 @@ export function formatTitleMetrics(
   const minWidth = titlePlain.length + 4 + metricsStr.length;
 
   if (termWidth >= minWidth) {
-    // Subtract 1 to leave a safety margin — some terminals clip the last
+    // Subtract 1 to leave a safety margin -- some terminals clip the last
     // character when the line fills exactly termWidth (deferred-wrap behaviour).
     const gap = termWidth - titlePlain.length - metricsStr.length - 1;
     return `${title}${" ".repeat(gap)}${DIM}${metricsStr}${RESET}`;
   }
-  // Not enough room — plain title
+  // Not enough room -- plain title
   return title;
 }
 
@@ -1368,7 +1368,7 @@ export const MIN_FULLSCREEN_ROWS = 10;
 
 /**
  * Render the full-screen help overlay as an array of lines.
- * This is a pure function — no side effects, no terminal writes.
+ * This is a pure function -- no side effects, no terminal writes.
  *
  * Content:
  * - Metrics explanations (Lead time, Throughput, Session)
@@ -1395,7 +1395,7 @@ export function renderHelpOverlay(
     `  Session      Time since orchestrator start`,
   ]);
 
-  // Merge strategies section — reuse strategyIndicator() for icons/colors
+  // Merge strategies section -- reuse strategyIndicator() for icons/colors
   sections.push([
     `${BOLD}Merge Strategies${RESET}`,
     `  ${strategyIndicator("auto")}     AI review + CI -> auto-merge`,
@@ -1459,7 +1459,7 @@ export function renderHelpOverlay(
     const displayLen = stripAnsiForWidth(line).length;
     let rendered = line;
     if (displayLen > maxContentDisplay) {
-      // Truncate plain text to fit — find the cut point accounting for ANSI codes
+      // Truncate plain text to fit -- find the cut point accounting for ANSI codes
       let visible = 0;
       let cutIdx = 0;
       const plain = stripAnsiForWidth(line);

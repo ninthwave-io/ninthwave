@@ -265,7 +265,7 @@ export function collectRunMetrics(
     .filter((ms): ms is number => ms != null && ms > 0);
   const detectionLatency = computeDetectionLatency(latencies);
 
-  // Aggregate totals — null when no items have cost data
+  // Aggregate totals -- null when no items have cost data
   const itemsWithTokens = items.filter((i) => i.tokensUsed != null);
   const itemsWithCost = items.filter((i) => i.costUsd != null);
 
@@ -373,7 +373,7 @@ export interface CommitAnalyticsResult {
 
 /**
  * Auto-commit analytics files after an orchestration run.
- * Only stages files under the analytics path — never commits unrelated changes.
+ * Only stages files under the analytics path -- never commits unrelated changes.
  *
  * Safety: if non-analytics files are already staged in the index, skips the
  * commit and returns `dirty_index` to avoid accidentally including them.
@@ -411,7 +411,7 @@ export function commitAnalyticsFiles(
 
 /**
  * Auto-commit friction entries after an orchestration run.
- * Only stages files under the friction path — never commits unrelated changes.
+ * Only stages files under the friction path -- never commits unrelated changes.
  *
  * Safety: if non-friction files are already staged in the index, skips the
  * commit and returns `dirty_index` to avoid accidentally including them.

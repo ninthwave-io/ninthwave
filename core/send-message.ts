@@ -42,7 +42,7 @@ function attemptSend(
   runner: Runner,
   sleep: Sleeper,
 ): boolean {
-  // 1. Load message into a paste buffer (atomic — avoids keystroke race)
+  // 1. Load message into a paste buffer (atomic -- avoids keystroke race)
   const buf = runner("cmux", ["set-buffer", "--name", "_nw_send", message]);
   if (buf.exitCode !== 0) return false;
 
@@ -56,7 +56,7 @@ function attemptSend(
   ]);
 
   if (paste.exitCode !== 0) {
-    // Paste failed — surface is likely a TUI (e.g., Claude Code), not a raw
+    // Paste failed -- surface is likely a TUI (e.g., Claude Code), not a raw
     // terminal. Fall back to `cmux send` which delivers via keystrokes.
     return attemptDirectSend(workspaceRef, message, runner, sleep);
   }
@@ -85,7 +85,7 @@ function attemptDirectSend(
   runner: Runner,
   sleep: Sleeper,
 ): boolean {
-  // Send the message text (without trailing newline — we submit separately)
+  // Send the message text (without trailing newline -- we submit separately)
   const text = message.replace(/\n+$/, "");
   const result = runner("cmux", [
     "send",
@@ -133,7 +133,7 @@ export function verifyDelivery(
   ]);
 
   if (screen.exitCode !== 0) {
-    // Can't verify — assume success (paste-submit is inherently reliable)
+    // Can't verify -- assume success (paste-submit is inherently reliable)
     return true;
   }
 

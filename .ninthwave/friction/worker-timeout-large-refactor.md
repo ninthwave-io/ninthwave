@@ -10,7 +10,7 @@
 - Updating tests across 6+ files
 
 **Potential fixes:**
-1. Decompose H-TUI-3 further — separate the type rename from the behavioral changes
+1. Decompose H-TUI-3 further -- separate the type rename from the behavioral changes
 2. Increase worker timeout for items flagged as "large" or with many key files
 3. Have the worker commit+push partial progress periodically (checkpoint commits) so work isn't lost on timeout
 4. Allow the orchestrator to continue a worker on an existing branch rather than starting fresh

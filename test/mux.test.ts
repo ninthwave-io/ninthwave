@@ -1,4 +1,4 @@
-// Tests for core/mux.ts — Multiplexer interface, CmuxAdapter,
+// Tests for core/mux.ts -- Multiplexer interface, CmuxAdapter,
 // detectMuxType auto-detection, and getMux factory.
 
 import { describe, it, expect, vi } from "vitest";
@@ -181,7 +181,7 @@ describe("getMux", () => {
   it("falls back to CmuxAdapter when no mux available", () => {
     const deps = makeDeps({}, []);
     const mux = getMux(deps);
-    // Falls back gracefully — caller can check isAvailable()
+    // Falls back gracefully -- caller can check isAvailable()
     expect(mux).toBeInstanceOf(CmuxAdapter);
   });
 });

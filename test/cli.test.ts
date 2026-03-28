@@ -306,10 +306,10 @@ describe("per-command rich help (nw <command> --help)", () => {
 
   it("shows rich help header format", () => {
     const result = runCli("status", "--help");
-    // Header line: "nw status — <description>"
+    // Header line: "nw status -- <description>"
     const firstLine = result.stdout.split("\n")[0];
     expect(firstLine).toMatch(/^nw status/);
-    expect(firstLine).toContain("—");
+    expect(firstLine).toContain("--");
   });
 
   it("every command has working --help", () => {

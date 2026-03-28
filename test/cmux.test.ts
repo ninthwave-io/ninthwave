@@ -1,4 +1,4 @@
-// Tests for cmux sendMessage — paste-then-submit, verification, and retry.
+// Tests for cmux sendMessage -- paste-then-submit, verification, and retry.
 // Imports from core/send-message.ts (not core/cmux.ts) to avoid vi.mock leaks
 // from start.test.ts. Uses dependency injection per project conventions.
 

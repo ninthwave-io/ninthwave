@@ -14,7 +14,7 @@ Show all items in the orchestration run with their current state (queued, implem
 
 ## Additional observations
 
-- The output is also mangled/garbled — formatting issues beyond just missing items.
+- The output is also mangled/garbled -- formatting issues beyond just missing items.
 - Need integration testing around the status pane functionality to catch rendering bugs and verify the full queue is displayed correctly.
 
 ## Impact

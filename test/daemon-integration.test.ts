@@ -301,7 +301,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     orch.processTransitions(emptySnapshot(["STUCK-1"]));
     expect(orch.getItem("STUCK-1")!.state).toBe("launching");
 
-    // Worker dies during launch — debounce: 5 consecutive not-alive checks required
+    // Worker dies during launch -- debounce: 5 consecutive not-alive checks required
     let actions = sendDeadPolls(orch, "STUCK-1", 5);
     // Should retry: ready → launching in same cycle
     expect(orch.getItem("STUCK-1")!.retryCount).toBe(1);
@@ -309,7 +309,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     expect(actions.some((a) => a.type === "retry")).toBe(true);
     expect(actions.some((a) => a.type === "launch")).toBe(true);
 
-    // Worker dies again — notAliveCount resets on retry, needs 5 consecutive checks
+    // Worker dies again -- notAliveCount resets on retry, needs 5 consecutive checks
     actions = sendDeadPolls(orch, "STUCK-1", 5);
     expect(orch.getItem("STUCK-1")!.state).toBe("stuck");
     expect(orch.getItem("STUCK-1")!.failureReason).toContain("worker-crashed");
@@ -328,16 +328,16 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     );
     expect(orch.getItem("STUCK-2")!.state).toBe("implementing");
 
-    // Worker dies without creating a PR — requires 5 consecutive not-alive checks (debounce)
+    // Worker dies without creating a PR -- requires 5 consecutive not-alive checks (debounce)
     sendDeadPolls(orch, "STUCK-2", 4);
     expect(orch.getItem("STUCK-2")!.state).toBe("implementing"); // not stuck yet (4/5)
     let actions = sendDeadPolls(orch, "STUCK-2", 1);
-    // 5th consecutive check — should retry
+    // 5th consecutive check -- should retry
     expect(orch.getItem("STUCK-2")!.retryCount).toBe(1);
     expect(orch.getItem("STUCK-2")!.state).toBe("launching");
     expect(actions.some((a) => a.type === "retry")).toBe(true);
 
-    // Second crash — 5 more consecutive not-alive checks → stuck
+    // Second crash -- 5 more consecutive not-alive checks → stuck
     actions = sendDeadPolls(orch, "STUCK-2", 5);
     expect(orch.getItem("STUCK-2")!.state).toBe("stuck");
   });
@@ -401,7 +401,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     expect(result.success).toBe(true);
     expect(orch.getItem("STUCK-4")!.lastScreenOutput).toBe("Error: OOM killed");
     expect(warnFn).toHaveBeenCalledWith(expect.stringContaining("STUCK-4"));
-    // Worktree should NOT be cleaned — workspace-close preserves it
+    // Worktree should NOT be cleaned -- workspace-close preserves it
     expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
   });
 });
@@ -470,7 +470,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
     orch.processTransitions(emptySnapshot(["NS-1"]));
     expect(orch.getItem("NS-1")!.state).toBe("launching");
 
-    // NS-1 in implementing (non-stackable) — NS-2 should stay queued
+    // NS-1 in implementing (non-stackable) -- NS-2 should stay queued
     orch.processTransitions(
       snapshotWith([{ id: "NS-1", workerAlive: true }]),
     );
@@ -543,7 +543,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
       ]),
     );
 
-    // DEPSTK-1 should be stuck (maxRetries: 0 but CI fail with maxCiRetries default 2 — need more failures)
+    // DEPSTK-1 should be stuck (maxRetries: 0 but CI fail with maxCiRetries default 2 -- need more failures)
     // Actually with maxRetries:0 the CI path doesn't use retries. Let's check.
     // ci-failed happens, ciFailCount = 1. maxCiRetries default is 2. Not stuck yet.
     // We need maxCiRetries: 0 for immediate stuck on CI fail.
@@ -552,7 +552,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
     // Let's just force the state to test the stuck dep pause behavior.
     orch.setState("DEPSTK-1", "stuck");
 
-    // Process transitions — stuck DEPSTK-1 should pause DEPSTK-2
+    // Process transitions -- stuck DEPSTK-1 should pause DEPSTK-2
     const actions = orch.processTransitions(
       snapshotWith([
         { id: "DEPSTK-2", workerAlive: true },

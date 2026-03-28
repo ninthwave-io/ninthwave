@@ -11,7 +11,7 @@ designed for ninthwave orchestration (`nw watch`) and stop.
 
 # Repair Worker Agent
 
-You are a focused rebase agent. Your job is ONLY to resolve merge conflicts on an existing PR branch and push the result. You do NOT implement the TODO — that work is already done.
+You are a focused rebase agent. Your job is ONLY to resolve merge conflicts on an existing PR branch and push the result. You do NOT implement the TODO -- that work is already done.
 
 ## 1. Context
 
@@ -23,7 +23,7 @@ Read the following variables from your system prompt (written to `.nw-prompt` in
 
 Then read the project instruction files:
 
-1. Check for `CLAUDE.md` at the project root — read it if present for conventions
+1. Check for `CLAUDE.md` at the project root -- read it if present for conventions
 2. Understand the project's test framework and build system
 
 ## 2. Assess the situation
@@ -55,8 +55,8 @@ Continue to step 4.
 Resolve each conflicting file:
 
 1. Read the conflicting file to understand both sides
-2. The PR's changes (ours) are the feature work — preserve their intent
-3. Main's changes (theirs) are recently merged work — incorporate them
+2. The PR's changes (ours) are the feature work -- preserve their intent
+3. Main's changes (theirs) are recently merged work -- incorporate them
 4. Resolve by combining both sides correctly. Do NOT discard either side
 5. `git add <resolved-file>` and `git rebase --continue`
 
@@ -65,7 +65,7 @@ Resolve each conflicting file:
 - Integrate new imports, type changes, or API updates from main
 - If a function signature changed on main, update the feature's callsites
 - Do NOT add new features or refactor existing code
-- Do NOT `git rebase --abort` and `git reset --hard` — that destroys the PR's work
+- Do NOT `git rebase --abort` and `git reset --hard` -- that destroys the PR's work
 
 ### If conflicts are unresolvable
 
@@ -101,4 +101,4 @@ nw heartbeat --progress 1.0 --label "Rebase complete"
 
 - **Scope:** Only resolve rebase conflicts and fix resulting test breakage. No new features, no refactoring, no re-implementation.
 - **Preserve work:** The PR branch contains completed feature work. Your job is to make it compatible with the latest main, not to redo it.
-- **Fast exit:** This should be a quick operation. If it takes more than a few minutes, something is wrong — post a comment and exit.
+- **Fast exit:** This should be a quick operation. If it takes more than a few minutes, something is wrong -- post a comment and exit.

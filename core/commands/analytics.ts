@@ -157,7 +157,7 @@ export function computeSummary(runs: RunMetrics[]): AnalyticsSummary {
     ? latestCiRetries / latest.itemsAttempted
     : 0;
 
-  // Aggregate cost data across all runs — null when no run has cost data
+  // Aggregate cost data across all runs -- null when no run has cost data
   const runsWithTokens = runs.filter((r) => r.totalTokensUsed != null);
   const runsWithCost = runs.filter((r) => r.totalCostUsd != null);
 
@@ -197,7 +197,7 @@ export function computeSummary(runs: RunMetrics[]): AnalyticsSummary {
     }
   }
 
-  // Aggregate detection latency across all runs — collect all per-item latencies
+  // Aggregate detection latency across all runs -- collect all per-item latencies
   const allLatencies = runs.flatMap((r) =>
     r.items
       .map((i) => i.detectionLatencyMs)
@@ -293,7 +293,7 @@ function formatTokens(tokens: number): string {
 
 /**
  * Format analytics output as plain text lines.
- * Pure function — no side effects — for easy testing.
+ * Pure function -- no side effects -- for easy testing.
  */
 export function formatAnalytics(summary: AnalyticsSummary, showAll: boolean): string[] {
   const lines: string[] = [];
@@ -342,7 +342,7 @@ export function formatAnalytics(summary: AnalyticsSummary, showAll: boolean): st
   lines.push(`  ${CYAN}Total items shipped:${RESET}  ${summary.totalItemsShipped}`);
   lines.push(`  ${CYAN}Items per day:${RESET}        ${summary.itemsPerDay.toFixed(1)}`);
 
-  // Cost summary section — only shown when any cost data exists
+  // Cost summary section -- only shown when any cost data exists
   const hasCostSummary = summary.totalCostUsd != null || summary.totalTokensUsed != null;
   if (hasCostSummary) {
     lines.push("");
@@ -372,7 +372,7 @@ export function formatAnalytics(summary: AnalyticsSummary, showAll: boolean): st
     }
   }
 
-  // Detection latency — only shown when latency data exists
+  // Detection latency -- only shown when latency data exists
   if (summary.detectionLatency) {
     const dl = summary.detectionLatency;
     const slowTag = dl.slowDetection ? `  ${RED}⚠ slow detection${RESET}` : "";
@@ -385,7 +385,7 @@ export function formatAnalytics(summary: AnalyticsSummary, showAll: boolean): st
 
   lines.push("");
 
-  // Determine whether any displayed run has cost data — controls column visibility
+  // Determine whether any displayed run has cost data -- controls column visibility
   const hasCostData = displayRuns.some((r) => r.totalCostUsd != null);
 
   // Run history table
@@ -402,7 +402,7 @@ export function formatAnalytics(summary: AnalyticsSummary, showAll: boolean): st
     const failColor = run.itemsFailed > 0 ? RED : "";
     const failReset = run.itemsFailed > 0 ? RESET : "";
     const costCol = hasCostData
-      ? ` ${(run.totalCostUsd != null ? formatCost(run.totalCostUsd) : "—").padEnd(10)}`
+      ? ` ${(run.totalCostUsd != null ? formatCost(run.totalCostUsd) : "-").padEnd(10)}`
       : "";
 
     lines.push(

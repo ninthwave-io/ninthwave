@@ -1,4 +1,4 @@
-// Tests for core/commands/history.ts — item state timeline display.
+// Tests for core/commands/history.ts -- item state timeline display.
 
 import { describe, it, expect } from "vitest";
 import { join } from "path";

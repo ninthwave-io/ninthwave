@@ -1,4 +1,4 @@
-// Tests for core/git-author.ts — git author resolution utility and cache.
+// Tests for core/git-author.ts -- git author resolution utility and cache.
 
 import { describe, it, expect } from "vitest";
 import { resolveGitAuthor, AuthorCache, type GitAuthorDeps } from "../core/git-author.ts";

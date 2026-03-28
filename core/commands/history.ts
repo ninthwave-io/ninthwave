@@ -219,7 +219,7 @@ function formatTimestamp(iso: string): string {
 
 /**
  * Format the timeline as plain text lines.
- * Pure function — no side effects — for easy testing.
+ * Pure function -- no side effects -- for easy testing.
  */
 export function formatTimeline(
   itemId: string,
@@ -229,7 +229,7 @@ export function formatTimeline(
   const lines: string[] = [];
 
   // Header
-  const titleSuffix = title ? ` — ${title}` : "";
+  const titleSuffix = title ? ` -- ${title}` : "";
   lines.push(`${BOLD}${itemId}${RESET}${titleSuffix}`);
   lines.push("");
 

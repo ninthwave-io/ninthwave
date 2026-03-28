@@ -385,7 +385,7 @@ describe("launchSingleItem", () => {
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
-    // worktreeDir doesn't exist yet — launchSingleItem should create it
+    // worktreeDir doesn't exist yet -- launchSingleItem should create it
     await captureOutput(() => {
       launchSingleItem(item, workDir, worktreeDir, repo, "claude", mockMux);
     });
@@ -635,7 +635,7 @@ describe("launchSingleItem external worktree handling", () => {
     // findWorktreeForBranch returns an external worktree path
     const externalWtPath = "/tmp/fake-external-worktree";
     (findWorktreeForBranch as Mock)
-      .mockReturnValueOnce(externalWtPath)  // First call (line 456 — pre-check)
+      .mockReturnValueOnce(externalWtPath)  // First call (line 456 -- pre-check)
       .mockReturnValueOnce(externalWtPath); // Second call (in catch block)
 
     const output = await captureOutput(() => {
@@ -674,7 +674,7 @@ describe("launchSingleItem external worktree handling", () => {
       .mockImplementationOnce(() => {})  // pre-check succeeds
       .mockImplementationOnce(() => { throw new Error("permission denied"); }); // retry fails
 
-    // The error should propagate — no silent failures
+    // The error should propagate -- no silent failures
     let thrownError: Error | null = null;
     await captureOutput(() => {
       try {
@@ -1091,7 +1091,7 @@ describe("launchAiSession agentName", () => {
     const wsRef = launchAiSession("copilot", repo, "T-1", "Test", promptFile, mockMux);
 
     expect(wsRef).not.toBeNull();
-    // No message should be sent after launch — prompt is embedded in -i
+    // No message should be sent after launch -- prompt is embedded in -i
     expect(mockMux.sendMessage.mock.calls.length).toBe(0);
     // Launcher script should exist and contain the prompt file reference
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
@@ -1112,7 +1112,7 @@ describe("launchAiSession agentName", () => {
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     const cmd = launchCall[1] as string;
     expect(cmd).toContain("-- Start");
-    // No message should be sent after launch — prompt is embedded as positional arg
+    // No message should be sent after launch -- prompt is embedded as positional arg
     expect(mockMux.sendMessage.mock.calls.length).toBe(0);
   });
 
@@ -1448,7 +1448,7 @@ describe("cmdRunItems", () => {
         "**Depends on:** None",
         "**Domain:** test",
         "",
-        "Item A — no deps.",
+        "Item A -- no deps.",
         "",
         "Acceptance: A works.",
         "",
@@ -1466,7 +1466,7 @@ describe("cmdRunItems", () => {
         "**Depends on:** H-D-1",
         "**Domain:** test",
         "",
-        "Item B — depends on A.",
+        "Item B -- depends on A.",
         "",
         "Acceptance: B works.",
         "",
@@ -1484,7 +1484,7 @@ describe("cmdRunItems", () => {
         "**Depends on:** H-D-1",
         "**Domain:** test",
         "",
-        "Item C — depends on A.",
+        "Item C -- depends on A.",
         "",
         "Acceptance: C works.",
         "",
@@ -1502,7 +1502,7 @@ describe("cmdRunItems", () => {
         "**Depends on:** H-D-2, H-D-3",
         "**Domain:** test",
         "",
-        "Item D — depends on B and C.",
+        "Item D -- depends on B and C.",
         "",
         "Acceptance: D works.",
         "",

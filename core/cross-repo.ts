@@ -222,7 +222,7 @@ export function bootstrapRepo(
     resolveRepo(alias, projectRoot);
     return { status: "exists" };
   } catch {
-    // Not found locally — continue to bootstrap
+    // Not found locally -- continue to bootstrap
   }
 
   const parentDir = dirname(projectRoot);
@@ -257,7 +257,7 @@ export function bootstrapRepo(
     }
   }
 
-  // Neither local nor remote exists — create from scratch
+  // Neither local nor remote exists -- create from scratch
   try {
     mkdirSync(targetPath, { recursive: true });
 

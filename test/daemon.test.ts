@@ -1,4 +1,4 @@
-// Tests for core/daemon.ts — PID file management, state serialization,
+// Tests for core/daemon.ts -- PID file management, state serialization,
 // stale PID detection, state file roundtrips, user state directory, and migration.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -670,7 +670,7 @@ describe("archiveStateFile", () => {
     expect(ids).not.toContain("OLD-1-2");
   });
 
-  it("handles daemon crash gracefully — missing state file on next start", () => {
+  it("handles daemon crash gracefully -- missing state file on next start", () => {
     // Simulate: daemon crashed without writing state (no state file)
     // archiveStateFile should be a no-op
     expect(archiveStateFile("/project", io)).toBeNull();
@@ -779,7 +779,7 @@ describe("migrateRuntimeState", () => {
     expect(existsSync(join(oldDir, "orchestrator.pid"))).toBe(false);
   });
 
-  it("is idempotent — safe to call multiple times", () => {
+  it("is idempotent -- safe to call multiple times", () => {
     const oldDir = join(projectRoot, ".ninthwave");
     writeFileSync(join(oldDir, "orchestrator.pid"), "12345");
 
@@ -850,7 +850,7 @@ describe("rotateLogs", () => {
     expect(readFileSync(logPath, "utf-8")).toBe("small content");
   });
 
-  it("rotates when file exceeds maxBytes — renames base to .1", () => {
+  it("rotates when file exceeds maxBytes -- renames base to .1", () => {
     const logPath = join(tempDir, "orchestrator.log");
     const bigContent = "x".repeat(200);
     writeFileSync(logPath, bigContent);
@@ -903,7 +903,7 @@ describe("rotateLogs", () => {
     expect(readFileSync(`${logPath}.1`, "utf-8")).toBe("x".repeat(200));
     expect(readFileSync(`${logPath}.2`, "utf-8")).toBe("rotation-1");
     expect(readFileSync(`${logPath}.3`, "utf-8")).toBe("rotation-2");
-    // Only 3 rotated files kept — no .4
+    // Only 3 rotated files kept -- no .4
     expect(existsSync(`${logPath}.4`)).toBe(false);
   });
 

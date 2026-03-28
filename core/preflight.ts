@@ -10,7 +10,7 @@ import { run as defaultRun } from "./shell.ts";
 
 // ── Types ────────────────────────────────────────────────────────────
 
-/** Shell runner signature — injectable for testing. */
+/** Shell runner signature -- injectable for testing. */
 export type ShellRunner = (
   cmd: string,
   args: string[],
@@ -179,7 +179,7 @@ export function checkCopilotTrust(
       detail: `Add "${projectRoot}" to ~/.copilot/config.json trusted_folders to prevent trust prompts in worktrees`,
     };
   } catch {
-    // No config file — copilot might not be configured yet
+    // No config file -- copilot might not be configured yet
     return {
       status: "warn",
       message: "Could not read ~/.copilot/config.json",
@@ -216,7 +216,7 @@ export function preflight(
   for (const check of checks) {
     if (check.status === "fail") {
       const line = check.detail
-        ? `${check.message} — ${check.detail}`
+        ? `${check.message} -- ${check.detail}`
         : check.message;
       errors.push(line);
     }

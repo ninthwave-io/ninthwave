@@ -1,4 +1,4 @@
-// `ninthwave init` — unified project initialization with auto-detection.
+// `ninthwave init` -- unified project initialization with auto-detection.
 //
 // Detects: (1) repo structure (monorepo vs single), (2) CI system (GitHub Actions),
 // (3) multiplexer (cmux), (4) AI tool config (.claude/, .opencode/, copilot).
@@ -60,7 +60,7 @@ export interface DetectionResult {
 }
 
 /**
- * Dependency injection for init — all external I/O is injectable for testing.
+ * Dependency injection for init -- all external I/O is injectable for testing.
  */
 export interface InitDeps {
   commandExists?: CommandChecker;
@@ -71,10 +71,10 @@ export interface InitDeps {
 }
 
 /**
- * Options for initProject — setup-specific dependencies.
+ * Options for initProject -- setup-specific dependencies.
  */
 export interface InitProjectOpts {
-  /** Agent selection — bypasses prompts. Defaults to all agents + all detected tools. */
+  /** Agent selection -- bypasses prompts. Defaults to all agents + all detected tools. */
   agentSelection?: AgentSelection;
   /** Command checker for prerequisite checks. Falls back to InitDeps.commandExists. */
   commandExists?: CommandChecker;
@@ -199,7 +199,7 @@ export function detectAITools(
 }
 
 /**
- * Detect repo structure — monorepo if package.json has workspaces,
+ * Detect repo structure -- monorepo if package.json has workspaces,
  * or if there are multiple package.json files in top-level directories.
  */
 export function detectRepoType(
@@ -216,7 +216,7 @@ export function detectRepoType(
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.workspaces) return "monorepo";
     } catch {
-      // Invalid JSON — ignore
+      // Invalid JSON -- ignore
     }
   }
 
@@ -357,7 +357,7 @@ export function resolveWorkspaceGlobs(
 
     let dirs: string[];
     if (wildcardIdx === -1) {
-      // Literal path — check if it has a package.json
+      // Literal path -- check if it has a package.json
       if (fileExists(join(projectDir, cleaned, "package.json"))) {
         dirs = [cleaned];
       } else {
@@ -456,7 +456,7 @@ export function detectWorkspace(
           }
         }
       } catch {
-        // Invalid JSON — skip
+        // Invalid JSON -- skip
       }
     }
   }
@@ -485,7 +485,7 @@ export function detectWorkspace(
         const pkg = JSON.parse(pkgContent) as { turbo?: unknown };
         if (pkg.turbo) tool = "turborepo";
       } catch {
-        // Already parsed above — skip
+        // Already parsed above -- skip
       }
     }
   }
@@ -644,7 +644,7 @@ export function printSummary(detection: DetectionResult): void {
     for (const pkg of detection.workspace.packages) {
       const cmd = pkg.testCmd || `${DIM}no test command${RESET}`;
       console.log(
-        `    ${DIM}·${RESET} ${pkg.name} ${DIM}(${pkg.path})${RESET} — ${cmd}`,
+        `    ${DIM}·${RESET} ${pkg.name} ${DIM}(${pkg.path})${RESET} -- ${cmd}`,
       );
     }
   }
@@ -655,7 +655,7 @@ export function printSummary(detection: DetectionResult): void {
 // --- Scaffolding ---
 
 /**
- * Run the scaffolding portion of init — creates all project files.
+ * Run the scaffolding portion of init -- creates all project files.
  * Never aborts on missing prerequisites.
  *
  * Uses AgentSelection for agent installation. Defaults to all agents
@@ -789,12 +789,12 @@ function scaffold(
 // --- Main init command ---
 
 /**
- * Run `ninthwave init` — auto-detect project environment and set up ninthwave.
+ * Run `ninthwave init` -- auto-detect project environment and set up ninthwave.
  *
  * Unified flow: auto-detect -> print summary -> check prerequisites (warn) ->
  * write config -> scaffold with agent selection -> nw symlink -> print next steps.
  *
- * Never aborts on missing prerequisites — warnings only.
+ * Never aborts on missing prerequisites -- warnings only.
  */
 export function initProject(
   projectDir: string,
@@ -820,7 +820,7 @@ export function initProject(
     opts?.ghAuthCheck ?? undefined,
   );
 
-  // 4. Write config with detected values (always overwrite — init is authoritative)
+  // 4. Write config with detected values (always overwrite -- init is authoritative)
   const configPath = join(projectDir, ".ninthwave/config");
   mkdirSync(join(projectDir, ".ninthwave"), { recursive: true });
   writeFileSync(configPath, generateConfig(detection));

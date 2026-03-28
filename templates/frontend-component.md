@@ -28,7 +28,7 @@ component, page, view, UI, frontend, form, modal, dialog, dashboard, widget, Rea
 
 **Batch 1:** Data Layer
 **Batch 2:** Core Component
-**Batch 3:** Subcomponents, Styling/Layout, Tests (parallel — different files)
+**Batch 3:** Subcomponents, Styling/Layout, Tests (parallel -- different files)
 
 ## Guidance
 

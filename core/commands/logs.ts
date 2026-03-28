@@ -1,4 +1,4 @@
-// `nw logs` — view orchestration log entries.
+// `nw logs` -- view orchestration log entries.
 //
 // Reads JSONL log files from ~/.ninthwave/projects/{slug}/orchestrator.log
 // and pretty-prints them with color. Supports filtering by item ID, level,
@@ -231,7 +231,7 @@ export function followLog(
         output(formatLogEntry(entry));
       }
     } catch {
-      // Best-effort — file might be temporarily unavailable
+      // Best-effort -- file might be temporarily unavailable
     }
   }, 500);
 
@@ -365,7 +365,7 @@ export async function cmdLogs(args: string[], projectRoot: string): Promise<void
   const logPath = resolveLogPath(projectRoot);
 
   if (options.follow) {
-    // Follow mode — print and tail
+    // Follow mode -- print and tail
     const cleanup = followLog(logPath, options);
 
     // Handle graceful shutdown

@@ -142,7 +142,7 @@ export function cmdWatchReady(
  * CI check states that indicate a definitive failure.
  * GitHub returns these from check runs (FAILURE, CANCELLED, TIMED_OUT,
  * ACTION_REQUIRED, STARTUP_FAILURE) and commit status checks (ERROR).
- * Without this, only FAILURE was detected — other failure states like ERROR
+ * Without this, only FAILURE was detected -- other failure states like ERROR
  * left ciStatus as "unknown", causing items to stay stuck in ci-pending.
  */
 export const CI_FAILURE_STATES = new Set([
@@ -220,7 +220,7 @@ export function checkPrStatus(id: string, repoRoot: string): string {
       .filter((t): t is string => !!t)
       .sort();
     if (completedTimes.length > 0) {
-      // Use the latest completedAt — the check that determined the final CI status
+      // Use the latest completedAt -- the check that determined the final CI status
       eventTime = completedTimes[completedTimes.length - 1]!;
     }
   }
@@ -283,7 +283,7 @@ export async function cmdAutopilotWatch(
     return;
   }
 
-  // No transitions — poll until something changes
+  // No transitions -- poll until something changes
   let elapsed = 0;
   while (elapsed < 3600) {
     await new Promise((r) => setTimeout(r, interval * 1000));

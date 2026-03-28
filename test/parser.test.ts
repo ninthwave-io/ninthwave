@@ -43,7 +43,7 @@ function makeWorkItem(overrides: Partial<WorkItem> & { id: string; priority: Pri
   };
 }
 
-describe("parseWorkItems — valid items", () => {
+describe("parseWorkItems -- valid items", () => {
   it("parses all 4 items from directory", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -381,7 +381,7 @@ Acceptance: Runners upgraded.
   });
 });
 
-describe("parseWorkItems — items with missing optional fields", () => {
+describe("parseWorkItems -- items with missing optional fields", () => {
   it("parses item with no dependencies line (defaults to empty array)", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -403,7 +403,7 @@ Description only.
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
 
-    // No priority line — parseWorkItemFile returns null
+    // No priority line -- parseWorkItemFile returns null
     writeRawTodoFile(workDir, "2-test--M-BK-1.md", `# No priority item (M-BK-1)
 
 **Depends on:** None
@@ -431,7 +431,7 @@ This is valid.
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
 
-    // No ID in heading — parseWorkItemFile returns null
+    // No ID in heading -- parseWorkItemFile returns null
     writeRawTodoFile(workDir, "2-test--no-id.md", `# Item with no ID
 
 **Priority:** Medium
@@ -452,7 +452,7 @@ This is valid.
   });
 });
 
-describe("parseWorkItems — empty directory", () => {
+describe("parseWorkItems -- empty directory", () => {
   it("empty work items directory produces no items", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -471,7 +471,7 @@ describe("parseWorkItems — empty directory", () => {
   });
 });
 
-describe("parseWorkItems — multi-domain items", () => {
+describe("parseWorkItems -- multi-domain items", () => {
   it("parses items with different domains", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -531,7 +531,7 @@ describe("parseWorkItems — multi-domain items", () => {
   });
 });
 
-describe("parseWorkItems — cross-repo items", () => {
+describe("parseWorkItems -- cross-repo items", () => {
   it("parses repo aliases", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -621,7 +621,7 @@ Key files: \`lib/gateway/rate_limiter.ex\`
   });
 });
 
-describe("parseWorkItems — in-progress detection", () => {
+describe("parseWorkItems -- in-progress detection", () => {
   it("detects in-progress from worktree directories", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -690,7 +690,7 @@ describe("parseWorkItems — in-progress detection", () => {
   });
 });
 
-describe("parseWorkItems — circular deps", () => {
+describe("parseWorkItems -- circular deps", () => {
   it("parses all 3 circular dep items", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -785,7 +785,7 @@ describe("normalizeDomain", () => {
     ).toBe("cli-migration");
   });
 
-  it("strips parenthetical annotations — v2 rewrite", () => {
+  it("strips parenthetical annotations -- v2 rewrite", () => {
     expect(normalizeDomain("API Service (v2 rewrite)")).toBe("api-service");
   });
 
@@ -811,7 +811,7 @@ describe("normalizeDomain", () => {
     const long = "Architecture Design Review And Implementation Planning Session Notes";
     const result = normalizeDomain(long);
     expect(result.length).toBeLessThanOrEqual(40);
-    // Should not cut mid-word — must end at a hyphen boundary
+    // Should not cut mid-word -- must end at a hyphen boundary
     expect(result).not.toMatch(/-$/);
     // Should be a prefix of the full slug
     const fullSlug = "architecture-design-review-and-implementation-planning-session-notes";
@@ -941,7 +941,7 @@ describe("extractFilePaths", () => {
   });
 });
 
-describe("parseWorkItems — test plan extraction", () => {
+describe("parseWorkItems -- test plan extraction", () => {
   it("extracts test plan from items that have one", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -1138,7 +1138,7 @@ describe("expandWildcardDeps", () => {
   });
 });
 
-describe("parseWorkItems — wildcard dependencies", () => {
+describe("parseWorkItems -- wildcard dependencies", () => {
   it("expands wildcard deps during parsing", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
@@ -1214,7 +1214,7 @@ describe("parseWorkItems — wildcard dependencies", () => {
   });
 });
 
-describe("parseWorkItems — writeWorkItemFile round-trip", () => {
+describe("parseWorkItems -- writeWorkItemFile round-trip", () => {
   it("items written with writeWorkItemFile can be parsed back", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);

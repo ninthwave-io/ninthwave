@@ -6,7 +6,7 @@ import { run as defaultRun } from "./shell.ts";
 import { die } from "./output.ts";
 import type { RunResult } from "./types.ts";
 
-/** Shell runner signature — injectable for testing. */
+/** Shell runner signature -- injectable for testing. */
 export type ShellRunner = (
   cmd: string,
   args: string[],
@@ -32,9 +32,9 @@ export interface Multiplexer {
   listWorkspaces(): string;
   /** Close a workspace. Returns true on success. */
   closeWorkspace(ref: string): boolean;
-  /** Set status text, icon, and color for a workspace. Best-effort — returns boolean success. */
+  /** Set status text, icon, and color for a workspace. Best-effort -- returns boolean success. */
   setStatus(ref: string, key: string, text: string, icon: string, color: string): boolean;
-  /** Set progress value (0.0–1.0) and optional label for a workspace. Best-effort — returns boolean success. */
+  /** Set progress value (0.0–1.0) and optional label for a workspace. Best-effort -- returns boolean success. */
   setProgress(ref: string, value: number, label?: string): boolean;
 }
 
@@ -78,7 +78,7 @@ export class CmuxAdapter implements Multiplexer {
 /** Supported multiplexer backends. */
 export type MuxType = "cmux";
 
-/** Injectable dependencies for multiplexer detection — enables testing without vi.mock. */
+/** Injectable dependencies for multiplexer detection -- enables testing without vi.mock. */
 export interface DetectMuxDeps {
   env: Record<string, string | undefined>;
   checkBinary: (name: string) => boolean;
@@ -101,9 +101,9 @@ const defaultDetectDeps: DetectMuxDeps = {
  * Auto-detect the best available multiplexer.
  *
  * Detection chain:
- * 1. CMUX_WORKSPACE_ID — inside a cmux session
+ * 1. CMUX_WORKSPACE_ID -- inside a cmux session
  * 2. cmux binary available
- * 3. Error — no multiplexer found
+ * 3. Error -- no multiplexer found
  */
 export function detectMuxType(deps: DetectMuxDeps = defaultDetectDeps): MuxType {
   const { env, checkBinary } = deps;
@@ -133,7 +133,7 @@ export function getMux(deps?: DetectMuxDeps): Multiplexer {
     detectMuxType(deps);
     return new CmuxAdapter();
   } catch {
-    // No mux available — fall back to CmuxAdapter (isAvailable() will report false)
+    // No mux available -- fall back to CmuxAdapter (isAvailable() will report false)
     return new CmuxAdapter();
   }
 }
@@ -166,7 +166,7 @@ export type AutoLaunchResult =
 export function checkAutoLaunch(deps: AutoLaunchDeps): AutoLaunchResult {
   const { env, isTTY, checkBinary } = deps;
 
-  // 1. Already inside cmux — proceed normally
+  // 1. Already inside cmux -- proceed normally
   if (env.CMUX_WORKSPACE_ID) return { action: "proceed" };
 
   // 2. Recursive launch guard
@@ -252,7 +252,7 @@ export function ensureMuxOrAutoLaunch(
     process.exit(proc.exitCode ?? 1);
   }
 
-  // Error — die with message
+  // Error -- die with message
   die(result.message);
 }
 
@@ -263,7 +263,7 @@ export function ensureMuxOrAutoLaunch(
  * has >= 3 non-empty lines and the content is the same for two consecutive polls
  * (indicating the agent has finished loading and the UI is stable).
  *
- * @param sleep — injectable for testing; defaults to Bun.sleepSync
+ * @param sleep -- injectable for testing; defaults to Bun.sleepSync
  */
 export function waitForReady(
   mux: Multiplexer,

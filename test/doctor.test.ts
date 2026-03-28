@@ -1,4 +1,4 @@
-// Tests for core/commands/doctor.ts — diagnostic health check command.
+// Tests for core/commands/doctor.ts -- diagnostic health check command.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync } from "fs";
@@ -382,7 +382,7 @@ describe("checkCopilotTrust (doctor re-export)", () => {
     );
     expect(copilotResult).toBeDefined();
     expect(copilotResult!.category).toBe("Optional");
-    // It's a warn, not a fail — so exit code should still be 0
+    // It's a warn, not a fail -- so exit code should still be 0
     expect(doctor.exitCode).toBe(0);
   });
 });

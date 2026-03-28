@@ -200,7 +200,7 @@ export function getWorktreeLastCommitTime(
   try {
     // Only count commits the worker actually made (on this branch but not on main).
     // Using `main..branchName` avoids treating the base branch's last commit time
-    // as worker activity — which would cause the heartbeat to immediately declare
+    // as worker activity -- which would cause the heartbeat to immediately declare
     // stale workers as stalled when the base branch hasn't been updated recently.
     const result = run("git", ["log", "-1", "--format=%cI", `main..${branchName}`], {
       cwd: projectRoot,
@@ -246,7 +246,7 @@ export function buildSnapshot(
       continue;
     }
 
-    // Skip terminal states — nothing to poll
+    // Skip terminal states -- nothing to poll
     if (orchItem.state === "done" || orchItem.state === "stuck") continue;
 
     // Post-merge verification: poll CI on the merge commit (no PR polling needed)
@@ -257,7 +257,7 @@ export function buildSnapshot(
         try {
           snap.mergeCommitCIStatus = checkCommitCI(repoRoot, orchItem.mergeCommitSha);
         } catch {
-          // Non-fatal — will retry next cycle
+          // Non-fatal -- will retry next cycle
         }
       }
       items.push(snap);
@@ -266,7 +266,7 @@ export function buildSnapshot(
 
     const snap: ItemSnapshot = { id: orchItem.id };
 
-    // Check PR status via gh — use the item's resolved repo root for cross-repo items
+    // Check PR status via gh -- use the item's resolved repo root for cross-repo items
     const repoRoot = orchItem.resolvedRepoRoot ?? projectRoot;
     const statusLine = checkPr(orchItem.id, repoRoot);
     if (statusLine) {
@@ -292,7 +292,7 @@ export function buildSnapshot(
           if (alreadyTracked || !mergedPrTitle || prTitleMatchesWorkItem(mergedPrTitle, itemTitle)) {
             snap.prState = "merged";
           }
-          // else: title mismatch — stale merged PR from a previous cycle, ignore it
+          // else: title mismatch -- stale merged PR from a previous cycle, ignore it
           break;
         }
         case "ready":
@@ -313,7 +313,7 @@ export function buildSnapshot(
           snap.ciStatus = "pending";
           snap.prState = "open";
           break;
-        // "no-pr" — leave snap fields unset
+        // "no-pr" -- leave snap fields unset
       }
 
       // Set isMergeable from the 4th field for all open PR states.
@@ -340,7 +340,7 @@ export function buildSnapshot(
       if (orchItem.reviewVerdictPath) {
         try {
           snap.reviewVerdict = readVerdictFile(orchItem.reviewVerdictPath) ?? undefined;
-        } catch { /* best-effort — verdict read failure doesn't block polling */ }
+        } catch { /* best-effort -- verdict read failure doesn't block polling */ }
       }
     }
 
@@ -372,7 +372,7 @@ export function buildSnapshot(
     if (heartbeatStates.has(orchItem.state)) {
       try {
         snap.lastHeartbeat = readHeartbeat(projectRoot, orchItem.id) ?? null;
-      } catch { /* best-effort — heartbeat read failure doesn't block polling */ }
+      } catch { /* best-effort -- heartbeat read failure doesn't block polling */ }
     }
 
     // Fetch new trusted PR comments for items with open PRs in active states
@@ -385,7 +385,7 @@ export function buildSnapshot(
           if (comments.length > 0) {
             snap.newComments = comments;
           }
-        } catch { /* ignore — comment polling is best-effort */ }
+        } catch { /* ignore -- comment polling is best-effort */ }
       }
     }
 
@@ -467,7 +467,7 @@ export function syncWorkerDisplay(
           mux.setProgress(item.workspaceRef, 0);
         }
       } else {
-        // Worker is idle: 1.0 (complete), no label — status pill carries the message
+        // Worker is idle: 1.0 (complete), no label -- status pill carries the message
         mux.setProgress(item.workspaceRef, 1);
       }
     } catch { /* best-effort */ }
@@ -476,14 +476,14 @@ export function syncWorkerDisplay(
 
 // ── Adaptive poll interval ─────────────────────────────────────────
 
-/** Flat 2s poll interval — fast enough that users never need to think about refresh timing. */
+/** Flat 2s poll interval -- fast enough that users never need to think about refresh timing. */
 export function adaptivePollInterval(_orch: Orchestrator): number {
   return 2_000;
 }
 
 // ── External PR review processing ─────────────────────────────────
 
-/** Author associations with write access — only review PRs from trusted contributors. */
+/** Author associations with write access -- only review PRs from trusted contributors. */
 const TRUSTED_AUTHOR_ASSOCIATIONS = new Set([
   "OWNER",
   "MEMBER",
@@ -561,7 +561,7 @@ export function processExternalReviews(
       continue;
     }
 
-    // New PR — add to tracking
+    // New PR -- add to tracking
     const newItem: import("../daemon.ts").ExternalReviewItem = {
       prNumber: pr.prNumber,
       headBranch: pr.headBranch,
@@ -614,7 +614,7 @@ export function processExternalReviews(
   for (let i = updatedReviews.length - 1; i >= 0; i--) {
     const review = updatedReviews[i]!;
     if (!openPrNumbers.has(review.prNumber)) {
-      // PR was closed or merged — clean up
+      // PR was closed or merged -- clean up
       if (review.reviewWorkspaceRef) {
         try {
           deps.cleanReview(review.reviewWorkspaceRef);
@@ -645,7 +645,7 @@ export function processExternalReviews(
  * When an item is in "implementing" state (worktree exists, no PR yet),
  * also recovers the workspaceRef from live cmux workspaces. Without this,
  * the first poll cycle sees workerAlive=false and immediately marks the
- * item stuck — even if the worker is actively running.
+ * item stuck -- even if the worker is actively running.
  */
 export function reconstructState(
   orch: Orchestrator,
@@ -715,7 +715,7 @@ export function reconstructState(
     const wtPath = wtInfo?.worktreePath ?? join(worktreeDir, `ninthwave-${item.id}`);
     if (!existsSync(wtPath)) continue;
 
-    // Item has a worktree — check PR status in the correct repo
+    // Item has a worktree -- check PR status in the correct repo
     const statusLine = checkPr(item.id, repoRoot);
     if (!statusLine) {
       orch.setState(item.id, "implementing");
@@ -740,9 +740,9 @@ export function reconstructState(
       case "merged": {
         // Collision detection: verify the merged PR's title matches this work item's title.
         // If titles don't match, the merged PR belongs to a previous item that reused the
-        // same ID — treat as no-pr to avoid falsely completing the new item (H-MID-1).
+        // same ID -- treat as no-pr to avoid falsely completing the new item (H-MID-1).
         // BUT: skip the title check if the orchestrator already tracked this PR number
-        // (from daemon state) — that means we assigned it during the previous run,
+        // (from daemon state) -- that means we assigned it during the previous run,
         // so it's definitely ours regardless of how the worker titled it.
         const mergedPrNum = prNumStr ? parseInt(prNumStr, 10) : undefined;
         const alreadyTracked = mergedPrNum != null && previousPrNumber === mergedPrNum;
@@ -925,7 +925,7 @@ export function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<vo
 /**
  * Get available memory in bytes, accounting for reclaimable file cache.
  *
- * On macOS, os.freemem() only reports truly "free" pages — not inactive
+ * On macOS, os.freemem() only reports truly "free" pages -- not inactive
  * pages that the OS can reclaim on demand. This causes the memory-aware
  * WIP limiter to throttle to 1 worker even when the system has plenty of
  * headroom. We parse vm_stat to sum free + inactive pages instead.
@@ -979,7 +979,7 @@ function handleRunComplete(
       if (item.workspaceRef) {
         deps.actionDeps.closeWorkspace(item.workspaceRef);
       }
-      // Preserve worktrees for stuck items — users can inspect partial work
+      // Preserve worktrees for stuck items -- users can inspect partial work
       // and clean manually with `nw clean <ID>` when done.
       if (item.state === "stuck") continue;
       const cleaned = deps.actionDeps.cleanSingleWorktree(
@@ -991,7 +991,7 @@ function handleRunComplete(
         cleanedIds.push(item.id);
       }
     } catch {
-      // Non-fatal — best-effort cleanup
+      // Non-fatal -- best-effort cleanup
     }
   }
 
@@ -1044,7 +1044,7 @@ function handleRunComplete(
         path: metricsPath,
       });
     } catch (e: unknown) {
-      // Non-fatal — analytics failure shouldn't block the orchestrator
+      // Non-fatal -- analytics failure shouldn't block the orchestrator
       const msg = e instanceof Error ? e.message : String(e);
       log({
         ts: new Date().toISOString(),
@@ -1079,7 +1079,7 @@ function handleRunComplete(
         });
       }
     } catch (e: unknown) {
-      // Non-fatal — commit failure shouldn't block the orchestrator
+      // Non-fatal -- commit failure shouldn't block the orchestrator
       const msg = e instanceof Error ? e.message : String(e);
       log({
         ts: new Date().toISOString(),
@@ -1114,7 +1114,7 @@ function handleRunComplete(
         });
       }
     } catch (e: unknown) {
-      // Non-fatal — commit failure shouldn't block the orchestrator
+      // Non-fatal -- commit failure shouldn't block the orchestrator
       const msg = e instanceof Error ? e.message : String(e);
       log({
         ts: new Date().toISOString(),
@@ -1175,7 +1175,7 @@ function handleActionExecution(
           });
         }
       } catch {
-        // Non-fatal — cost/telemetry capture failure doesn't block cleanup
+        // Non-fatal -- cost/telemetry capture failure doesn't block cleanup
       }
     }
   }
@@ -1239,7 +1239,7 @@ function handleActionExecution(
         itemId: action.itemId,
       });
     } catch (e: unknown) {
-      // Non-fatal — reconcile failure shouldn't block the orchestrator
+      // Non-fatal -- reconcile failure shouldn't block the orchestrator
       const msg = e instanceof Error ? e.message : String(e);
       log({
         ts: new Date().toISOString(),
@@ -1276,9 +1276,9 @@ export interface OrchestrateLoopDeps {
   syncDisplay?: (orch: Orchestrator, snapshot: PollSnapshot) => void;
   /** Dependencies for external PR review processing. When present and reviewExternal is enabled, external PRs are scanned and reviewed. */
   externalReviewDeps?: ExternalReviewDeps;
-  /** Scan for work item files. Required for watch mode — re-scans the work directory to discover new items. */
+  /** Scan for work item files. Required for watch mode -- re-scans the work directory to discover new items. */
   scanWorkItems?: () => WorkItem[];
-  /** Crew coordination broker. When present, crew mode is active — claim before launch, complete after merge. */
+  /** Crew coordination broker. When present, crew mode is active -- claim before launch, complete after merge. */
   crewBroker?: CrewBroker;
 }
 
@@ -1295,7 +1295,7 @@ export interface OrchestrateLoopConfig {
    * Max loop iterations before forced exit. Guards against event-loop starvation:
    * when tests use `sleep: () => Promise.resolve()`, a stuck loop monopolizes the
    * microtask queue and macrotask-based safety timers (setTimeout/setInterval) never
-   * fire — not even SIGKILL guards. This synchronous check is the only reliable defense.
+   * fire -- not even SIGKILL guards. This synchronous check is the only reliable defense.
    * Undefined = no limit (production). Tests should always set a finite cap.
    */
   maxIterations?: number;
@@ -1480,7 +1480,7 @@ export async function orchestrateLoop(
           // Continue the main loop with newly added items
           continue;
         }
-        // maxIterations exceeded in watch loop — fall through to break
+        // maxIterations exceeded in watch loop -- fall through to break
         break;
       }
 
@@ -1526,7 +1526,7 @@ export async function orchestrateLoop(
             : "",
         }));
         deps.crewBroker.sync(syncItems);
-      } catch { /* best-effort — sync failure doesn't block the orchestrator */ }
+      } catch { /* best-effort -- sync failure doesn't block the orchestrator */ }
     }
 
     // Build snapshot from external state
@@ -1542,7 +1542,7 @@ export async function orchestrateLoop(
       const launchActions = actions.filter((a) => a.type === "launch");
       if (launchActions.length > 0) {
         if (!deps.crewBroker.isConnected()) {
-          // Block ALL launches when disconnected — prevents stall detection
+          // Block ALL launches when disconnected -- prevents stall detection
           for (const action of launchActions) {
             orch.setState(action.itemId, "ready");
           }
@@ -1618,7 +1618,7 @@ export async function orchestrateLoop(
     // Sync cmux sidebar display for active workers
     try {
       deps.syncDisplay?.(orch, snapshot);
-    } catch { /* best-effort — display sync failure shouldn't block the orchestrator */ }
+    } catch { /* best-effort -- display sync failure shouldn't block the orchestrator */ }
 
     // Log state summary
     const states: Record<string, string[]> = {};
@@ -1641,7 +1641,7 @@ export async function orchestrateLoop(
         // Persist external review state
         writeExternalReviews(ctx.projectRoot, externalReviews);
       } catch (e: unknown) {
-        // Non-fatal — external review failure shouldn't block work item processing
+        // Non-fatal -- external review failure shouldn't block work item processing
         const msg = e instanceof Error ? e.message : String(e);
         log({
           ts: new Date().toISOString(),
@@ -1652,7 +1652,7 @@ export async function orchestrateLoop(
       }
     }
 
-    // Sleep — adaptive or fixed override
+    // Sleep -- adaptive or fixed override
     const interval = config.pollIntervalMs ?? adaptivePollInterval(orch);
 
     // Persist state for daemon mode (or any caller that wants snapshots)
@@ -1673,7 +1673,7 @@ export interface TuiState {
   mergeStrategy: MergeStrategy;
   /** Whether bypass is available in the cycle (from --dangerously-bypass). */
   bypassEnabled: boolean;
-  /** First Ctrl+C pressed — waiting for confirmation. */
+  /** First Ctrl+C pressed -- waiting for confirmation. */
   ctrlCPending: boolean;
   /** Timestamp of the first Ctrl+C press (for 2s timeout). */
   ctrlCTimestamp: number;
@@ -1727,14 +1727,14 @@ export function setupKeyboardShortcuts(
     // Ctrl+C: double-tap to exit
     if (key === "\x03") {
       if (tuiState?.ctrlCPending && Date.now() - tuiState.ctrlCTimestamp < 2000) {
-        // Second press within 2s — exit
+        // Second press within 2s -- exit
         if (ctrlCTimer) clearTimeout(ctrlCTimer);
         log({ ts: new Date().toISOString(), level: "info", event: "keyboard_quit", key: "ctrl-c" });
         abortController.abort();
         return;
       }
       if (tuiState) {
-        // First press — show confirmation footer
+        // First press -- show confirmation footer
         tuiState.ctrlCPending = true;
         tuiState.ctrlCTimestamp = Date.now();
         tuiState.viewOptions.ctrlCPending = true;
@@ -1748,7 +1748,7 @@ export function setupKeyboardShortcuts(
         }, 2000);
         return;
       }
-      // No tuiState — fall through to immediate abort
+      // No tuiState -- fall through to immediate abort
       log({ ts: new Date().toISOString(), level: "info", event: "keyboard_quit", key: "ctrl-c" });
       abortController.abort();
       return;
@@ -1769,7 +1769,7 @@ export function setupKeyboardShortcuts(
         tuiState.showHelp = !tuiState.showHelp;
         tuiState.viewOptions.showHelp = tuiState.showHelp;
         break;
-      case "\x1b": // Raw Escape (length 1) — dismiss help overlay
+      case "\x1b": // Raw Escape (length 1) -- dismiss help overlay
         // Only treat single-byte \x1b as Escape. Arrow keys send \x1b[A etc.
         // which are longer sequences and won't match this case.
         if (tuiState.showHelp) {
@@ -1788,7 +1788,7 @@ export function setupKeyboardShortcuts(
       case "\x1b[B": // Down arrow
         tuiState.scrollOffset += 1;
         break;
-      case "\x1B[Z": { // Shift+Tab — cycle merge strategy
+      case "\x1B[Z": { // Shift+Tab -- cycle merge strategy
         const strategies: MergeStrategy[] = tuiState.bypassEnabled
           ? ["auto", "manual", "bypass"]
           : ["auto", "manual"];
@@ -1978,7 +1978,7 @@ export function parseWatchArgs(args: string[]): ParsedWatchArgs {
         i += 2;
         break;
       case "--orchestrator-ws":
-        // Reserved for future use — workspace ref for the orchestrator itself
+        // Reserved for future use -- workspace ref for the orchestrator itself
         i += 2;
         break;
       case "--friction-log":
@@ -2126,7 +2126,7 @@ export async function cmdOrchestrate(
   if (!skipPreflight) {
     const pf = preflight(undefined, projectRoot);
     if (!pf.passed) {
-      // Check if the only failure is uncommitted work items — handle with auto-commit
+      // Check if the only failure is uncommitted work items -- handle with auto-commit
       const itemCheck = pf.checks.find(
         (c) => c.status === "fail" && c.message.includes("uncommitted work item file"),
       );
@@ -2135,7 +2135,7 @@ export async function cmdOrchestrate(
       );
 
       if (itemCheck && otherErrors.length === 0) {
-        // Only uncommitted work items failed — try auto-commit
+        // Only uncommitted work items failed -- try auto-commit
         const isInteractive = !isDaemonChild && !daemonMode && process.stdout.isTTY === true;
         let shouldCommit = false;
 
@@ -2287,7 +2287,7 @@ export async function cmdOrchestrate(
       try {
         item.resolvedRepoRoot = resolveRepo(alias, projectRoot);
       } catch {
-        // Resolution failed — if item has bootstrap: true, the orchestrator will
+        // Resolution failed -- if item has bootstrap: true, the orchestrator will
         // bootstrap the repo before launch (via the bootstrap action). Log the
         // deferred resolution. Non-bootstrap items stay hub-local as fallback.
         if (item.workItem.bootstrap) {
@@ -2311,7 +2311,7 @@ export async function cmdOrchestrate(
     }
   }
 
-  // Real action dependencies — create mux before state reconstruction so
+  // Real action dependencies -- create mux before state reconstruction so
   // workspace refs can be recovered from live workspaces.
   const mux = getMux();
 
@@ -2357,7 +2357,7 @@ export async function cmdOrchestrate(
       try {
         targetRepo = resolveRepo(item.repoAlias, projRoot);
       } catch {
-        return; // Can't resolve repo — launchSingleItem will handle the error
+        return; // Can't resolve repo -- launchSingleItem will handle the error
       }
       cleanStaleBranchForReuse(item.id, item.title, targetRepo);
     },
@@ -2388,7 +2388,7 @@ export async function cmdOrchestrate(
       // Clean the review worktree if it exists (only for direct/pr modes)
       try {
         cleanSingleWorktree(`review-${itemId}`, join(projectRoot, ".worktrees"), projectRoot);
-      } catch { /* best-effort — review worktree may not exist for off mode */ }
+      } catch { /* best-effort -- review worktree may not exist for off mode */ }
       return true;
     },
     launchRepair: (itemId, prNumber, repoRoot) => {
@@ -2416,7 +2416,7 @@ export async function cmdOrchestrate(
       try { mux.closeWorkspace(verifyWorkspaceRef); } catch { /* best-effort */ }
       try {
         cleanSingleWorktree(`ninthwave-verify-${itemId}`, join(projectRoot, ".worktrees"), projectRoot);
-      } catch { /* best-effort — verifier worktree may already be cleaned */ }
+      } catch { /* best-effort -- verifier worktree may already be cleaned */ }
       return true;
     },
   };
@@ -2499,11 +2499,11 @@ export async function cmdOrchestrate(
   const projectConfig = loadConfig(projectRoot);
   const reviewExternalEnabled = reviewExternal || projectConfig["review_external"] === "true";
 
-  // Analytics directory — always enabled, writes to .ninthwave/analytics/
+  // Analytics directory -- always enabled, writes to .ninthwave/analytics/
   const analyticsDir = join(projectRoot, ".ninthwave", "analytics");
 
   // State persistence: serialize state each poll cycle so the status pane can display all items.
-  // Written in both daemon and interactive mode — the status pane reads this file to show
+  // Written in both daemon and interactive mode -- the status pane reads this file to show
   // the full queue including queued items that don't have worktrees yet.
   // statusPaneRef is captured by reference so the closure always persists the current value.
   const daemonStartedAt = new Date().toISOString();
@@ -2514,7 +2514,7 @@ export async function cmdOrchestrate(
 
   // Archive stale state from previous run and write a fresh initial state.
   // This ensures `ninthwave status` never shows items from a previous run mixed
-  // with the current run — even before the first poll cycle completes.
+  // with the current run -- even before the first poll cycle completes.
   const archivePath = archiveStateFile(projectRoot);
   if (archivePath) {
     log({
@@ -2581,14 +2581,14 @@ export async function cmdOrchestrate(
       });
       writeStateFile(projectRoot, state);
     } catch {
-      // Non-fatal — state persistence failure shouldn't block the orchestrator
+      // Non-fatal -- state persistence failure shouldn't block the orchestrator
     }
     // TUI mode: render live status table to stdout after each poll cycle
     if (tuiMode) {
       try {
         renderTuiFrame(items, wipLimit, undefined, tuiState.viewOptions, tuiState.scrollOffset, resolvedCrewName);
       } catch {
-        // Non-fatal — TUI render failure shouldn't block the orchestrator
+        // Non-fatal -- TUI render failure shouldn't block the orchestrator
       }
     }
   };
@@ -2654,7 +2654,7 @@ export async function cmdOrchestrate(
     const ownerRepo = getRepoOwner(projectRoot);
     repoUrl = `https://github.com/${ownerRepo}`;
   } catch {
-    // Non-fatal — PR URLs will be null in completion event
+    // Non-fatal -- PR URLs will be null in completion event
   }
 
   const loopConfig: OrchestrateLoopConfig = {
@@ -2699,7 +2699,7 @@ export async function cmdOrchestrate(
   } finally {
     // Close workspaces for terminal items only (done, stuck, merged).
     // In-flight workers (implementing, ci-pending, etc.) may still be actively
-    // running — leave their workspaces open so they survive orchestrator restarts.
+    // running -- leave their workspaces open so they survive orchestrator restarts.
     // On restart, reconstructState recovers their workspace refs.
     const terminalStates = new Set(["done", "stuck", "merged"]);
     const closedWorkspaces: string[] = [];
@@ -2709,7 +2709,7 @@ export async function cmdOrchestrate(
           mux.closeWorkspace(item.workspaceRef);
           closedWorkspaces.push(item.id);
         } catch {
-          // Non-fatal — best-effort cleanup
+          // Non-fatal -- best-effort cleanup
         }
       }
     }

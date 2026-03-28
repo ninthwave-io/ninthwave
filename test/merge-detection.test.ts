@@ -62,7 +62,7 @@ function snapshotWith(
   return { items, readyIds };
 }
 
-/** Stub multiplexer — all operations are no-ops. */
+/** Stub multiplexer -- all operations are no-ops. */
 function stubMux(): Multiplexer {
   return {
     type: "cmux" as any,
@@ -109,7 +109,7 @@ const PROJECT_ROOT = "/tmp/nw-merge-test";
 // ── Test cases ───────────────────────────────────────────────────────
 
 describe("Merge detection pipeline (end-to-end)", () => {
-  // ── Test 1: Happy path — PR auto-merges between polls ──────────
+  // ── Test 1: Happy path -- PR auto-merges between polls ──────────
   describe("1. Happy path: PR auto-merges between polls", () => {
     it("worker creates PR → PR auto-merges → buildSnapshot returns merged → handleImplementing transitions to merged → clean action emitted", () => {
       const orch = new Orchestrator();
@@ -219,7 +219,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
     });
   });
 
-  // ── Test 4: Title collision — reused item ID with stale merged PR ──
+  // ── Test 4: Title collision -- reused item ID with stale merged PR ──
   describe("4. Title collision: reused item ID with stale merged PR", () => {
     it("old PR merged → new item with same ID → buildSnapshot ignores stale merged PR (title mismatch) → returns no prState", () => {
       const orch = new Orchestrator();
@@ -227,7 +227,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       orch.addItem(makeWorkItem("H-FOO-1", "Brand new feature for v2"));
       orch.getItem("H-FOO-1")!.reviewCompleted = true;
       orch.setState("H-FOO-1", "implementing");
-      // No prNumber tracked — this is a fresh launch
+      // No prNumber tracked -- this is a fresh launch
 
       // Old merged PR has a completely different title
       const checkPr = (_id: string, _root: string) =>
@@ -255,7 +255,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
     });
   });
 
-  // ── Test 5: Title collision — tracked PR number matches ────────
+  // ── Test 5: Title collision -- tracked PR number matches ────────
   describe("5. Title collision: tracked PR number matches", () => {
     it("orchestrator tracks PR #42 → buildSnapshot sees merged PR #42 → trusts it regardless of title → returns merged", () => {
       const orch = new Orchestrator();
@@ -266,7 +266,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       // Orchestrator already tracked this PR number
       orch.getItem("H-FOO-2")!.prNumber = 42;
 
-      // Worker used a completely different PR title — but PR number matches
+      // Worker used a completely different PR title -- but PR number matches
       const checkPr = (_id: string, _root: string) =>
         "H-FOO-2\t42\tmerged\t\t\trefactor: completely rewritten implementation";
 
@@ -348,7 +348,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
 
       const actions = orch.processTransitions(snapshot, NOW);
 
-      // No daemon-rebase action — already requested
+      // No daemon-rebase action -- already requested
       const rebaseActions = actions.filter(
         (a) => a.type === "daemon-rebase" && a.itemId === "MRG-6B",
       );
@@ -356,7 +356,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
     });
   });
 
-  // ── Test 7: Merge retry limit — 3 failures → stuck ────────────
+  // ── Test 7: Merge retry limit -- 3 failures → stuck ────────────
   describe("7. Merge retry limit: 3 failures → stuck", () => {
     it("executeMerge fails 3 times → item transitions to stuck (not infinite loop)", () => {
       const orch = new Orchestrator({ mergeStrategy: "auto", maxMergeRetries: 3 });
@@ -367,7 +367,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       orch.getItem("MRG-7")!.prNumber = 80;
 
       const ctx = stubCtx();
-      // prMerge always fails, checkPrMergeable returns true (not a conflict — genuine failure)
+      // prMerge always fails, checkPrMergeable returns true (not a conflict -- genuine failure)
       const deps = stubDeps({
         prMerge: () => false,
         checkPrMergeable: () => true,
@@ -453,7 +453,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       expect(snap!.prState).toBe("merged");
       expect(snap!.prNumber).toBe(90);
 
-      // Process transitions — should go to merged
+      // Process transitions -- should go to merged
       const actions = orch.processTransitions(snapshot, NOW);
       expect(orch.getItem("MRG-8")!.state).toBe("merged");
       expect(actions.some((a) => a.type === "clean" && a.itemId === "MRG-8")).toBe(true);
@@ -513,7 +513,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       const mergeAction = actions.find((a) => a.type === "merge" && a.itemId === "MRG-E2");
       expect(mergeAction).toBeDefined();
 
-      // Execute merge — should detect conflict and rebase
+      // Execute merge -- should detect conflict and rebase
       const result = orch.executeAction(mergeAction!, ctx, deps);
       expect(result.success).toBe(false);
 
@@ -637,7 +637,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
 
       reconstructState(orch, tmpDir, wtDir, stubMux(), checkPr);
 
-      // Should NOT be marked merged — title mismatch + no tracked prNumber
+      // Should NOT be marked merged -- title mismatch + no tracked prNumber
       expect(orch.getItem("MRG-RR-1")!.state).not.toBe("merged");
     });
 

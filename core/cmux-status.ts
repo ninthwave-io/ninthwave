@@ -9,7 +9,7 @@ export type ShellRunner = (cmd: string, args: string[]) => RunResult;
 
 /**
  * Set status text, icon, and color for a cmux workspace.
- * Best-effort — returns true on success, false on failure.
+ * Best-effort -- returns true on success, false on failure.
  *
  * Wraps: `cmux set-status <key> <text> --icon <icon> --color <color> --workspace <ref>`
  */
@@ -37,7 +37,7 @@ export function setStatusImpl(
 
 /**
  * Set progress value (0.0–1.0) and optional label for a cmux workspace.
- * Best-effort — returns true on success, false on failure.
+ * Best-effort -- returns true on success, false on failure.
  *
  * Wraps: `cmux set-progress <value> [--label <label>] --workspace <ref>`
  */

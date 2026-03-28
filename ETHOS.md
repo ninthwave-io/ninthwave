@@ -1,12 +1,12 @@
 # Ethos
 
-Core principles and hard boundaries for ninthwave. This is a guardrail document — it defines what we will and won't do.
+Core principles and hard boundaries for ninthwave. This is a guardrail document -- it defines what we will and won't do.
 
 ## Principles
 
 ### 1. Never modify user config outside the project directory
 
-ninthwave operates within `.ninthwave/` and the project root. It does not write to `~/.copilot/`, `~/.claude/`, `~/.config/`, or any user-global configuration. If a tool requires external setup, document it — don't automate it.
+ninthwave operates within `.ninthwave/` and the project root. It does not write to `~/.copilot/`, `~/.claude/`, `~/.config/`, or any user-global configuration. If a tool requires external setup, document it -- don't automate it.
 
 ### 2. Convention over configuration
 
@@ -14,7 +14,7 @@ Sensible defaults, minimal config files. Cross-repo resolves via sibling directo
 
 ### 3. Deterministic core, advisory AI
 
-The orchestrator daemon is deterministic TypeScript — no LLM calls in the core pipeline. LLM output never bypasses deterministic logic.
+The orchestrator daemon is deterministic TypeScript -- no LLM calls in the core pipeline. LLM output never bypasses deterministic logic.
 
 ### 4. Scope discipline
 
@@ -22,7 +22,7 @@ Each iteration narrows before it widens. Ship the narrowest working wedge, valid
 
 ### 5. Transparency
 
-Every action is auditable. PR comments carry role tags. Analytics are structured JSON. Friction logs capture what went wrong. No silent side effects — if ninthwave does something, there's a record.
+Every action is auditable. PR comments carry role tags. Analytics are structured JSON. Friction logs capture what went wrong. No silent side effects -- if ninthwave does something, there's a record.
 
 ### 6. Multi-tool, no lock-in
 
@@ -30,7 +30,7 @@ Works with Claude Code, OpenCode, Copilot CLI, and anything supporting the Agent
 
 ### 7. Human review required
 
-ninthwave manages the pipeline, not the decisions. Every PR is reviewed before it lands. Auto-merge means "merge when CI passes and reviews approve" — not "merge without review."
+ninthwave manages the pipeline, not the decisions. Every PR is reviewed before it lands. Auto-merge means "merge when CI passes and reviews approve" -- not "merge without review."
 
 ### 8. Isolation by default
 

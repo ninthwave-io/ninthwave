@@ -1,4 +1,4 @@
-// Tests for core/gh.ts — prMerge, prComment, and GitHub token resolution.
+// Tests for core/gh.ts -- prMerge, prComment, and GitHub token resolution.
 // Uses vi.spyOn (not vi.mock) to avoid global module pollution in bun test.
 
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
@@ -221,7 +221,7 @@ describe("setCommitStatus", () => {
 // ── prHeadSha ──────────────────────────────────────────────────────
 
 describe("prHeadSha", () => {
-  // prHeadSha delegates to prView which delegates to run — tested via
+  // prHeadSha delegates to prView which delegates to run -- tested via
   // the setCommitStatus orchestrator action in orchestrator.test.ts.
   // Direct unit tests are omitted because bun test's shared-process model
   // causes vi.spyOn(shell, "run") to leak across files, making prView's

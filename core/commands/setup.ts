@@ -1,4 +1,4 @@
-// Setup utilities — shared functions for project initialization.
+// Setup utilities -- shared functions for project initialization.
 //
 // Provides: prerequisite checking, skill/agent symlink management,
 // interactive agent selection, nw symlink creation, and global setup.
@@ -124,7 +124,7 @@ export function checkPrerequisites(
   let detectedMux: "cmux" | null = null;
   if (commandExists("cmux")) {
     detectedMux = "cmux";
-    console.log(`  ${GREEN}✓${RESET} cmux ${DIM}(multiplexer — visual sidebar)${RESET}`);
+    console.log(`  ${GREEN}✓${RESET} cmux ${DIM}(multiplexer -- visual sidebar)${RESET}`);
   } else {
     console.log(`  ${RED}✗${RESET} cmux ${DIM}(terminal multiplexer for parallel sessions)${RESET}`);
     console.log(`    Install: ${BOLD}brew install --cask manaflow-ai/cmux/cmux${RESET}`);
@@ -137,7 +137,7 @@ export function checkPrerequisites(
     if (!auth.authenticated) {
       console.log(`  ${YELLOW}⚠${RESET} gh is not authenticated`);
       console.log(`    Run: ${BOLD}gh auth login${RESET}`);
-      warnings.push("gh is installed but not authenticated — run: gh auth login");
+      warnings.push("gh is installed but not authenticated -- run: gh auth login");
     }
   }
 
@@ -180,7 +180,7 @@ export function createNwSymlink(
   const ninthwavePath = resolveCommandPath("ninthwave");
   if (!ninthwavePath) {
     console.log(
-      `  nw alias: skipped (ninthwave not in PATH — install via ${BOLD}brew install ninthwave-sh/tap/ninthwave${RESET})`,
+      `  nw alias: skipped (ninthwave not in PATH -- install via ${BOLD}brew install ninthwave-sh/tap/ninthwave${RESET})`,
     );
     return false;
   }
@@ -316,7 +316,7 @@ export interface SymlinkPlan {
 /**
  * Build a plan of symlink operations for the given agent selection.
  *
- * Does not create any files — just computes what would happen.
+ * Does not create any files -- just computes what would happen.
  */
 export function buildSymlinkPlan(
   projectDir: string,
@@ -365,7 +365,7 @@ export function buildSymlinkPlan(
 }
 
 /**
- * Execute a symlink plan — create the actual symlinks.
+ * Execute a symlink plan -- create the actual symlinks.
  */
 export function executeSymlinkPlan(plan: SymlinkPlan[]): void {
   for (const entry of plan) {
@@ -489,7 +489,7 @@ export async function interactiveAgentSelection(
     );
   } else {
     console.log(
-      `${DIM}No AI tool directories detected — will install to all tool directories.${RESET}`,
+      `${DIM}No AI tool directories detected -- will install to all tool directories.${RESET}`,
     );
   }
   console.log();
@@ -514,7 +514,7 @@ export async function interactiveAgentSelection(
   );
 
   if (selectedAgents.length === 0) {
-    console.log(`${DIM}No agents selected — skipping agent setup.${RESET}`);
+    console.log(`${DIM}No agents selected -- skipping agent setup.${RESET}`);
     return { agents: [], toolDirs };
   }
 
@@ -554,7 +554,7 @@ export async function interactiveAgentSelection(
   // Step 4: Confirm
   const proceed = await confirm("Proceed?", true);
   if (!proceed) {
-    console.log(`${DIM}Cancelled — no agent files created.${RESET}`);
+    console.log(`${DIM}Cancelled -- no agent files created.${RESET}`);
     return null;
   }
 

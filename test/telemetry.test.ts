@@ -66,7 +66,7 @@ describe("telemetry: startedAt / endedAt on transitions", () => {
     const snapshot: PollSnapshot = { items: [], readyIds: ["T-1-1"] };
     orch.processTransitions(snapshot);
 
-    // Item should be launching now — simulate worker alive
+    // Item should be launching now -- simulate worker alive
     const item = orch.getItem("T-1-1")!;
     expect(item.state).toBe("launching");
 
@@ -570,7 +570,7 @@ describe("edge case: worker that never starts", () => {
       prNumber: null,
       ageMs: 0,
       repoLabel: "",
-      // No startedAt — worker never initialized
+      // No startedAt -- worker never initialized
     };
     const suffix = formatTelemetrySuffix(item);
     expect(suffix).toBe("");

@@ -28,7 +28,7 @@ api, endpoint, route, controller, REST, handler, request, response, CRUD, resour
 
 **Batch 1:** Schema/Migration
 **Batch 2:** Context/Service
-**Batch 3:** Controller/Route, Tests (parallel — different files)
+**Batch 3:** Controller/Route, Tests (parallel -- different files)
 **Batch 4:** Docs/OpenAPI
 
 ## Guidance

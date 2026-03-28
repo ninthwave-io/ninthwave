@@ -1,4 +1,4 @@
-// Tests for core/delivery.ts — shared delivery verification and retry logic.
+// Tests for core/delivery.ts -- shared delivery verification and retry logic.
 
 import { describe, it, expect } from "vitest";
 import { checkDelivery, sendWithRetry } from "../core/delivery.ts";
@@ -26,10 +26,10 @@ describe("checkDelivery", () => {
     const longMsg = "A".repeat(100);
     const probe = "A".repeat(60);
 
-    // Last line has the probe — stuck
+    // Last line has the probe -- stuck
     expect(checkDelivery(`prompt\n${probe}BBBB`, longMsg)).toBe(false);
 
-    // Last line does NOT have the probe — submitted
+    // Last line does NOT have the probe -- submitted
     expect(checkDelivery("prompt\nclaude thinking...", longMsg)).toBe(true);
   });
 

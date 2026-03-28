@@ -34,7 +34,7 @@ This skill is highly interactive. You MUST use your interactive question tool to
 
 ## Instructions
 
-This skill interactively selects work items, then delegates all orchestration to `nw watch` — a deterministic TypeScript daemon that handles launching workers, polling CI, merging PRs, cleaning up, and marking items done. The skill has three phases: Phase 1 (interactive selection), Phase 2 (launching the daemon), and Phase 3 (continuous delivery loop — checking for remaining work and looping back).
+This skill interactively selects work items, then delegates all orchestration to `nw watch` -- a deterministic TypeScript daemon that handles launching workers, polling CI, merging PRs, cleaning up, and marking items done. The skill has three phases: Phase 1 (interactive selection), Phase 2 (launching the daemon), and Phase 3 (continuous delivery loop -- checking for remaining work and looping back).
 
 > **CLI shortcut:** You can skip the interactive selection and run the orchestrator directly from any terminal:
 > ```
@@ -71,12 +71,12 @@ This skill interactively selects work items, then delegates all orchestration to
 5. **Quick-start detection:** If there are reachable items and the user invoked `/work` without specifying particular items or filters, offer a streamlined entry:
 
    AskUserQuestion -- "N items reachable (M at depth 1, K at depth 2, ...). How deep do you want to go?"
-   - A) Full chain (depth N) with defaults (auto-merge ASAP, WIP 4) — recommended; the orchestrator queues deeper items until their deps merge
-   - B) Depth 1 only — just items that can start right now
-   - C) Interactive selection — choose items by feature, priority, or domain
-   - D) Dry run — show the batch plan without launching
+   - A) Full chain (depth N) with defaults (auto-merge ASAP, WIP 4) -- recommended; the orchestrator queues deeper items until their deps merge
+   - B) Depth 1 only -- just items that can start right now
+   - C) Interactive selection -- choose items by feature, priority, or domain
+   - D) Dry run -- show the batch plan without launching
 
-   **If user picks A:** Skip to step 7 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit questions — use the defaults. Proceed directly to Phase 2.
+   **If user picks A:** Skip to step 7 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit questions -- use the defaults. Proceed directly to Phase 2.
 
    **If user picks B:** Skip to step 7 with only depth-1 items selected, using defaults. Proceed directly to Phase 2.
 
@@ -108,7 +108,7 @@ This skill interactively selects work items, then delegates all orchestration to
 7. **Dependency analysis:** Run `ninthwave batch-order <selected-IDs>` to check for dependency chains.
 
    - **If all items are in Batch 1** (no dependencies): proceed to conflict check.
-   - **If items span multiple batches**: present the batch plan. The orchestrator handles dependency ordering automatically — all selected items can be passed together. **Stacking note:** items with in-flight dependencies will automatically launch stacked on the dependency's branch (no need to wait for it to merge first). This means multi-batch dependency chains often execute faster than the batch plan suggests.
+   - **If items span multiple batches**: present the batch plan. The orchestrator handles dependency ordering automatically -- all selected items can be passed together. **Stacking note:** items with in-flight dependencies will automatically launch stacked on the dependency's branch (no need to wait for it to merge first). This means multi-batch dependency chains often execute faster than the batch plan suggests.
 
 8. Run `ninthwave conflicts <batch-IDs>` to check for file overlaps.
 
@@ -146,7 +146,7 @@ This skill interactively selects work items, then delegates all orchestration to
 
 **Goal:** Ensure all work file changes from Phase 1 (selection, reconciliation, ad-hoc edits) are committed and pushed before launching workers.
 
-> **Why?** Workers spawn in worktrees cloned from the remote. If work files are created, modified, or removed during Phase 1 but not pushed, workers won't see those changes — they'll operate on stale state from the last push.
+> **Why?** Workers spawn in worktrees cloned from the remote. If work files are created, modified, or removed during Phase 1 but not pushed, workers won't see those changes -- they'll operate on stale state from the last push.
 
 ```bash
 git add .ninthwave/work/
@@ -183,22 +183,22 @@ Skip this step if nothing changed in `.ninthwave/work/` during Phase 1.
    ```
 
 2. Run the command. The orchestrator handles the full lifecycle automatically:
-   - **Queued** items wait for dependencies to clear — or **stack early** if a dependency is already in-flight (ci-passed, review-pending, or merging). Stacked items launch from the dependency's branch instead of main.
+   - **Queued** items wait for dependencies to clear -- or **stack early** if a dependency is already in-flight (ci-passed, review-pending, or merging). Stacked items launch from the dependency's branch instead of main.
    - **Ready** items get launched as worker sessions (up to the WIP limit)
    - **Implementing** workers are monitored for completion
    - **CI-pending/CI-passed** PRs are tracked through CI
    - **Merging** PRs are squash-merged, worktrees cleaned, and items marked done
-   - **Post-merge restacking** — after a dependency merges, stacked dependents are automatically rebased onto main using squash-merge-safe `rebaseOnto()`
-   - **Stack navigation comments** — PRs in a dependency chain get comments showing the full stack with links, so reviewers can navigate up and down the chain
+   - **Post-merge restacking** -- after a dependency merges, stacked dependents are automatically rebased onto main using squash-merge-safe `rebaseOnto()`
+   - **Stack navigation comments** -- PRs in a dependency chain get comments showing the full stack with links, so reviewers can navigate up and down the chain
    - Adaptive polling adjusts check frequency based on current state
    - Crash recovery reconstructs state from disk and GitHub on restart
 
 3. The orchestrator emits structured JSON log lines (always in `--json` mode; TUI mode also logs to `~/.ninthwave/state/<project>/daemon.log`). Monitor the output for:
-   - `orchestrate_start` — daemon started, lists all items
-   - `transition` — items moving between states (e.g., `queued → ready → launching`)
-   - `action_execute` / `action_result` — launches, merges, cleanups
-   - `orchestrate_complete` — all items reached terminal state (done or stuck)
-   - `shutdown` — SIGINT received, clean exit
+   - `orchestrate_start` -- daemon started, lists all items
+   - `transition` -- items moving between states (e.g., `queued → ready → launching`)
+   - `action_execute` / `action_result` -- launches, merges, cleanups
+   - `orchestrate_complete` -- all items reached terminal state (done or stuck)
+   - `shutdown` -- SIGINT received, clean exit
 
 4. **When the orchestrator exits**, summarize results:
    - How many items completed successfully (done)
@@ -222,27 +222,27 @@ Phase 3 runs automatically after Phase 2 completes. It checks whether more work 
 
 #### Step 1: Reconcile and check for remaining ready items
 
-Run `ninthwave reconcile` to sync work item state with GitHub — files for merged items are removed from `.ninthwave/work/`, stale worktrees are cleaned, and changes are committed/pushed. Never trust `list --ready` without reconciling first.
+Run `ninthwave reconcile` to sync work item state with GitHub -- files for merged items are removed from `.ninthwave/work/`, stale worktrees are cleaned, and changes are committed/pushed. Never trust `list --ready` without reconciling first.
 
 Then run `ninthwave list --ready` to see if any items were unblocked by the batch that just completed.
 
 - If **ready items exist**, continue to Step 2.
 - If **no items remain**, skip to Step 3.
 
-#### Step 2: Dogfooding — friction log review (ninthwave projects only)
+#### Step 2: Dogfooding -- friction log review (ninthwave projects only)
 
 **Detection:** Check if `skills/work/SKILL.md` exists in the project root. If it does, this is a ninthwave project and dogfooding mode is active.
 
 If in dogfooding mode:
 
 1. Read friction files from `.ninthwave/friction/` directory (excluding the `processed/` subdirectory). Each file is an individual friction observation.
-2. Identify any **new actionable entries** — friction items that don't already have corresponding work items in `.ninthwave/work/`.
+2. Identify any **new actionable entries** -- friction items that don't already have corresponding work items in `.ninthwave/work/`.
 3. If actionable entries exist, present them to the user:
 
-   AskUserQuestion — "Friction log has N new actionable entries. Decompose into work items?"
-   - A) Yes — decompose into work items, then include them in the next batch
-   - B) Skip — continue with existing ready items only
-   - C) Show entries — display the friction entries before deciding
+   AskUserQuestion -- "Friction log has N new actionable entries. Decompose into work items?"
+   - A) Yes -- decompose into work items, then include them in the next batch
+   - B) Skip -- continue with existing ready items only
+   - C) Show entries -- display the friction entries before deciding
 
    If the user chooses A, use the `/decompose` skill to break friction entries into work items. Pass the friction file contents as context. The newly created items will appear in the next `list --ready` call.
 
@@ -256,7 +256,7 @@ If in dogfooding mode:
    done
    ```
 
-5. **Commit friction artifacts:** Commit any new or moved friction files and decomposed work items so they are not lost between loop iterations. Only commit if there are staged changes — skip if nothing new.
+5. **Commit friction artifacts:** Commit any new or moved friction files and decomposed work items so they are not lost between loop iterations. Only commit if there are staged changes -- skip if nothing new.
 
    ```bash
    git add .ninthwave/friction/ .ninthwave/work/
@@ -275,13 +275,13 @@ If **not** in dogfooding mode, skip this step entirely.
 
 Run `ninthwave list --ready` to get the current count (may have changed due to friction decompose).
 
-- If **no ready items remain**, report "All done — inbox zero" and exit.
+- If **no ready items remain**, report "All done -- inbox zero" and exit.
 - If **ready items exist**, present them:
 
-AskUserQuestion — "Batch complete. N items are now ready. Continue?"
-- A) Continue with all N items — launch the next batch with the same merge strategy and WIP limit
-- B) Select items — go back to Phase 1 to pick specific items
-- C) Stop — exit the delivery loop
+AskUserQuestion -- "Batch complete. N items are now ready. Continue?"
+- A) Continue with all N items -- launch the next batch with the same merge strategy and WIP limit
+- B) Select items -- go back to Phase 1 to pick specific items
+- C) Stop -- exit the delivery loop
 
 **If the user chooses A:** Loop back to Phase 2 with the same MERGE_STRATEGY and WIP_LIMIT settings. Use the full list of ready items.
 
@@ -310,9 +310,9 @@ At each checkpoint, display a summary:
 
 The Phase 2 → Phase 3 loop continues until one of these conditions is met:
 
-1. **No ready items remain** — `list --ready` returns zero items after friction review. Report "All done — inbox zero" and exit.
-2. **User chooses to stop** — user selects "Stop" at the continuation prompt.
-3. **All items stuck** — every remaining item is in a stuck/blocked state with no path forward. Report the stuck items and exit.
+1. **No ready items remain** -- `list --ready` returns zero items after friction review. Report "All done -- inbox zero" and exit.
+2. **User chooses to stop** -- user selects "Stop" at the continuation prompt.
+3. **All items stuck** -- every remaining item is in a stuck/blocked state with no path forward. Report the stuck items and exit.
 
 ---
 
@@ -336,4 +336,4 @@ Workers prefix their comments with `**[Worker: ITEM-ID]**`.
 - **Conflict handling:** Always check before launching
 - **No silent failures:** Report errors and ask how to proceed
 - **Crash recovery:** Re-running the orchestrate command resumes from where it left off
-- **Orchestrator handles lifecycle:** Do not manually merge PRs, clean worktrees, or mark items done — the orchestrator does this automatically
+- **Orchestrator handles lifecycle:** Do not manually merge PRs, clean worktrees, or mark items done -- the orchestrator does this automatically

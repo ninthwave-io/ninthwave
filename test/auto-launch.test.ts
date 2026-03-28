@@ -1,5 +1,5 @@
 // Tests for auto-launch logic: checkAutoLaunch and ensureMuxOrAutoLaunch.
-// Uses dependency injection — no vi.mock needed.
+// Uses dependency injection -- no vi.mock needed.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
@@ -119,7 +119,7 @@ describe("checkAutoLaunch", () => {
       checkBinary: () => true,
       isTTY: true,
     });
-    // Inside cmux wins — no recursive guard
+    // Inside cmux wins -- no recursive guard
     expect(checkAutoLaunch(deps)).toEqual({ action: "proceed" });
   });
 

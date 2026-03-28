@@ -122,7 +122,7 @@ export function cmdHeartbeat(
   const branch = deps.getBranch();
   if (!branch) {
     die("Could not detect current git branch");
-    return ""; // unreachable — satisfies control flow when die is mocked in tests
+    return ""; // unreachable -- satisfies control flow when die is mocked in tests
   }
 
   const id = extractItemId(branch);
@@ -138,7 +138,7 @@ export function cmdHeartbeat(
 
   writeHeartbeat(projectRoot, id, progress, label, deps.io, costFields);
 
-  const msg = `Heartbeat: ${id} ${(progress * 100).toFixed(0)}% — ${label}`;
+  const msg = `Heartbeat: ${id} ${(progress * 100).toFixed(0)}% -- ${label}`;
   console.log(msg);
   return msg;
 }

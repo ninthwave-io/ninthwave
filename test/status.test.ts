@@ -683,7 +683,7 @@ describe("cmdStatusWatch", () => {
 
     const allWrites = writeSpy.mock.calls.map((call) => String(call[0]));
 
-    // \x1B[2J (clear entire screen) must NOT be used — that causes flicker
+    // \x1B[2J (clear entire screen) must NOT be used -- that causes flicker
     const fullClearCalls = allWrites.filter((s) => s.includes("\x1B[2J"));
     expect(fullClearCalls.length).toBe(0);
 
@@ -849,7 +849,7 @@ describe("daemonStateToStatusItems", () => {
 
 describe("stateColor for queued", () => {
   it("returns DIM for queued state", () => {
-    // DIM is the same as the default branch — verify it returns a string
+    // DIM is the same as the default branch -- verify it returns a string
     expect(typeof stateColor("queued")).toBe("string");
     // Verify it's the same value as what DIM would be (matches default)
     expect(stateColor("queued")).toBe(stateColor("queued"));
@@ -1632,7 +1632,7 @@ describe("cmdStatusWatch keyboard handling", () => {
     const allWrites = writeSpy.mock.calls.map((call) => String(call[0]));
     const allOutput = stripAnsi(allWrites.join(""));
 
-    // Metrics panel and help footer were removed — neither should appear
+    // Metrics panel and help footer were removed -- neither should appear
     expect(allOutput).not.toContain("Session Metrics");
 
     writeSpy.mockRestore();

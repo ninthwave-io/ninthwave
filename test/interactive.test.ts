@@ -1,4 +1,4 @@
-// Tests for core/interactive.ts — Interactive CLI prompts for orchestrate.
+// Tests for core/interactive.ts -- Interactive CLI prompts for orchestrate.
 
 import { describe, it, expect } from "vitest";
 import {

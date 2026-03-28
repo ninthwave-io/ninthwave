@@ -5,9 +5,9 @@
 ## What happened
 
 M-SBX-1 shipped nono integration with 3 separate bugs:
-1. Wrong CLI flags (`--rw`/`--ro` instead of `--allow`/`--read`) — nono rejected the command
+1. Wrong CLI flags (`--rw`/`--ro` instead of `--allow`/`--read`) -- nono rejected the command
 2. Network proxy (`--allow-domain`) triggered proxy mode that hangs at "Applying sandbox..."
-3. Filesystem policy too restrictive — `~/.claude` is read-only but workers need write access for session data; temp dirs (`/var/folders`, `/tmp`) not included; bun cache not writable
+3. Filesystem policy too restrictive -- `~/.claude` is read-only but workers need write access for session data; temp dirs (`/var/folders`, `/tmp`) not included; bun cache not writable
 
 Required 3 manual fix commits to main before workers could run at all. Sandbox is now disabled by default (opt-in via `sandbox_enabled=true`).
 

@@ -14,7 +14,7 @@ The result: L-V2-5's worker implemented the feature on top of a stale, conflicti
 ## Expected behavior
 
 Two fixes needed:
-1. **Don't transition dependents to ready until the base actually merges.** The `merging` state is not terminal — the merge can fail. Only transition to `ready` after the base reaches `done`.
+1. **Don't transition dependents to ready until the base actually merges.** The `merging` state is not terminal -- the merge can fail. Only transition to `ready` after the base reaches `done`.
 2. **If a base item transitions to stuck, cancel or re-queue any stacked dependents.** L-V2-5 should have been moved back to `queued` when M-V2-4 went stuck.
 
 ## Log evidence

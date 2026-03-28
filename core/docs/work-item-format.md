@@ -2,7 +2,7 @@
 
 Canonical reference for the file-per-work-item format. Each work item is a separate markdown file in `.ninthwave/work/`. Used by `/decompose` (feature decomposition) and ad-hoc work item creation. Parsed by the ninthwave CLI (`core/work-item-files.ts`).
 
-**ASCII only:** Work item content must use only ASCII characters. Use `--` instead of em dashes (`—`), `-` instead of en dashes (`–`), straight quotes instead of smart quotes, and `...` instead of ellipsis (`…`). Non-ASCII breaks shell quoting when prompts are sent to workers via multiplexers.
+**ASCII only:** Work item content must use only ASCII characters. Use `--` instead of em dashes, `-` instead of en dashes, straight quotes instead of smart quotes, and `...` instead of ellipsis. Non-ASCII breaks shell quoting when prompts are sent to workers via multiplexers.
 
 ## Directory Layout
 

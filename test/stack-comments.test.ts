@@ -1,4 +1,4 @@
-// Tests for core/stack-comments.ts — buildStackComment and syncStackComments.
+// Tests for core/stack-comments.ts -- buildStackComment and syncStackComments.
 // Uses dependency injection (GhCommentClient) for testability without real GitHub API.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

@@ -192,7 +192,7 @@ describe("checkPrerequisites", () => {
 
     console.log = origLog;
 
-    // Prerequisites are still "present" (installed) — auth is a warning
+    // Prerequisites are still "present" (installed) -- auth is a warning
     expect(result.allPresent).toBe(true);
     expect(result.missing).toEqual([]);
     expect(result.warnings).toHaveLength(1);
@@ -206,7 +206,7 @@ describe("checkPrerequisites", () => {
 
 });
 
-describe("checkPrerequisites — gh auth warning", () => {
+describe("checkPrerequisites -- gh auth warning", () => {
   it("does not check gh auth when gh is missing", () => {
     let authCheckCalled = false;
     // cmux available so multiplexer check passes, but gh missing
@@ -696,7 +696,7 @@ describe("setupGlobal", () => {
     expect(existsSync(join(fakeHome, ".claude/agents"))).toBe(false);
   });
 
-  it("is idempotent — running twice produces the same result", () => {
+  it("is idempotent -- running twice produces the same result", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 

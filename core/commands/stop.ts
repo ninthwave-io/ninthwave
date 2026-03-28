@@ -45,7 +45,7 @@ export function cmdStop(
   }
 
   if (!deps.check(pid)) {
-    // Stale PID file — clean up
+    // Stale PID file -- clean up
     cleanPidFile(projectRoot, deps.io);
     cleanStateFile(projectRoot, deps.io);
     const msg = `Watch daemon is not running (stale PID file, PID ${pid}). Cleaned up.`;

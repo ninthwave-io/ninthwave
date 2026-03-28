@@ -17,7 +17,7 @@
 **Finding W-1: Process tree walk is platform-fragile (Medium)**
 The `ps -o comm= -p <pid>` walk (lines 58-72) relies on `ps` flags that differ across platforms. macOS `ps` uses BSD-style flags; Linux uses procfs. The `comm` field truncates long binary names (15 chars on Linux, varies on macOS). This works today because all supported tool names (`claude`, `opencode`, `copilot`) are short, but it's a latent portability risk.
 
-Additionally, the walk has no guard against PID recycling — if a parent process dies and its PID is reused by an unrelated `claude` process during detection, we'd get a false positive. This is extremely unlikely in practice (10-step depth limit helps), but worth noting.
+Additionally, the walk has no guard against PID recycling -- if a parent process dies and its PID is reused by an unrelated `claude` process during detection, we'd get a false positive. This is extremely unlikely in practice (10-step depth limit helps), but worth noting.
 
 **Finding W-2: `detectAiTool` falls through to `which` check that may return wrong tool (Low)**
 The final fallback (lines 74-77) checks `which claude`, `which opencode`, `which copilot` in order. If the user has `claude` on their PATH but is actually running from `opencode`, the fallback will incorrectly detect `claude`. The env var and process tree checks should catch most real cases, but the fallback ordering creates a silent preference hierarchy.
@@ -39,8 +39,8 @@ The system prompt is written to `tmpdir()` (line 257) and deleted in a `finally`
 
 `launchAiSession()` dispatches by tool type, calls `mux.launchWorkspace()`, then `waitForReady()` + `sendMessage()`.
 
-**Finding W-6: `waitForReady` timeout doesn't block — prompt sent anyway (Medium)**
-Line 122-124: if `waitForReady` returns false (workspace never stabilized), the code warns but still sends the initial prompt. For Claude Code, this means sending "Start" before the tool is ready to receive input, which could be silently dropped. The current behavior is "best effort" — which is pragmatic — but there's no retry or verification that the initial prompt was received.
+**Finding W-6: `waitForReady` timeout doesn't block -- prompt sent anyway (Medium)**
+Line 122-124: if `waitForReady` returns false (workspace never stabilized), the code warns but still sends the initial prompt. For Claude Code, this means sending "Start" before the tool is ready to receive input, which could be silently dropped. The current behavior is "best effort" -- which is pragmatic -- but there's no retry or verification that the initial prompt was received.
 
 **Finding W-7: Shell injection via `safeTitle` in Claude command construction (Medium)**
 Line 98 constructs a shell command string with `safeTitle` interpolated. The sanitization (line 242) strips `` ` ``, `$`, and `'` characters, but doesn't handle `"`, `\`, `;`, `|`, `&`, or newlines. Since the command string is passed through `mux.launchWorkspace()` which eventually hits a shell, a carefully crafted TODO title could inject additional commands. The sanitization should use allowlisting (keep only `[a-zA-Z0-9 _-]`) rather than blocklisting.
@@ -50,8 +50,8 @@ Line 98 constructs a shell command string with `safeTitle` interpolated. The san
 - `detectAiTool`: env var priority tested, process tree walk NOT tested (mocking `ps` is hard)
 - `launchSingleItem`: happy path + mux failure tested
 - `cmdStart`: missing items, dependency validation tested
-- **Gap:** no test for `extractTodoText` — edge cases like missing IDs, duplicate IDs, or malformed `###` headers
-- **Gap:** no test for the shell command construction in `launchAiSession` — tool-specific command formats untested
+- **Gap:** no test for `extractTodoText` -- edge cases like missing IDs, duplicate IDs, or malformed `###` headers
+- **Gap:** no test for the shell command construction in `launchAiSession` -- tool-specific command formats untested
 
 ---
 
@@ -66,7 +66,7 @@ The `Multiplexer` interface defines 7 operations. Both `CmuxAdapter` and `TmuxAd
 ### 2.2 TmuxAdapter
 
 **Finding W-8: `TmuxAdapter.counter` is instance-scoped, not persistent (Low)**
-The `counter` field (line 67) starts at 0 for each `TmuxAdapter` instance. Session names use `nw-${++this.counter}`, so names are `nw-1`, `nw-2`, etc. If the orchestrator crashes and restarts, a new `TmuxAdapter` instance reuses `nw-1` — which may collide with a still-running tmux session from the previous run. Using a random suffix or PID+timestamp would eliminate collisions.
+The `counter` field (line 67) starts at 0 for each `TmuxAdapter` instance. Session names use `nw-${++this.counter}`, so names are `nw-1`, `nw-2`, etc. If the orchestrator crashes and restarts, a new `TmuxAdapter` instance reuses `nw-1` -- which may collide with a still-running tmux session from the previous run. Using a random suffix or PID+timestamp would eliminate collisions.
 
 **Finding W-9: TmuxAdapter `splitPane` returns wrong pane_id (Medium)**
 Lines 92-108: `splitPane` runs `tmux split-window` followed by `tmux display-message -p '#{pane_id}'`. The `display-message` command operates on the currently active pane, but `split-window` may not activate the new pane depending on tmux configuration. This means the returned `pane_id` could reference the original pane, not the new split. The fix is to use `split-window -P -F '#{pane_id}'` which prints the new pane's ID directly.
@@ -82,12 +82,12 @@ Lines 258-282: the function waits for "3+ non-empty lines that are identical acr
 - Progress bars or status spinners
 - Tools that render fewer than 3 lines initially
 
-The `NODE_ENV === "test"` check for the sleep function (line 261) is a code smell — it couples runtime behavior to environment. The injectable sleep parameter is already the right pattern; the env check should be removed.
+The `NODE_ENV === "test"` check for the sleep function (line 261) is a code smell -- it couples runtime behavior to environment. The injectable sleep parameter is already the right pattern; the env check should be removed.
 
 ### 2.4 `getMux` Fallback Behavior
 
 **Finding W-12: `getMux` fallback to CmuxAdapter masks real errors (Low)**
-Lines 230-247: when no mux is available, `getMux` returns a `CmuxAdapter` whose `isAvailable()` returns false. This is documented but subtle — callers that forget to check `isAvailable()` will get silent failures (null returns, empty strings, false). An explicit `NullMux` adapter that throws descriptive errors on every method call would be more defensive.
+Lines 230-247: when no mux is available, `getMux` returns a `CmuxAdapter` whose `isAvailable()` returns false. This is documented but subtle -- callers that forget to check `isAvailable()` will get silent failures (null returns, empty strings, false). An explicit `NullMux` adapter that throws descriptive errors on every method call would be more defensive.
 
 ### 2.5 Test Coverage Assessment
 
@@ -96,7 +96,7 @@ Lines 230-247: when no mux is available, `getMux` returns a `CmuxAdapter` whose 
 - `detectMuxType`: comprehensive (all 10 detection chain variants)
 - `getMux`: comprehensive (6 scenarios)
 - `waitForReady`: 4 scenarios tested
-- **Gap:** `TmuxAdapter` has zero test coverage — all methods untested
+- **Gap:** `TmuxAdapter` has zero test coverage -- all methods untested
 
 ---
 
@@ -113,7 +113,7 @@ Lines 230-247: when no mux is available, `getMux` returns a `CmuxAdapter` whose 
 `verifyDelivery` reads the last 3 screen lines and checks if the message text is still visible on the last line (indicating it's stuck in the input field, not yet submitted).
 
 **Finding W-13: `verifyDelivery` false-negative when message appears in output (Low)**
-Line 143-147: the probe checks if the first 60 chars of the message appear on the last screen line. If the AI tool echoes the received message (e.g., "Received: Rebase onto main please"), `verifyDelivery` would incorrectly detect a stuck message and trigger a retry — leading to duplicate message delivery. In practice, Claude Code doesn't echo raw messages in the last 3 lines, but other tools might.
+Line 143-147: the probe checks if the first 60 chars of the message appear on the last screen line. If the AI tool echoes the received message (e.g., "Received: Rebase onto main please"), `verifyDelivery` would incorrectly detect a stuck message and trigger a retry -- leading to duplicate message delivery. In practice, Claude Code doesn't echo raw messages in the last 3 lines, but other tools might.
 
 **Finding W-14: `verifyDelivery` read-screen failure assumes success (Low)**
 Lines 130-133: if `read-screen` fails, verification returns true (assumes success). This is pragmatic but means a broken cmux connection appears as "delivery confirmed." Combined with the retry logic, this could mask persistent delivery failures.
@@ -136,11 +136,11 @@ Lines 130-133: if `read-screen` fails, verification returns true (assumes succes
 
 `isWorkerAlive` (line 203) checks if the worker's `workspaceRef` appears in `mux.listWorkspaces()`. This is the sole heartbeat signal.
 
-**Finding W-15: No time-based heartbeat — only workspace existence (High)**
+**Finding W-15: No time-based heartbeat -- only workspace existence (High)**
 The liveness check is binary: workspace exists = alive, doesn't exist = dead. This means:
 - A worker that is hung (infinite loop, deadlock, waiting forever) is considered "alive" as long as its workspace hasn't been closed
 - There's no "making progress" signal based on commit activity or screen content changes
-- The `lastCommitTime` field is tracked (line 191-193) but NOT used in transition logic — it's only stored for the supervisor to read
+- The `lastCommitTime` field is tracked (line 191-193) but NOT used in transition logic -- it's only stored for the supervisor to read
 
 The state machine transitions from `implementing → stuck` only when `workerAlive === false && !prNumber` (orchestrator.ts line 317). A worker that launches successfully but then hangs indefinitely will never be detected as stuck. This is the single biggest reliability gap in the worker lifecycle.
 
@@ -151,10 +151,10 @@ Line 207: `workspaces.includes(item.workspaceRef) || workspaces.includes(item.id
 
 `reconstructState` (orchestrate.ts line 246) recovers orchestrator state from worktree existence + PR status. `recoverWorkspaceRef` scans the workspace list for the TODO ID.
 
-**Observation:** The reconstruction logic is thorough — it handles all PR states and recovers workspace refs. The pre-fetch of `listWorkspaces()` (line 254) avoids N+1 shell calls.
+**Observation:** The reconstruction logic is thorough -- it handles all PR states and recovers workspace refs. The pre-fetch of `listWorkspaces()` (line 254) avoids N+1 shell calls.
 
 **Finding W-17: `reconstructState` doesn't verify workspace is still responsive (Low)**
-When recovering an `implementing` state, the code only checks if the workspace ref exists in the listing. It doesn't verify the workspace is responsive (e.g., by reading screen content). A zombie workspace would be recovered as "implementing" and potentially never cleaned up — same root cause as W-15.
+When recovering an `implementing` state, the code only checks if the workspace ref exists in the listing. It doesn't verify the workspace is responsive (e.g., by reading screen content). A zombie workspace would be recovered as "implementing" and potentially never cleaned up -- same root cause as W-15.
 
 ---
 
@@ -177,7 +177,7 @@ Lines 157-175: worktree removal, branch deletion, and remote branch deletion eac
 At minimum, cleanup failures should be logged (not silently swallowed) so they surface during debugging.
 
 **Finding W-20: `cmdClean` without target ID closes ALL todo workspaces before checking merge status (Medium)**
-Lines 133-137: when no `targetId` is specified, `cmdCloseWorkspaces(mux)` is called first — which closes ALL workspaces matching `TODO <ID>` patterns. Only THEN does the code check if worktrees are merged before removing them. This means active worker workspaces for non-merged items are killed before the merge check runs. The workspace close and worktree cleanup should be filtered to only target merged items (or at least warn before closing active ones).
+Lines 133-137: when no `targetId` is specified, `cmdCloseWorkspaces(mux)` is called first -- which closes ALL workspaces matching `TODO <ID>` patterns. Only THEN does the code check if worktrees are merged before removing them. This means active worker workspaces for non-merged items are killed before the merge check runs. The workspace close and worktree cleanup should be filtered to only target merged items (or at least warn before closing active ones).
 
 ### 5.3 Cross-repo Cleanup
 
@@ -204,7 +204,7 @@ Lines 133-137: when no `targetId` is specified, `cmdCloseWorkspaces(mux)` is cal
 
 `reconcile()` pulls latest main, queries GitHub for merged ninthwave/* PRs, marks merged items done, cleans worktrees, closes stale workspaces, and commits/pushes.
 
-**Observation:** The DI pattern (`ReconcileDeps`) is excellent — every external dependency is injectable. The test suite uses this for comprehensive unit testing without shell calls.
+**Observation:** The DI pattern (`ReconcileDeps`) is excellent -- every external dependency is injectable. The test suite uses this for comprehensive unit testing without shell calls.
 
 ### 6.2 Three-Way Merge
 
@@ -213,7 +213,7 @@ Lines 133-137: when no `targetId` is specified, `cmdCloseWorkspaces(mux)` is cal
 **Observation:** This is well-engineered. The realistic test case (line 914 in reconcile.test.ts) validates the core concurrent-mark-done scenario. The up-to-10-commit iterative resolve loop (line 247) handles multi-commit rebases.
 
 **Finding W-22: Three-way merge doesn't preserve item content modifications (Medium)**
-The merge only tracks additions and removals (by ID). If "ours" modifies an existing item's text (e.g., updates priority or description) while "theirs" doesn't change it, the modification is preserved because we use "ours" as the base document. But if "theirs" also modifies the same item's text differently, "theirs" changes are silently dropped — "ours" version wins. There's no content-level merge for individual items. This is documented by the design (set-based merge, not line-based), but could surprise users who edit TODO descriptions on different branches.
+The merge only tracks additions and removals (by ID). If "ours" modifies an existing item's text (e.g., updates priority or description) while "theirs" doesn't change it, the modification is preserved because we use "ours" as the base document. But if "theirs" also modifies the same item's text differently, "theirs" changes are silently dropped -- "ours" version wins. There's no content-level merge for individual items. This is documented by the design (set-based merge, not line-based), but could surprise users who edit TODO descriptions on different branches.
 
 **Finding W-23: `defaultPullRebase` abort on non-TODOS.md conflicts could leave git in bad state (Low)**
 Line 257: when non-TODOS.md files are conflicted, `rebase --abort` is called. But if the abort fails (e.g., corrupted git state), the function returns `{ ok: false, conflict: true }` without ensuring the repo is in a clean state. Subsequent operations may fail mysteriously.
@@ -221,7 +221,7 @@ Line 257: when non-TODOS.md files are conflicted, `rebase --abort` is called. Bu
 ### 6.3 `defaultCommitAndPush` Race Condition
 
 **Finding W-24: Reconcile commit-and-push races with concurrent reconcile runs (Medium)**
-The reconcile flow reads TODOS.md, marks items done, then stages/commits/pushes. If two reconcile processes run concurrently (e.g., two orchestrator instances), both could read the same TODOS.md, both mark the same items done, and one push will fail. The second reconcile would need to pull-rebase-retry, but `defaultCommitAndPush` doesn't retry on push failure — it just warns and returns false.
+The reconcile flow reads TODOS.md, marks items done, then stages/commits/pushes. If two reconcile processes run concurrently (e.g., two orchestrator instances), both could read the same TODOS.md, both mark the same items done, and one push will fail. The second reconcile would need to pull-rebase-retry, but `defaultCommitAndPush` doesn't retry on push failure -- it just warns and returns false.
 
 The three-way merge resolves the rebase conflict, but the commit-push sequence isn't atomic. This is mitigated by the fact that concurrent orchestrators are unlikely in practice, but the code doesn't defend against it.
 
@@ -231,7 +231,7 @@ The three-way merge resolves the rebase conflict, but the commit-push sequence i
 - `parseTodosForMerge`: 4 test cases
 - `mergeTodosThreeWay`: 9 test cases including realistic scenarios
 - `closeWorkspacesForIds`: 6 test cases
-- **Coverage is strong** — this is the best-tested module in the worker lifecycle
+- **Coverage is strong** -- this is the best-tested module in the worker lifecycle
 
 ---
 
@@ -255,7 +255,7 @@ The cmux path uses `sendMessageImpl` with paste-buffer + verification + retry. T
 ### 7.2 Session Naming Conflicts
 
 **Finding W-26: tmux session names don't include TODO ID (Low)**
-CmuxAdapter workspaces include the TODO title (via the `cmd` string), making them identifiable in `listWorkspaces`. TmuxAdapter uses `nw-1`, `nw-2`, etc. The `closeWorkspacesForIds` function relies on TODO ID appearing in the workspace listing — this works for cmux (where the command string includes the ID) but may not work reliably for tmux (where the session name is just `nw-N`). The workspace identification logic in `isWorkerAlive` and `closeWorkspacesForIds` assumes the listing contains the TODO ID, which is an assumption that only holds for cmux.
+CmuxAdapter workspaces include the TODO title (via the `cmd` string), making them identifiable in `listWorkspaces`. TmuxAdapter uses `nw-1`, `nw-2`, etc. The `closeWorkspacesForIds` function relies on TODO ID appearing in the workspace listing -- this works for cmux (where the command string includes the ID) but may not work reliably for tmux (where the session name is just `nw-N`). The workspace identification logic in `isWorkerAlive` and `closeWorkspacesForIds` assumes the listing contains the TODO ID, which is an assumption that only holds for cmux.
 
 ---
 

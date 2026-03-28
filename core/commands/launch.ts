@@ -115,7 +115,7 @@ export function seedAgentFiles(worktreePath: string, hubRoot: string): string[] 
 
   for (const agent of AGENT_FILES) {
     const sourcePath = join(hubRoot, "agents", agent.source);
-    // Resolve symlinks — the hub might have a symlink in .claude/agents/ pointing to agents/
+    // Resolve symlinks -- the hub might have a symlink in .claude/agents/ pointing to agents/
     if (!existsSync(sourcePath)) continue;
     const sourceContent = readFileSync(sourcePath, "utf-8");
     const baseName = agent.source.replace(/\.md$/, "");
@@ -207,7 +207,7 @@ export function launchAiSession(
   switch (tool) {
     case "claude":
       cmd = `claude --name '${wsName}' --permission-mode bypassPermissions --agent ${agentName} --append-system-prompt "$(cat '.nw-prompt')" -- Start`;
-      initialPrompt = ""; // embedded as positional arg — skip post-launch send
+      initialPrompt = ""; // embedded as positional arg -- skip post-launch send
       break;
     case "opencode":
       cmd = `opencode --agent ${agentName} --title '${wsName}'`;
@@ -229,7 +229,7 @@ export function launchAiSession(
       );
       run("chmod", ["+x", launcherScript]);
       cmd = launcherScript;
-      initialPrompt = ""; // embedded in cmd via -i — skip post-launch send
+      initialPrompt = ""; // embedded in cmd via -i -- skip post-launch send
       break;
     }
     default:
@@ -256,7 +256,7 @@ export function launchAiSession(
     process.env.NODE_ENV === "test" ? () => {} : (ms) => Bun.sleepSync(ms);
   const delivered = sendWithReadyWait(mux, wsRef, initialPrompt + "\n", sleep);
   if (!delivered) {
-    // Fallback: try the legacy approach — generic waitForReady + raw sendMessage.
+    // Fallback: try the legacy approach -- generic waitForReady + raw sendMessage.
     // This handles edge cases where the AI tool's prompt doesn't match our
     // indicator list (e.g., a new tool version changed the UI).
     warn(
@@ -320,7 +320,7 @@ export function cleanStaleBranchForReuse(
   // Check for merged PRs on this branch
   const mergedPrs = deps.prList(targetRepo, branchName, "merged");
   if (mergedPrs.length === 0) {
-    return false; // No merged PRs — nothing to clean
+    return false; // No merged PRs -- nothing to clean
   }
 
   // Check if any merged PR title matches the current work item title
@@ -328,10 +328,10 @@ export function cleanStaleBranchForReuse(
     prTitleMatchesWorkItem(pr.title, itemTitle),
   );
   if (hasMatchingTitle) {
-    return false; // Title matches — same work, normal flow
+    return false; // Title matches -- same work, normal flow
   }
 
-  // Title mismatch — stale branch from a previous cycle with different work
+  // Title mismatch -- stale branch from a previous cycle with different work
   deps.warn(
     `Stale branch detected: ${branchName} has ${mergedPrs.length} merged PR(s) from a previous cycle. ` +
     `Old PR: "${mergedPrs[0]!.title}", new item: "${itemTitle}". Deleting stale branches.`,
@@ -396,7 +396,7 @@ export function launchSingleItem(
 
   // Stale branch cleanup: if the orchestrator didn't already clean it (e.g.,
   // called from `ninthwave start` directly), clean up stale branches now.
-  // This is a safety net — the orchestrator calls cleanStaleBranch before
+  // This is a safety net -- the orchestrator calls cleanStaleBranch before
   // launching, but direct `ninthwave start` callers bypass executeLaunch.
   cleanStaleBranchForReuse(item.id, item.title, targetRepo);
 
@@ -454,7 +454,7 @@ export function launchSingleItem(
       }
     }
 
-    // Handle branch collision — the branch may be checked out in an external
+    // Handle branch collision -- the branch may be checked out in an external
     // worktree (e.g., .claude/worktrees/ from a prior agent session). git branch -D
     // refuses to delete branches checked out in any worktree, so we must remove
     // the external worktree first.
@@ -479,13 +479,13 @@ export function launchSingleItem(
         }
       }
 
-      // Check if there's an open PR for this branch — if so, a prior session
+      // Check if there's an open PR for this branch -- if so, a prior session
       // already did the work. Reuse the branch to preserve the PR and its commits.
       const openPrs = prList(targetRepo, branchName, "open");
       if (openPrs.length > 0 && !options.forceWorkerLaunch) {
         const existingPr = openPrs[0]!;
         info(
-          `Open PR #${existingPr.number} found for ${branchName}. Reusing existing branch — skipping worker launch, daemon will handle rebase/CI.`,
+          `Open PR #${existingPr.number} found for ${branchName}. Reusing existing branch -- skipping worker launch, daemon will handle rebase/CI.`,
         );
 
         // Attach worktree for daemon to use for rebase operations
@@ -494,17 +494,17 @@ export function launchSingleItem(
           attachWorktree(targetRepo, worktreePath, branchName);
         }
 
-        // Return with existingPrNumber signal — orchestrator transitions to
+        // Return with existingPrNumber signal -- orchestrator transitions to
         // ci-pending instead of launching a full implementation worker.
         return { worktreePath, workspaceRef: "", existingPrNumber: existingPr.number };
       } else if (openPrs.length > 0 && options.forceWorkerLaunch) {
-        // CI is failing — reuse existing branch but launch a worker to fix it (H-WR-1).
+        // CI is failing -- reuse existing branch but launch a worker to fix it (H-WR-1).
         info(
           `Open PR #${openPrs[0]!.number} found for ${branchName}. Launching worker to fix CI.`,
         );
         reuseExistingBranch = true;
       } else if (existsSync(worktreePath)) {
-        // Worktree exists with branch but no PR — retry scenario.
+        // Worktree exists with branch but no PR -- retry scenario.
         // Reuse the worktree to preserve uncommitted edits and local commits.
         info(
           `Existing worktree found for ${branchName} (no open PR). Reusing for retry.`,
@@ -514,7 +514,7 @@ export function launchSingleItem(
         try {
           deleteBranch(targetRepo, branchName);
         } catch (e) {
-          // Branch deletion failed — likely still checked out in a worktree.
+          // Branch deletion failed -- likely still checked out in a worktree.
           // This can happen if the external worktree removal above failed, or
           // if the worktree appeared between the earlier check and now (race).
           // Retry: find the blocking worktree, remove it, and try again.
@@ -532,7 +532,7 @@ export function launchSingleItem(
               );
             }
           } else {
-            // No external worktree found — the branch deletion failure was for
+            // No external worktree found -- the branch deletion failure was for
             // another reason. Propagate the error instead of silently continuing
             // (which would cause createWorktree to fail with a cryptic message).
             throw new Error(
@@ -544,7 +544,7 @@ export function launchSingleItem(
     }
 
     if (reuseExistingBranch && existsSync(worktreePath)) {
-      // Worktree already exists on disk — skip attach/create, just launch into it
+      // Worktree already exists on disk -- skip attach/create, just launch into it
       info(
         `Reusing existing worktree for ${item.id} in ${basename(targetRepo)}`,
       );
@@ -631,7 +631,7 @@ export interface ReviewLaunchResult {
  * - "direct" / "pr": Creates a worktree named `review-{id}` from the existing
  *   `ninthwave/{id}` branch. The review worker needs the worktree to push fix commits.
  *
- * No partition allocation — review workers don't need isolated ports/DBs.
+ * No partition allocation -- review workers don't need isolated ports/DBs.
  */
 export function launchReviewWorker(
   prNumber: number,
@@ -646,7 +646,7 @@ export function launchReviewWorker(
   let workDir: string;
 
   if (autoFixMode === "off") {
-    // No git worktree needed — review worker reads diff via gh and posts comments.
+    // No git worktree needed -- review worker reads diff via gh and posts comments.
     // Use a directory under the project root so it inherits workspace trust
     // (launching in /tmp triggers Claude Code's interactive trust prompt).
     workDir = join(repoRoot, ".worktrees", `review-${itemId}`);
@@ -746,7 +746,7 @@ export interface RepairLaunchResult {
  * is checked out). It gets a focused prompt to rebase and resolve conflicts,
  * not re-implement the feature.
  *
- * No partition allocation — repair workers don't need isolated ports/DBs.
+ * No partition allocation -- repair workers don't need isolated ports/DBs.
  */
 export function launchRepairWorker(
   prNumber: number,
@@ -880,7 +880,7 @@ export const WORK_ITEM_ID_CLI_PATTERN = /^[A-Z]+-[A-Z0-9]+-\d+[a-z]*$/;
 /**
  * Launch work items by ID with topological dependency ordering.
  *
- * This is the handler for `nw <ID> [ID2...]` — the primary way to launch items.
+ * This is the handler for `nw <ID> [ID2...]` -- the primary way to launch items.
  * It validates IDs, checks dependencies, computes batch order, and launches
  * items layer by layer.
  */
@@ -921,7 +921,7 @@ export async function cmdRunItems(
     for (const depId of item.dependencies) {
       if (selectedSet.has(depId)) continue; // will be launched in correct order
       if (!itemMap.has(depId)) continue; // already completed (work item file removed)
-      // Dep exists in work item list but not in selected set — not ready
+      // Dep exists in work item list but not in selected set -- not ready
       die(
         `Cannot launch ${id}: depends on ${depId} which is neither completed nor included.\n` +
         `  Either include ${depId} in the launch: nw ${[...ids, depId].join(" ")}\n` +
@@ -1134,7 +1134,7 @@ export async function cmdStart(
   // Check for file-level conflicts between selected items (warn only)
   if (ids.length > 1) {
     info("Checking for file-level conflicts...");
-    // Reuse the conflicts command logic inline — just check, don't die
+    // Reuse the conflicts command logic inline -- just check, don't die
     const conflictItems = ids.map((id) => itemMap.get(id)!);
     let hasConflicts = false;
     for (let i = 0; i < conflictItems.length; i++) {

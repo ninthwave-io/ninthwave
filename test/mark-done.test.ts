@@ -121,7 +121,7 @@ describe("cmdMarkDone", () => {
     cmdMarkDone(["M-CI-1"], workDir);
     expect(existsSync(join(workDir, "2-testing--M-CI-1.md"))).toBe(false);
 
-    // Mark again — should not throw
+    // Mark again -- should not throw
     cmdMarkDone(["M-CI-1"], workDir);
     expect(existsSync(join(workDir, "2-testing--M-CI-1.md"))).toBe(false);
   });

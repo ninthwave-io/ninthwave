@@ -6,7 +6,7 @@
 
 ## Observation
 
-The LLM supervisor ticked every 5 minutes and reported "ok" with zero anomalies, zero friction — while all 3 workers were stalled with empty inputs waiting for manual "start" entry. The supervisor should have detected that workers in "implementing" state had no activity on their screens.
+The LLM supervisor ticked every 5 minutes and reported "ok" with zero anomalies, zero friction -- while all 3 workers were stalled with empty inputs waiting for manual "start" entry. The supervisor should have detected that workers in "implementing" state had no activity on their screens.
 
 ## Root cause hypothesis
 
@@ -20,4 +20,4 @@ The supervisor likely checks orchestrator state (item transitions, PR status) bu
 
 ## Impact
 
-High — the supervisor is supposed to be the safety net for unattended runs. If it can't detect the most common failure mode (worker never started), it provides a false sense of security.
+High -- the supervisor is supposed to be the safety net for unattended runs. If it can't detect the most common failure mode (worker never started), it provides a false sense of security.
