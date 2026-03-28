@@ -14,28 +14,26 @@
 <p align="center">
   <img src="docs/assets/hero.png" alt="ninthwave running in cmux: orchestrator with parallel worker sessions" width="800" />
 </p>
-<p align="center"><em>todos/*.md &rarr; sequenced AI agents &rarr; human-sized PRs</em></p>
+<p align="center"><em><code>todos/*.md</code> &rarr; sequenced AI agents &rarr; human-sized PRs</em></p>
 
 ---
 
-**ninthwave orchestrates parallel AI coding sessions from todo files.** Each work item gets a full native instance of Claude Code, OpenCode, or Copilot CLI — latest agent features, full capability, focused on one task. Workers open a PR then idle with full context: review comments, CI failures, and rebase requests go straight back for the worker to handle. Switch into any session to steer. The orchestrator sequences dependencies, auto-merges, and cleans up.
+**ninthwave orchestrates parallel AI coding sessions from todo files.** Each work item gets a full native instance of Claude Code, OpenCode, or Copilot CLI with the latest agent features, full capability, focused on one task. Workers open a PR then idle with full context. Review comments, CI failures, and rebase requests go straight back to the worker to handle. Switch into any session to steer. The orchestrator sequences dependencies, auto-merges, and cleans up.
 
-- **Parallel sessions** — each work item gets its own git worktree and AI coding session
-- **Dependency sequencing** — items launch in batch order; dependent items target their dependency's branch (stacked PRs)
-- **Review relay** — PR comments from reviewers are forwarded directly into the worker's session
-- **CI failure recovery** — orchestrator detects failures, notifies the worker, retries up to 3x, marks stuck if unresolvable
-- **Auto-rebase** — daemon rebases branches automatically; falls back to a repair worker on conflicts
-- **Auto-merge** — approved PRs merge on CI pass, or gate on manual confirmation
-- **Crew mode** — multiple daemons on different machines coordinate via [ninthwave.sh](https://ninthwave.sh) broker, with creator-affinity scheduling
-- **Convention over configuration** — cross-repo via sibling directories, port isolation, domain mapping. Zero config for the common case
+- **Parallel sessions.** Each work item gets its own git worktree and AI coding session.
+- **Dependency sequencing.** Items launch in batch order. Dependent items target their dependency's branch (stacked PRs).
+- **Review relay.** PR comments from reviewers are forwarded directly into the worker's session.
+- **CI failure recovery.** Orchestrator detects failures, notifies the worker, retries up to 3x, marks stuck if unresolvable.
+- **Auto-rebase.** Daemon rebases branches automatically. Falls back to a repair worker on conflicts.
+- **Auto-merge.** Approved PRs merge on CI pass, or gate on manual confirmation.
+- **Crew mode.** Multiple daemons on different machines coordinate via [ninthwave.sh](https://ninthwave.sh) broker with creator-affinity scheduling.
+- **Convention over configuration.** Cross-repo via sibling directories, port isolation, domain mapping. Zero config for the common case.
 
 ## Install
 
 ```bash
 brew install ninthwave-sh/tap/ninthwave
 ```
-
-Examples on this page use `nw` for brevity. The full command `ninthwave` works identically.
 
 **Prerequisites:** [cmux](https://cmux.com) for terminal sessions, an AI coding tool ([Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), [OpenCode](https://opencode.ai), or [Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)), and [`gh`](https://cli.github.com) for PR operations.
 
@@ -60,7 +58,7 @@ Run `nw doctor` to verify your setup.
 
 Todo files in `.ninthwave/todos/` define work items with priorities, dependencies, and optional repo targets. `nw start` creates a git worktree and AI coding session for each item. `nw orchestrate` runs a deterministic daemon that sequences batches, monitors CI, relays review feedback into worker sessions, auto-rebases branches, and merges approved PRs. Dependent items automatically target their dependency's branch, giving reviewers clean diffs.
 
-The orchestrator is deterministic — no LLM calls in the event loop. Workers are the intelligent agents.
+The orchestrator is deterministic: no LLM calls in the event loop. Workers are the intelligent agents.
 
 ## CLI
 
@@ -80,7 +78,7 @@ Run `nw --help` for the full command reference.
 
 ## Skills
 
-ninthwave ships with skills that plug into your AI tool's chat interface. These are optional — the CLI works standalone.
+ninthwave ships with skills that plug into your AI tool's chat interface. These are optional. The CLI works standalone.
 
 | Skill | |
 |-------|---|
@@ -88,7 +86,7 @@ ninthwave ships with skills that plug into your AI tool's chat interface. These 
 | `/work` | Full delivery loop: select items, launch sessions, monitor, merge, finalize |
 | `/todo-preview` | Port-isolated dev servers for live testing in worktrees |
 
-Workers can optionally use `/review`, `/design-review`, `/qa`, and `/plan-eng-review` during execution. [gstack](https://github.com/garrytan/gstack) provides all four out of the box, or bring your own — any skill following the [Agent Skills standard](https://agentskills.io) works.
+Workers can use `/review`, `/design-review`, `/qa`, and `/plan-eng-review` during execution if available. [gstack](https://github.com/garrytan/gstack) provides all four. Or bring your own: any skill following the [Agent Skills standard](https://agentskills.io) works.
 
 ## Updating
 
