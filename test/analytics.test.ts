@@ -281,7 +281,7 @@ describe("writeRunMetrics", () => {
 
 describe("orchestrateLoop analytics integration", () => {
   it("writes metrics file on orchestrate_complete", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -340,7 +340,7 @@ describe("orchestrateLoop analytics integration", () => {
   });
 
   it("includes CI retry count in metrics for items with failures", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -388,7 +388,7 @@ describe("orchestrateLoop analytics integration", () => {
   });
 
   it("skips analytics when analyticsDir is not configured", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -427,7 +427,7 @@ describe("orchestrateLoop analytics integration", () => {
   });
 
   it("handles analytics write failure gracefully", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -483,7 +483,7 @@ describe("orchestrateLoop analytics integration", () => {
 
   it("handles zero-item run gracefully in the loop", async () => {
     // Create orchestrator with no items — all terminal immediately
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
 
     const io = mockAnalyticsIO();
     const logs: LogEntry[] = [];
@@ -965,7 +965,7 @@ describe("commitAnalyticsFiles", () => {
 
 describe("orchestrateLoop analytics auto-commit", () => {
   it("auto-commits analytics files after writing metrics", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -1015,7 +1015,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
   });
 
   it("logs skip when no analytics changes to commit", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -1063,7 +1063,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
   });
 
   it("handles analytics commit failure gracefully", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -1117,7 +1117,7 @@ describe("orchestrateLoop analytics auto-commit", () => {
   });
 
   it("skips auto-commit when analyticsCommit deps not provided", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -1510,7 +1510,7 @@ describe("formatAnalytics with cost data", () => {
 
 describe("orchestrateLoop cost capture", () => {
   it("captures cost data from worker screen before cleanup", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -1572,7 +1572,7 @@ describe("orchestrateLoop cost capture", () => {
   });
 
   it("handles missing cost data gracefully (readScreen returns no cost info)", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;
@@ -1625,7 +1625,7 @@ describe("orchestrateLoop cost capture", () => {
   });
 
   it("handles readScreen not provided (null cost data)", async () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
     orch.addItem(makeTodo("T-1-1"));
 
     let cycle = 0;

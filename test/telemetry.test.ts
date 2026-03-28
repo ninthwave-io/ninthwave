@@ -58,7 +58,7 @@ function stripAnsi(s: string): string {
 
 describe("telemetry: startedAt / endedAt on transitions", () => {
   it("sets startedAt when item transitions to implementing", () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap", maxCiRetries: 2, maxRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap", maxCiRetries: 2, maxRetries: 1 });
     orch.addItem(makeTodo("T-1-1"));
 
     // Transition to ready, then launch
@@ -83,7 +83,7 @@ describe("telemetry: startedAt / endedAt on transitions", () => {
   });
 
   it("sets endedAt when item transitions to done", () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap", maxCiRetries: 2, maxRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap", maxCiRetries: 2, maxRetries: 1 });
     orch.addItem(makeTodo("T-1-1"));
 
     // Fast-track to implementing
@@ -119,7 +119,7 @@ describe("telemetry: startedAt / endedAt on transitions", () => {
   });
 
   it("sets endedAt when item transitions to stuck", () => {
-    const orch = new Orchestrator({
+    const orch = new Orchestrator({ reviewEnabled: false,
       wipLimit: 2,
       mergeStrategy: "asap",
       maxCiRetries: 2,
@@ -145,7 +145,7 @@ describe("telemetry: startedAt / endedAt on transitions", () => {
   });
 
   it("does not overwrite startedAt on re-entry to implementing", () => {
-    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap", maxCiRetries: 2, maxRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap", maxCiRetries: 2, maxRetries: 1 });
     orch.addItem(makeTodo("T-1-1"));
 
     // First launch → implementing

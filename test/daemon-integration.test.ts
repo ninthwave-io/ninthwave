@@ -114,7 +114,7 @@ describe("Daemon lifecycle: startup and shutdown", () => {
 
     // Simulate startup: load TODOs and create orchestrator
     const todos = [makeTodo("A-1-1"), makeTodo("A-1-2"), makeTodo("A-1-3", ["A-1-1"])];
-    const orch = new Orchestrator({ wipLimit: 4 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4 });
 
     for (const todo of todos) {
       orch.addItem(todo);
@@ -152,7 +152,7 @@ describe("Daemon lifecycle: startup and shutdown", () => {
   });
 
   it("items with no deps start as ready; items with deps stay queued", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("B-1-1"));
     orch.addItem(makeTodo("B-1-2", ["B-1-1"]));
 
@@ -176,7 +176,7 @@ describe("Daemon lifecycle: single-item flow", () => {
   const NOW = new Date("2026-03-25T10:00:00.000Z");
 
   beforeEach(() => {
-    orch = new Orchestrator({ wipLimit: 4, mergeStrategy: "asap" });
+    orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, mergeStrategy: "asap" });
     deps = mockDeps();
   });
 
@@ -279,7 +279,7 @@ describe("Daemon lifecycle: single-item flow", () => {
 
 describe("Daemon lifecycle: stuck item and retry logic", () => {
   it("worker crash triggers retry, second crash marks stuck", () => {
-    const orch = new Orchestrator({ wipLimit: 4, maxRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxRetries: 1 });
     orch.addItem(makeTodo("STUCK-1"));
 
     // Launch the item
@@ -308,7 +308,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
   });
 
   it("worker crash during implementing without PR triggers retry", () => {
-    const orch = new Orchestrator({ wipLimit: 4, maxRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxRetries: 1 });
     orch.addItem(makeTodo("STUCK-2"));
 
     // Get to implementing state
@@ -350,7 +350,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
 
   it("CI fail exceeding maxCiRetries marks stuck", () => {
     // maxCiRetries: 1 means item can fail once and recover, but second failure → stuck
-    const orch = new Orchestrator({ wipLimit: 4, maxCiRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxCiRetries: 1 });
     orch.addItem(makeTodo("STUCK-3"));
     orch.setState("STUCK-3", "pr-open");
     orch.getItem("STUCK-3")!.prNumber = 77;
@@ -386,7 +386,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
   });
 
   it("executeClean captures screen output for stuck items", () => {
-    const orch = new Orchestrator({ maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
     const warnFn = vi.fn();
     const deps = mockDeps({
       readScreen: vi.fn(() => "Error: OOM killed"),
@@ -412,7 +412,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
 
 describe("Daemon lifecycle: stacking (dependent items)", () => {
   it("dependent item stays queued until dependency merges, then launches", () => {
-    const orch = new Orchestrator({ wipLimit: 4, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, mergeStrategy: "asap" });
     const deps = mockDeps();
 
     orch.addItem(makeTodo("DEP-1"));
@@ -460,7 +460,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
   });
 
   it("dependent item stays queued when dep is in non-stackable state", () => {
-    const orch = new Orchestrator({ wipLimit: 4, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, enableStacking: true });
     orch.addItem(makeTodo("NS-1"));
     orch.addItem(makeTodo("NS-2", ["NS-1"]));
 
@@ -477,7 +477,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
   });
 
   it("stacking disabled keeps dependent queued even when dep is in stackable state", () => {
-    const orch = new Orchestrator({ wipLimit: 4, enableStacking: false });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, enableStacking: false });
     orch.addItem(makeTodo("NOSTACK-1"));
     orch.addItem(makeTodo("NOSTACK-2", ["NOSTACK-1"]));
 
@@ -499,7 +499,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
   });
 
   it("stuck dep pauses stacked dependent workers", () => {
-    const orch = new Orchestrator({ wipLimit: 4, maxRetries: 0, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxRetries: 0, enableStacking: true });
 
     orch.addItem(makeTodo("DEPSTK-1"));
     orch.addItem(makeTodo("DEPSTK-2", ["DEPSTK-1"]));
@@ -561,7 +561,7 @@ describe("Daemon lifecycle: stacking (dependent items)", () => {
 
 describe("Daemon lifecycle: stacking with stuck dependency notification", () => {
   it("notifies stacked dependent when dependency transitions to stuck", () => {
-    const orch = new Orchestrator({
+    const orch = new Orchestrator({ reviewEnabled: false,
       wipLimit: 4,
       maxRetries: 0,
       enableStacking: true,
@@ -610,7 +610,7 @@ describe("Daemon lifecycle: stacking with stuck dependency notification", () => 
 
 describe("Daemon lifecycle: cleanup after merge", () => {
   it("merge triggers clean action, cleanup runs workspace and worktree", () => {
-    const orch = new Orchestrator({ wipLimit: 4, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, mergeStrategy: "asap" });
     const deps = mockDeps();
 
     orch.addItem(makeTodo("CLN-1"));
@@ -645,7 +645,7 @@ describe("Daemon lifecycle: cleanup after merge", () => {
   });
 
   it("cleanup succeeds when remote branch is already deleted", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     // cleanSingleWorktree succeeds even if remote branch is gone
     // This tests that no warning is emitted when the branch doesn't exist
     const warnFn = vi.fn();
@@ -672,7 +672,7 @@ describe("Daemon lifecycle: cleanup after merge", () => {
   });
 
   it("cleanup handles partial failure gracefully", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     const deps = mockDeps({
       closeWorkspace: vi.fn(() => false), // workspace close fails
       cleanSingleWorktree: vi.fn(() => true), // worktree cleanup succeeds
@@ -693,7 +693,7 @@ describe("Daemon lifecycle: cleanup after merge", () => {
   });
 
   it("cleanup fails when both workspace close and worktree cleanup fail", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     const deps = mockDeps({
       closeWorkspace: vi.fn(() => false),
       cleanSingleWorktree: vi.fn(() => false),
@@ -718,7 +718,7 @@ describe("Daemon lifecycle: cleanup after merge", () => {
 
 describe("Daemon lifecycle: multi-item orchestration", () => {
   it("processes three independent items through full lifecycle concurrently", () => {
-    const orch = new Orchestrator({ wipLimit: 3, mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 3, mergeStrategy: "asap" });
     const deps = mockDeps();
 
     // Add 3 independent items
@@ -796,7 +796,7 @@ describe("Daemon lifecycle: multi-item orchestration", () => {
   });
 
   it("WIP limit prevents launching more items than allowed", () => {
-    const orch = new Orchestrator({ wipLimit: 2 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2 });
 
     orch.addItem(makeTodo("W-1"));
     orch.addItem(makeTodo("W-2"));
@@ -821,7 +821,7 @@ describe("Daemon lifecycle: multi-item orchestration", () => {
 describe("Daemon lifecycle: state persistence", () => {
   it("serializes and restores orchestrator state across restart", () => {
     const io = createMockIO();
-    const orch = new Orchestrator({ wipLimit: 4 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4 });
 
     // Load and progress items
     orch.addItem(makeTodo("P-1"));
@@ -893,7 +893,7 @@ describe("Daemon lifecycle: state persistence", () => {
 
 describe("Daemon lifecycle: launch failure handling", () => {
   it("launch returning null with retries schedules retry", () => {
-    const orch = new Orchestrator({ wipLimit: 4, maxRetries: 2 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxRetries: 2 });
     const deps = mockDeps({
       launchSingleItem: vi.fn(() => null),
     });
@@ -914,7 +914,7 @@ describe("Daemon lifecycle: launch failure handling", () => {
   });
 
   it("launch returning null with no retries marks stuck", () => {
-    const orch = new Orchestrator({ wipLimit: 4, maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxRetries: 0 });
     const deps = mockDeps({
       launchSingleItem: vi.fn(() => null),
     });
@@ -934,7 +934,7 @@ describe("Daemon lifecycle: launch failure handling", () => {
   });
 
   it("launch throwing exception handles gracefully", () => {
-    const orch = new Orchestrator({ wipLimit: 4, maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4, maxRetries: 0 });
     const deps = mockDeps({
       launchSingleItem: vi.fn(() => { throw new Error("repo not found"); }),
     });

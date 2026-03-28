@@ -302,7 +302,7 @@ describe("reconcile: TODO ID collision safety", () => {
 
 describe("reconstructState: TODO ID collision safety", () => {
   it("does not fast-track to merged when PR title doesn't match TODO title", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "new work"));
 
     const tmpDir = makeTmpDir();
@@ -326,7 +326,7 @@ describe("reconstructState: TODO ID collision safety", () => {
   });
 
   it("fast-tracks to merged when PR title matches TODO title", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "old work"));
 
     const tmpDir = makeTmpDir();
@@ -348,7 +348,7 @@ describe("reconstructState: TODO ID collision safety", () => {
   });
 
   it("falls back to merged when PR title is empty (no title data available)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "some work"));
 
     const tmpDir = makeTmpDir();
@@ -377,7 +377,7 @@ describe("buildSnapshot: TODO ID collision safety", () => {
   it("ignores stale merged PR when title does not match TODO (ID collision)", () => {
     // When a TODO ID is reused, the old merged PR still shows up for the same
     // branch name. buildSnapshot must compare titles and ignore the stale PR.
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "new work"));
     orch.setState("H-FOO-1", "implementing");
 
@@ -419,7 +419,7 @@ describe("buildSnapshot: TODO ID collision safety", () => {
     // This is the key fix: when the orchestrator has already assigned prNumber to an item
     // (because it saw the PR created during this run), a title mismatch should NOT
     // prevent merge detection. The worker may use a different PR title than the TODO title.
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "update decompose skill output format"));
     orch.setState("H-FOO-1", "ci-passed");
     // Simulate: orchestrator already tracked this PR during the run
@@ -464,7 +464,7 @@ describe("buildSnapshot: TODO ID collision safety", () => {
   it("ignores stale merged PR when prNumber differs and title doesn't match", () => {
     // When the orchestrator tracks prNumber=99 but finds a merged PR #42 with a
     // different title, it should ignore it — this is an old PR from a previous cycle.
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "new work"));
     orch.setState("H-FOO-1", "ci-passed");
     const item = orch.getItem("H-FOO-1")!;
@@ -505,7 +505,7 @@ describe("buildSnapshot: TODO ID collision safety", () => {
   });
 
   it("reports merged when PR title matches TODO title", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-FOO-1", "old work"));
     orch.setState("H-FOO-1", "implementing");
 

@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vites
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import * as shell from "../core/shell.ts";
-import { prMerge, prComment, prLock, getRepoOwner, resolveGithubToken, applyGithubToken } from "../core/gh.ts";
+import { prMerge, prComment, prLock, getRepoOwner, resolveGithubToken, applyGithubToken, setCommitStatus, prHeadSha } from "../core/gh.ts";
 import { setupTempRepo, cleanupTempRepos } from "./helpers.ts";
 
 const runSpy = vi.spyOn(shell, "run");
@@ -162,6 +162,101 @@ describe("prLock", () => {
     const result = prLock("/repo", 42);
 
     expect(result).toBe(false);
+  });
+});
+
+// ── setCommitStatus ────────────────────────────────────────────────
+
+describe("setCommitStatus", () => {
+  it("calls gh api with correct arguments", () => {
+    runSpy.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === "repo") {
+        return { stdout: "owner/repo", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const result = setCommitStatus("/repo", "abc123", "pending", "ninthwave/review", "Review in progress");
+
+    expect(result).toBe(true);
+    expect(runSpy).toHaveBeenCalledWith(
+      "gh",
+      [
+        "api",
+        "--method",
+        "POST",
+        "repos/owner/repo/statuses/abc123",
+        "-f", "state=pending",
+        "-f", "context=ninthwave/review",
+        "-f", "description=Review in progress",
+      ],
+      { cwd: "/repo" },
+    );
+  });
+
+  it("includes target_url when provided", () => {
+    runSpy.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === "repo") {
+        return { stdout: "owner/repo", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    setCommitStatus("/repo", "abc123", "success", "ninthwave/review", "Review passed", "https://example.com");
+
+    expect(runSpy).toHaveBeenCalledWith(
+      "gh",
+      [
+        "api",
+        "--method",
+        "POST",
+        "repos/owner/repo/statuses/abc123",
+        "-f", "state=success",
+        "-f", "context=ninthwave/review",
+        "-f", "description=Review passed",
+        "-f", "target_url=https://example.com",
+      ],
+      { cwd: "/repo" },
+    );
+  });
+
+  it("returns false when gh api fails", () => {
+    runSpy.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === "repo") {
+        return { stdout: "owner/repo", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "", stderr: "403 Forbidden", exitCode: 1 };
+    });
+
+    const result = setCommitStatus("/repo", "abc123", "failure", "ninthwave/review", "Review failed");
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when getRepoOwner fails", () => {
+    runSpy.mockReturnValue({ stdout: "", stderr: "not a repo", exitCode: 1 });
+
+    const result = setCommitStatus("/repo", "abc123", "pending", "ninthwave/review", "Review in progress");
+
+    expect(result).toBe(false);
+  });
+});
+
+// ── prHeadSha ──────────────────────────────────────────────────────
+
+describe("prHeadSha", () => {
+  // prHeadSha delegates to prView which delegates to run — tested via
+  // the setCommitStatus orchestrator action in orchestrator.test.ts.
+  // Direct unit tests are omitted because bun test's shared-process model
+  // causes vi.spyOn(shell, "run") to leak across files, making prView's
+  // JSON.parse path unreliable in the full suite.
+
+  it("returns null when prView fails", () => {
+    runSpy.mockReturnValue({ stdout: "", stderr: "not found", exitCode: 1 });
+
+    const sha = prHeadSha("/repo", 99);
+
+    expect(sha).toBeNull();
   });
 });
 
