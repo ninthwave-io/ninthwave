@@ -152,7 +152,7 @@ describe("setCommitStatus", () => {
       return { stdout: "", stderr: "", exitCode: 0 };
     });
 
-    const result = setCommitStatus("/repo", "abc123", "pending", "ninthwave/review", "Review in progress");
+    const result = setCommitStatus("/repo", "abc123", "pending", "Ninthwave / Review", "Review in progress");
 
     expect(result).toBe(true);
     expect(runSpy).toHaveBeenCalledWith(
@@ -163,7 +163,7 @@ describe("setCommitStatus", () => {
         "POST",
         "repos/owner/repo/statuses/abc123",
         "-f", "state=pending",
-        "-f", "context=ninthwave/review",
+        "-f", "context=Ninthwave / Review",
         "-f", "description=Review in progress",
       ],
       { cwd: "/repo" },
@@ -178,7 +178,7 @@ describe("setCommitStatus", () => {
       return { stdout: "", stderr: "", exitCode: 0 };
     });
 
-    setCommitStatus("/repo", "abc123", "success", "ninthwave/review", "Review passed", "https://example.com");
+    setCommitStatus("/repo", "abc123", "success", "Ninthwave / Review", "Review passed", "https://example.com");
 
     expect(runSpy).toHaveBeenCalledWith(
       "gh",
@@ -188,7 +188,7 @@ describe("setCommitStatus", () => {
         "POST",
         "repos/owner/repo/statuses/abc123",
         "-f", "state=success",
-        "-f", "context=ninthwave/review",
+        "-f", "context=Ninthwave / Review",
         "-f", "description=Review passed",
         "-f", "target_url=https://example.com",
       ],
@@ -204,7 +204,7 @@ describe("setCommitStatus", () => {
       return { stdout: "", stderr: "403 Forbidden", exitCode: 1 };
     });
 
-    const result = setCommitStatus("/repo", "abc123", "failure", "ninthwave/review", "Review failed");
+    const result = setCommitStatus("/repo", "abc123", "failure", "Ninthwave / Review", "Review failed");
 
     expect(result).toBe(false);
   });
@@ -212,7 +212,7 @@ describe("setCommitStatus", () => {
   it("returns false when getRepoOwner fails", () => {
     runSpy.mockReturnValue({ stdout: "", stderr: "not a repo", exitCode: 1 });
 
-    const result = setCommitStatus("/repo", "abc123", "pending", "ninthwave/review", "Review in progress");
+    const result = setCommitStatus("/repo", "abc123", "pending", "Ninthwave / Review", "Review in progress");
 
     expect(result).toBe(false);
   });

@@ -382,11 +382,13 @@ Clean up and exit: `ninthwave clean-single YOUR_TODO_ID`
 
 ## PR Comment Conventions
 
-All PR comments from automated agents go through the same GitHub account. Always prefix PR comments with a role tag:
+All PR comments from automated agents go through the same GitHub account. Always prefix PR comments with an agent link tag:
 
 ```
-**[Worker: YOUR_TODO_ID]** <message>
+**[Worker: YOUR_TODO_ID](agents/implementer.md)** <message>
 ```
+
+Other agents use the same pattern: `**[Reviewer](agents/reviewer.md)**`, `**[Verifier](agents/verifier.md)**`.
 
 Ignore comments prefixed with `[Orchestrator]` -- these are audit trail entries written by the orchestrator daemon.
 

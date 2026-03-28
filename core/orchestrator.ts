@@ -1204,7 +1204,7 @@ export class Orchestrator {
           itemId: item.id,
           prNumber: item.prNumber,
           statusState: "success",
-          statusDescription: `Review passed -- ${v.blockerCount} blockers, ${v.nitCount} nits`,
+          statusDescription: `Review passed: ${v.blockerCount} blockers, ${v.nitCount} nits`,
         });
         actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
         return actions;
@@ -1224,7 +1224,7 @@ export class Orchestrator {
           itemId: item.id,
           prNumber: item.prNumber,
           statusState: "failure",
-          statusDescription: `Review found ${v.blockerCount} blockers`,
+          statusDescription: `Changes requested: ${v.blockerCount} blockers found`,
         });
         actions.push({
           type: "notify-review",
@@ -2119,7 +2119,7 @@ export class Orchestrator {
     const description = action.statusDescription ?? "";
     const repoRoot = item.resolvedRepoRoot ?? ctx.projectRoot;
 
-    const ok = deps.setCommitStatus(repoRoot, prNum, state, "ninthwave/review", description);
+    const ok = deps.setCommitStatus(repoRoot, prNum, state, "Ninthwave / Review", description);
     return ok
       ? { success: true }
       : { success: false, error: `Failed to set commit status for ${item.id}` };
@@ -2401,7 +2401,7 @@ export class Orchestrator {
     const statsLine = `${v.blockerCount} blockers, ${v.nitCount} nits, ${v.preExistingCount} pre-existing`;
 
     const body = [
-      `**[Reviewer]** Reviewed PR #${prNum}`,
+      `**[Reviewer](agents/reviewer.md)** Reviewed PR #${prNum}`,
       "",
       `**Verdict:** ${verdictLabel} -- ${statsLine}`,
       "",
@@ -2410,6 +2410,9 @@ export class Orchestrator {
       v.summary,
       "",
       "</details>",
+      "",
+      "---",
+      "*Powered by [Ninthwave](https://ninthwave.dev)*",
     ].join("\n");
 
     const repoRoot = item.resolvedRepoRoot ?? ctx.projectRoot;
