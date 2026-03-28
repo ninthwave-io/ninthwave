@@ -80,7 +80,7 @@ describe("Orchestrator", () => {
   let orch: Orchestrator;
 
   beforeEach(() => {
-    orch = new Orchestrator();
+    orch = new Orchestrator({ reviewEnabled: false });
   });
 
   // ── 1. Item management ─────────────────────────────────────────
@@ -134,7 +134,7 @@ describe("Orchestrator", () => {
   // ── 3. Ready → Launching with WIP limit ────────────────────────
 
   it("launches ready items up to WIP limit", () => {
-    orch = new Orchestrator({ wipLimit: 2 });
+    orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2 });
 
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2"));
@@ -152,7 +152,7 @@ describe("Orchestrator", () => {
   });
 
   it("respects WIP limit across existing WIP items", () => {
-    orch = new Orchestrator({ wipLimit: 2 });
+    orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2 });
 
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2"));
@@ -202,7 +202,7 @@ describe("Orchestrator", () => {
   });
 
   it("transitions launching to stuck when worker dies and retries exhausted", () => {
-    orch = new Orchestrator({ maxRetries: 0 });
+    orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -267,7 +267,7 @@ describe("Orchestrator", () => {
   });
 
   it("marks implementing as stuck when worker dies without PR and retries exhausted", () => {
-    orch = new Orchestrator({ maxRetries: 0 });
+    orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -285,7 +285,7 @@ describe("Orchestrator", () => {
   // ── 6. CI pass → merge action (asap strategy) ─────────────────
 
   it("CI pass triggers merge action with asap strategy", () => {
-    orch = new Orchestrator({ mergeStrategy: "asap" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "pr-open");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -438,7 +438,7 @@ describe("Orchestrator", () => {
   // ── 8. CI fail recovery ────────────────────────────────────────
 
   it("ci-failed recovers when CI passes (chains to merge evaluation)", () => {
-    orch = new Orchestrator({ mergeStrategy: "ask" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.ciFailCount = 1;
@@ -451,7 +451,7 @@ describe("Orchestrator", () => {
   });
 
   it("ci-failed with asap strategy chains CI pass to merge", () => {
-    orch = new Orchestrator({ mergeStrategy: "asap" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.ciFailCount = 1;
@@ -465,7 +465,7 @@ describe("Orchestrator", () => {
   });
 
   it("marks stuck after exceeding max CI retries", () => {
-    orch = new Orchestrator({ maxCiRetries: 1 });
+    orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.ciFailCount = 2;
@@ -524,7 +524,7 @@ describe("Orchestrator", () => {
   // ── 11. Batch complete → launch next ───────────────────────────
 
   it("launches next batch when previous items complete", () => {
-    orch = new Orchestrator({ wipLimit: 1 });
+    orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
 
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2"));
@@ -544,7 +544,7 @@ describe("Orchestrator", () => {
   // ── 12. Merge strategy: approved ───────────────────────────────
 
   it("approved strategy waits for review before merging", () => {
-    orch = new Orchestrator({ mergeStrategy: "approved" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "pr-open");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -561,7 +561,7 @@ describe("Orchestrator", () => {
   });
 
   it("approved strategy merges after review approval", () => {
-    orch = new Orchestrator({ mergeStrategy: "approved" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "review-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -585,7 +585,7 @@ describe("Orchestrator", () => {
   // ── 13. Merge strategy: ask ────────────────────────────────────
 
   it("ask strategy never auto-merges", () => {
-    orch = new Orchestrator({ mergeStrategy: "ask" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "pr-open");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -609,7 +609,7 @@ describe("Orchestrator", () => {
   // ── 14. ci-pending transitions ─────────────────────────────────
 
   it("ci-pending chains CI pass through merge evaluation", () => {
-    orch = new Orchestrator({ mergeStrategy: "ask" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
 
@@ -621,7 +621,7 @@ describe("Orchestrator", () => {
   });
 
   it("ci-pending with asap strategy chains CI pass to merge", () => {
-    orch = new Orchestrator({ mergeStrategy: "asap" });
+    orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
 
@@ -648,7 +648,7 @@ describe("Orchestrator", () => {
   // ── 15. WIP count and slots ────────────────────────────────────
 
   it("wipCount reflects items in WIP states", () => {
-    orch = new Orchestrator({ wipLimit: 5 });
+    orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5 });
 
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2"));
@@ -743,7 +743,7 @@ describe("Orchestrator", () => {
   // ── 21. Multiple items complete end-to-end ─────────────────────
 
   it("handles full lifecycle across multiple items", () => {
-    orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "asap" });
+    orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2, mergeStrategy: "asap" });
 
     orch.addItem(makeTodo("A-1-1"));
     orch.addItem(makeTodo("A-1-2"));
@@ -855,7 +855,7 @@ describe("Orchestrator", () => {
     });
 
     it("launch: marks stuck when launchSingleItem returns null and retries exhausted", () => {
-      orch = new Orchestrator({ maxRetries: 0 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
       const deps = mockDeps({ launchSingleItem: vi.fn(() => null) });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "launching");
@@ -892,7 +892,7 @@ describe("Orchestrator", () => {
     });
 
     it("launch: marks stuck when launchSingleItem throws and retries exhausted", () => {
-      orch = new Orchestrator({ maxRetries: 0 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
       const deps = mockDeps({
         launchSingleItem: vi.fn(() => { throw new Error("cmux not running"); }),
       });
@@ -1716,7 +1716,7 @@ describe("Orchestrator", () => {
 
     describe("queued →", () => {
       it("→ ready when deps met (id in readyIds)", () => {
-        orch = new Orchestrator({ wipLimit: 0 }); // prevent auto-launch
+        orch = new Orchestrator({ reviewEnabled: false, wipLimit: 0 }); // prevent auto-launch
         orch.addItem(makeTodo("X-1-1"));
         orch.processTransitions(emptySnapshot(["X-1-1"]));
         expect(orch.getItem("X-1-1")!.state).toBe("ready");
@@ -1748,7 +1748,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays ready when WIP limit reached", () => {
-        orch = new Orchestrator({ wipLimit: 1 });
+        orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
         orch.addItem(makeTodo("X-1-1"));
         orch.addItem(makeTodo("X-1-2"));
         orch.setState("X-1-1", "implementing"); // uses 1 WIP slot
@@ -1796,7 +1796,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ stuck when worker dead and retries exhausted", () => {
-        orch = new Orchestrator({ maxRetries: 0 });
+        orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "launching");
         // Debounce: 3 consecutive not-alive checks required
@@ -1854,7 +1854,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ stuck when worker dies without PR and retries exhausted", () => {
-        orch = new Orchestrator({ maxRetries: 0 });
+        orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "implementing");
         // Debounce: 3 consecutive not-alive checks required
@@ -1884,7 +1884,7 @@ describe("Orchestrator", () => {
       });
 
       it("chains implementing → pr-open → merging when CI passes (asap)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "implementing");
         const actions = orch.processTransitions(
@@ -1925,7 +1925,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when CI passes (asap strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "pr-open");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -1937,7 +1937,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ review-pending when CI passes (approved strategy, no approval)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "pr-open");
         orch.processTransitions(
@@ -1947,7 +1947,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when CI passes (approved strategy, with approval)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "pr-open");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -1959,7 +1959,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ review-pending when CI passes (ask strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "ask" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "pr-open");
         orch.processTransitions(
@@ -1969,7 +1969,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ review-pending when CI passes (asap strategy) with CHANGES_REQUESTED", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "pr-open");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2021,7 +2021,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when CI passes (asap strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2033,7 +2033,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ review-pending when CI passes (ask strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "ask" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-pending");
         orch.processTransitions(
@@ -2078,7 +2078,7 @@ describe("Orchestrator", () => {
 
     describe("ci-passed →", () => {
       it("→ merging (asap strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2090,7 +2090,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ review-pending (approved strategy, no approval)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.processTransitions(
@@ -2100,7 +2100,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging (approved strategy, with approval)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2112,7 +2112,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ review-pending (ask strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "ask" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.processTransitions(
@@ -2142,7 +2142,7 @@ describe("Orchestrator", () => {
       });
 
       it("re-evaluates merge on subsequent tick without ciStatus (asap)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2165,7 +2165,7 @@ describe("Orchestrator", () => {
       // ── CHANGES_REQUESTED guard (H-ORC-2) ──────────────────────────
 
       it("→ review-pending when asap strategy and CHANGES_REQUESTED", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2177,7 +2177,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when asap strategy and no review decision", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2189,7 +2189,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when asap strategy and APPROVED", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2201,7 +2201,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when asap strategy and REVIEW_REQUIRED (no explicit rejection)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-passed");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2217,7 +2217,7 @@ describe("Orchestrator", () => {
 
     describe("ci-failed →", () => {
       it("→ ci-passed when CI recovers (pass), chains to evaluateMerge", () => {
-        orch = new Orchestrator({ mergeStrategy: "ask" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-failed");
         orch.getItem("X-1-1")!.ciFailCount = 1;
@@ -2238,7 +2238,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ stuck when ciFailCount exceeds maxCiRetries", () => {
-        orch = new Orchestrator({ maxCiRetries: 2 });
+        orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 2 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-failed");
         orch.getItem("X-1-1")!.ciFailCount = 3;
@@ -2261,7 +2261,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays ci-failed and retries notification when CI still failing (within retry limit)", () => {
-        orch = new Orchestrator({ maxCiRetries: 3 });
+        orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 3 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-failed");
         orch.getItem("X-1-1")!.ciFailCount = 1;
@@ -2273,7 +2273,7 @@ describe("Orchestrator", () => {
       });
 
       it("does not increment ciFailCount when already ci-failed and still failing", () => {
-        orch = new Orchestrator({ maxCiRetries: 5 });
+        orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 5 });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-failed");
         orch.getItem("X-1-1")!.ciFailCount = 2;
@@ -2284,7 +2284,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when CI recovers with asap strategy", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "ci-failed");
         orch.getItem("X-1-1")!.ciFailCount = 1;
@@ -2301,7 +2301,7 @@ describe("Orchestrator", () => {
 
     describe("review-pending →", () => {
       it("→ merging when review approved and CI passes (approved strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2313,7 +2313,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merging when review approved (asap strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2335,7 +2335,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending when review not approved", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.processTransitions(
@@ -2345,7 +2345,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending with ask strategy even when approved", () => {
-        orch = new Orchestrator({ mergeStrategy: "ask" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.processTransitions(
@@ -2355,7 +2355,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending when CI not passing", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.processTransitions(
@@ -2365,7 +2365,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending with REVIEW_REQUIRED decision", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.processTransitions(
@@ -2375,7 +2375,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending with CHANGES_REQUESTED and CI pass, emits no actions (approved strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2387,7 +2387,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending with CHANGES_REQUESTED and CI pass, emits no actions (asap strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2399,7 +2399,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending with CHANGES_REQUESTED and CI fail (no CI regression handling)", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2413,7 +2413,7 @@ describe("Orchestrator", () => {
       });
 
       it("stays review-pending with CHANGES_REQUESTED and CI fail (asap strategy)", () => {
-        orch = new Orchestrator({ mergeStrategy: "asap" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2426,7 +2426,7 @@ describe("Orchestrator", () => {
       });
 
       it("→ merged when PR externally merged during CHANGES_REQUESTED review", () => {
-        orch = new Orchestrator({ mergeStrategy: "approved" });
+        orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
         orch.addItem(makeTodo("X-1-1"));
         orch.setState("X-1-1", "review-pending");
         orch.getItem("X-1-1")!.prNumber = 10;
@@ -2544,7 +2544,7 @@ describe("Orchestrator", () => {
     });
 
     it("ready does not skip to implementing", () => {
-      orch = new Orchestrator({ wipLimit: 0 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 0 });
       orch.addItem(makeTodo("X-1-1"));
       orch.setState("X-1-1", "ready");
       orch.processTransitions(
@@ -2554,7 +2554,7 @@ describe("Orchestrator", () => {
     });
 
     it("ready does not react to PR data", () => {
-      orch = new Orchestrator({ wipLimit: 0 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 0 });
       orch.addItem(makeTodo("X-1-1"));
       orch.setState("X-1-1", "ready");
       orch.processTransitions(
@@ -2662,7 +2662,7 @@ describe("Orchestrator", () => {
     });
 
     it("multi-level dependency chain (A → B → C)", () => {
-      orch = new Orchestrator({ wipLimit: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("B-1-1", ["A-1-1"]));
       orch.addItem(makeTodo("C-1-1", ["B-1-1"]));
@@ -2721,14 +2721,14 @@ describe("Orchestrator", () => {
 
   describe("WIP-limited transitions", () => {
     it("zero WIP limit prevents any launches", () => {
-      orch = new Orchestrator({ wipLimit: 0 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 0 });
       orch.addItem(makeTodo("X-1-1"));
       orch.processTransitions(emptySnapshot(["X-1-1"]));
       expect(orch.getItem("X-1-1")!.state).toBe("ready");
     });
 
     it("exact WIP limit: all slots used, no new launches", () => {
-      orch = new Orchestrator({ wipLimit: 2 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2 });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("A-1-2"));
       orch.addItem(makeTodo("A-1-3"));
@@ -2747,7 +2747,7 @@ describe("Orchestrator", () => {
     });
 
     it("WIP slot freed by done transition allows new launch in same tick", () => {
-      orch = new Orchestrator({ wipLimit: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("A-1-2"));
       orch.setState("A-1-1", "merged");
@@ -2760,7 +2760,7 @@ describe("Orchestrator", () => {
     });
 
     it("all WIP states count toward limit", () => {
-      orch = new Orchestrator({ wipLimit: 8 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 8 });
       const wipStates: OrchestratorItemState[] = [
         "launching", "implementing", "pr-open", "ci-pending",
         "ci-passed", "ci-failed", "review-pending", "merging",
@@ -2775,7 +2775,7 @@ describe("Orchestrator", () => {
     });
 
     it("non-WIP states do not count toward limit", () => {
-      orch = new Orchestrator({ wipLimit: 4 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 4 });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("A-1-2"));
       orch.addItem(makeTodo("A-1-3"));
@@ -2790,7 +2790,7 @@ describe("Orchestrator", () => {
     });
 
     it("launches exactly up to WIP limit, no more", () => {
-      orch = new Orchestrator({ wipLimit: 3 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 3 });
       for (let i = 1; i <= 5; i++) {
         orch.addItem(makeTodo(`X-1-${i}`));
       }
@@ -2806,7 +2806,7 @@ describe("Orchestrator", () => {
     });
 
     it("merged state does not count toward WIP (allows launches)", () => {
-      orch = new Orchestrator({ wipLimit: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("B-1-1"));
       orch.setState("A-1-1", "merged");
@@ -2919,7 +2919,7 @@ describe("Orchestrator", () => {
 
   describe("Concurrent transitions in a single tick", () => {
     it("multiple items transition independently in one call", () => {
-      orch = new Orchestrator({ mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("B-1-1"));
       orch.addItem(makeTodo("C-1-1"));
@@ -2945,7 +2945,7 @@ describe("Orchestrator", () => {
     });
 
     it("merged items free WIP slots for ready items in the same tick", () => {
-      orch = new Orchestrator({ wipLimit: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("B-1-1"));
       orch.setState("A-1-1", "merged");
@@ -2967,7 +2967,7 @@ describe("Orchestrator", () => {
     });
 
     it("implementing → pr-open → ci-passed → merging chains in one tick", () => {
-      orch = new Orchestrator({ mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
       orch.addItem(makeTodo("A-1-1"));
       orch.setState("A-1-1", "implementing");
 
@@ -3008,7 +3008,7 @@ describe("Orchestrator", () => {
     });
 
     it("mixed: merge + CI fail + launch in one tick", () => {
-      orch = new Orchestrator({ wipLimit: 3, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 3, mergeStrategy: "asap" });
       orch.addItem(makeTodo("A-1-1"));
       orch.addItem(makeTodo("B-1-1"));
       orch.addItem(makeTodo("C-1-1"));
@@ -3041,7 +3041,7 @@ describe("Orchestrator", () => {
 
   describe("Multi-step chaining from implementing through merge evaluation", () => {
     it("asap strategy: implementing → pr-open → ci-passed → merging in one processTransitions call", () => {
-      orch = new Orchestrator({ mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
       orch.addItem(makeTodo("C-1-1"));
       orch.setState("C-1-1", "implementing");
 
@@ -3065,7 +3065,7 @@ describe("Orchestrator", () => {
     });
 
     it("approved strategy: implementing → pr-open → ci-passed → review-pending in one processTransitions call", () => {
-      orch = new Orchestrator({ mergeStrategy: "approved" });
+      orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
       orch.addItem(makeTodo("C-2-1"));
       orch.setState("C-2-1", "implementing");
 
@@ -3087,7 +3087,7 @@ describe("Orchestrator", () => {
     });
 
     it("pending CI: implementing → pr-open → ci-pending (stops, does not chain further)", () => {
-      orch = new Orchestrator({ mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
       orch.addItem(makeTodo("C-3-1"));
       orch.setState("C-3-1", "implementing");
 
@@ -3114,7 +3114,7 @@ describe("Orchestrator", () => {
 
   describe("Crash recovery / state reconstruction", () => {
     it("reconstructed orchestrator resumes from saved states", () => {
-      const orch2 = new Orchestrator({ mergeStrategy: "asap" });
+      const orch2 = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
 
       orch2.addItem(makeTodo("A-1-1"));
       orch2.setState("A-1-1", "implementing");
@@ -3143,7 +3143,7 @@ describe("Orchestrator", () => {
     });
 
     it("reconstructed state preserves ciFailCount", () => {
-      const orch2 = new Orchestrator({ maxCiRetries: 2 });
+      const orch2 = new Orchestrator({ reviewEnabled: false, maxCiRetries: 2 });
       orch2.addItem(makeTodo("A-1-1"));
       orch2.setState("A-1-1", "ci-failed");
       orch2.getItem("A-1-1")!.ciFailCount = 3;
@@ -3157,7 +3157,7 @@ describe("Orchestrator", () => {
     });
 
     it("reconstructed state preserves workspaceRef and prNumber", () => {
-      const orch2 = new Orchestrator();
+      const orch2 = new Orchestrator({ reviewEnabled: false });
       orch2.addItem(makeTodo("A-1-1"));
       orch2.setState("A-1-1", "ci-failed");
       orch2.getItem("A-1-1")!.prNumber = 99;
@@ -3175,7 +3175,7 @@ describe("Orchestrator", () => {
     });
 
     it("fresh orchestrator handles items in all 13 states without errors", () => {
-      const orch2 = new Orchestrator({ wipLimit: 10 });
+      const orch2 = new Orchestrator({ reviewEnabled: false, wipLimit: 10 });
       const allStates: OrchestratorItemState[] = [
         "queued", "ready", "launching", "implementing", "pr-open",
         "ci-pending", "ci-passed", "ci-failed", "review-pending",
@@ -3194,7 +3194,7 @@ describe("Orchestrator", () => {
     });
 
     it("partial reconstruction: items at different lifecycle stages resume correctly", () => {
-      const orch2 = new Orchestrator({ wipLimit: 5, mergeStrategy: "asap" });
+      const orch2 = new Orchestrator({ reviewEnabled: false, wipLimit: 5, mergeStrategy: "asap" });
 
       // Batch 1 items at various stages
       orch2.addItem(makeTodo("A-1-1"));
@@ -3284,18 +3284,18 @@ describe("Orchestrator", () => {
 
   describe("effectiveWipLimit", () => {
     it("defaults to config.wipLimit when not set", () => {
-      orch = new Orchestrator({ wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5 });
       expect(orch.effectiveWipLimit).toBe(5);
     });
 
     it("uses setEffectiveWipLimit override", () => {
-      orch = new Orchestrator({ wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5 });
       orch.setEffectiveWipLimit(2);
       expect(orch.effectiveWipLimit).toBe(2);
     });
 
     it("wipSlots uses effectiveWipLimit", () => {
-      orch = new Orchestrator({ wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing"); // 1 in WIP
 
@@ -3308,7 +3308,7 @@ describe("Orchestrator", () => {
     });
 
     it("memory-constrained WIP queues items instead of launching", () => {
-      orch = new Orchestrator({ wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5 });
 
       // Add 3 items and make them all ready
       orch.addItem(makeTodo("H-1-1"));
@@ -3337,7 +3337,7 @@ describe("Orchestrator", () => {
 
   describe("Worker crash retry", () => {
     it("stuck worker triggers retry transition when retryCount < maxRetries", () => {
-      orch = new Orchestrator({ maxRetries: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 1 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "implementing");
 
@@ -3358,7 +3358,7 @@ describe("Orchestrator", () => {
 
     it("retry creates fresh worktree and relaunches worker", () => {
       const deps = mockDeps();
-      orch = new Orchestrator({ maxRetries: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 1 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "implementing");
       orch.getItem("R-1-1")!.workspaceRef = "workspace:1";
@@ -3391,7 +3391,7 @@ describe("Orchestrator", () => {
     });
 
     it("permanently stuck after maxRetries exhausted", () => {
-      orch = new Orchestrator({ maxRetries: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 1 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "launching");
       orch.getItem("R-1-1")!.retryCount = 1; // already retried once
@@ -3409,7 +3409,7 @@ describe("Orchestrator", () => {
     });
 
     it("retryCount is tracked in item for analytics", () => {
-      orch = new Orchestrator({ maxRetries: 2 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 2 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "implementing");
 
@@ -3433,7 +3433,7 @@ describe("Orchestrator", () => {
     });
 
     it("worker crashes during retry (second attempt counts correctly)", () => {
-      orch = new Orchestrator({ maxRetries: 2 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 2 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "launching");
 
@@ -3475,7 +3475,7 @@ describe("Orchestrator", () => {
     });
 
     it("CI failures do not trigger retry (only worker crash)", () => {
-      orch = new Orchestrator({ maxCiRetries: 0, maxRetries: 1 });
+      orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 0, maxRetries: 1 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "ci-failed");
       orch.getItem("R-1-1")!.ciFailCount = 1;
@@ -3491,7 +3491,7 @@ describe("Orchestrator", () => {
     });
 
     it("retry from launching state re-launches in same cycle", () => {
-      orch = new Orchestrator({ maxRetries: 1, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 1, wipLimit: 5 });
       orch.addItem(makeTodo("R-1-1"));
       orch.setState("R-1-1", "launching");
 
@@ -3514,7 +3514,7 @@ describe("Orchestrator", () => {
 
   describe("heartbeat stuck detection", () => {
     it("transitions implementing → stuck when no commits after launch timeout", () => {
-      orch = new Orchestrator({ launchTimeoutMs: 30 * 60 * 1000, maxRetries: 0, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 30 * 60 * 1000, maxRetries: 0, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
@@ -3533,7 +3533,7 @@ describe("Orchestrator", () => {
     });
 
     it("transitions implementing → stuck when stale commit beyond activity timeout", () => {
-      orch = new Orchestrator({ activityTimeoutMs: 60 * 60 * 1000, maxRetries: 0, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, activityTimeoutMs: 60 * 60 * 1000, maxRetries: 0, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
@@ -3551,7 +3551,7 @@ describe("Orchestrator", () => {
     });
 
     it("keeps implementing when worker has recent commits", () => {
-      orch = new Orchestrator({ activityTimeoutMs: 60 * 60 * 1000, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, activityTimeoutMs: 60 * 60 * 1000, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
@@ -3569,7 +3569,7 @@ describe("Orchestrator", () => {
 
     it("timeout values are configurable via OrchestratorConfig", () => {
       // Use very short timeouts to prove configurability
-      orch = new Orchestrator({
+      orch = new Orchestrator({ reviewEnabled: false,
         launchTimeoutMs: 5000,       // 5 seconds
         activityTimeoutMs: 10000,    // 10 seconds
         maxRetries: 0,
@@ -3592,7 +3592,7 @@ describe("Orchestrator", () => {
     });
 
     it("worker within grace period after launch is not marked stuck", () => {
-      orch = new Orchestrator({ launchTimeoutMs: 30 * 60 * 1000, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 30 * 60 * 1000, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
@@ -3608,7 +3608,7 @@ describe("Orchestrator", () => {
     });
 
     it("heartbeat uses item.lastCommitTime when snapshot has no lastCommitTime", () => {
-      orch = new Orchestrator({ activityTimeoutMs: 60 * 60 * 1000, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, activityTimeoutMs: 60 * 60 * 1000, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
@@ -3627,7 +3627,7 @@ describe("Orchestrator", () => {
     });
 
     it("heartbeat retries instead of stuck when retries remain", () => {
-      orch = new Orchestrator({
+      orch = new Orchestrator({ reviewEnabled: false,
         launchTimeoutMs: 30 * 60 * 1000,
         maxRetries: 1,
         wipLimit: 5,
@@ -3652,7 +3652,7 @@ describe("Orchestrator", () => {
     });
 
     it("heartbeat skips when PR already appeared (takes priority)", () => {
-      orch = new Orchestrator({ launchTimeoutMs: 1000, wipLimit: 5 });
+      orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000, wipLimit: 5 });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "implementing");
 
@@ -3681,7 +3681,7 @@ describe("Orchestrator", () => {
 
   describe("priority-ordered merge queue", () => {
     it("merges multiple ci-passed items in priority order (highest first)", () => {
-      orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, mergeStrategy: "asap" });
 
       // Add items with different priorities
       orch.addItem(makeTodo("L-1-1", [], "low"));
@@ -3715,7 +3715,7 @@ describe("Orchestrator", () => {
     });
 
     it("merges equal-priority items by ID order (lexicographic)", () => {
-      orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, mergeStrategy: "asap" });
 
       // All medium priority
       orch.addItem(makeTodo("M-1-3", [], "medium"));
@@ -3746,7 +3746,7 @@ describe("Orchestrator", () => {
     });
 
     it("single ci-passed item skips queue logic and merges normally", () => {
-      orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, mergeStrategy: "asap" });
 
       orch.addItem(makeTodo("H-1-1", [], "high"));
       orch.setState("H-1-1", "ci-passed");
@@ -3765,7 +3765,7 @@ describe("Orchestrator", () => {
     });
 
     it("after merge execution, remaining ci-passed items get conflict checked next cycle", () => {
-      orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, mergeStrategy: "asap" });
 
       orch.addItem(makeTodo("C-1-1", [], "critical"));
       orch.addItem(makeTodo("M-1-1", [], "medium"));
@@ -3817,7 +3817,7 @@ describe("Orchestrator", () => {
     });
 
     it("non-merge actions are preserved alongside the prioritized merge", () => {
-      orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, mergeStrategy: "asap" });
 
       // Two items in ci-passed, one in ci-pending that will fail
       orch.addItem(makeTodo("H-1-1", [], "high"));
@@ -3852,7 +3852,7 @@ describe("Orchestrator", () => {
     });
 
     it("priority order: critical > high > medium > low", () => {
-      orch = new Orchestrator({ wipLimit: 10, mergeStrategy: "asap" });
+      orch = new Orchestrator({ reviewEnabled: false, wipLimit: 10, mergeStrategy: "asap" });
 
       const priorities: Priority[] = ["low", "medium", "high", "critical"];
       for (const p of priorities) {
@@ -3905,7 +3905,7 @@ describe("Orchestrator", () => {
     it("calculates detectionLatencyMs correctly", () => {
       // Use "approved" strategy so ci-passed doesn't immediately chain to merging
       // without approval — item stays in review-pending with the eventTime carried through
-      orch = new Orchestrator({ mergeStrategy: "approved" });
+      orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", "ci-pending");
 
@@ -4105,7 +4105,7 @@ describe("Orchestrator", () => {
       });
 
       it("returns canStack: false when stacking is disabled", () => {
-        orch = new Orchestrator({ enableStacking: false });
+        orch = new Orchestrator({ reviewEnabled: false, enableStacking: false });
         orch.addItem(makeTodo("A-1-1"));
         orch.addItem(makeTodo("A-1-2", ["A-1-1"]));
         orch.setState("A-1-1", "ci-passed");
@@ -4198,7 +4198,7 @@ describe("Orchestrator", () => {
       });
 
       it("does not promote when stacking is disabled", () => {
-        orch = new Orchestrator({ enableStacking: false });
+        orch = new Orchestrator({ reviewEnabled: false, enableStacking: false });
         orch.addItem(makeTodo("A-1-1"));
         orch.addItem(makeTodo("A-1-2", ["A-1-1"]));
         orch.setState("A-1-1", "ci-passed");
@@ -4225,7 +4225,7 @@ describe("Orchestrator", () => {
       });
 
       it("does not double-promote items already promoted via readyIds", () => {
-        orch = new Orchestrator({ wipLimit: 0 }); // prevent auto-launch
+        orch = new Orchestrator({ reviewEnabled: false, wipLimit: 0 }); // prevent auto-launch
         orch.addItem(makeTodo("A-1-1"));
         orch.addItem(makeTodo("A-1-2", ["A-1-1"]));
         orch.setState("A-1-1", "done");
@@ -4320,7 +4320,7 @@ describe("Orchestrator", () => {
       });
 
       it("can be disabled via config", () => {
-        orch = new Orchestrator({ enableStacking: false });
+        orch = new Orchestrator({ reviewEnabled: false, enableStacking: false });
         expect(orch.config.enableStacking).toBe(false);
       });
     });
@@ -5159,8 +5159,8 @@ describe("Orchestrator", () => {
       expect(actions.some((a) => a.type === "launch-review")).toBe(false);
     });
 
-    it("DEFAULT_CONFIG has reviewEnabled=false", () => {
-      expect(DEFAULT_CONFIG.reviewEnabled).toBe(false);
+    it("DEFAULT_CONFIG has reviewEnabled=true", () => {
+      expect(DEFAULT_CONFIG.reviewEnabled).toBe(true);
       expect(DEFAULT_CONFIG.reviewWipLimit).toBe(2);
       expect(DEFAULT_CONFIG.reviewAutoFix).toBe("off");
       expect(DEFAULT_CONFIG.reviewCanApprove).toBe(false);
@@ -5750,6 +5750,146 @@ describe("Orchestrator", () => {
 
       expect(orch.wipCount).toBe(8);
       expect(orch.reviewWipCount).toBe(1);
+    });
+
+    // ── Commit status actions ─────────────────────────────────────────
+
+    it("entering reviewing emits set-commit-status pending", () => {
+      orch = new Orchestrator({ mergeStrategy: "asap", reviewEnabled: true });
+      orch.addItem(makeTodo("CS-1"));
+      orch.setState("CS-1", "pr-open");
+      orch.getItem("CS-1")!.prNumber = 42;
+
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "CS-1", ciStatus: "pass", prState: "open" }]),
+      );
+
+      const statusActions = actions.filter((a) => a.type === "set-commit-status");
+      expect(statusActions).toHaveLength(1);
+      expect(statusActions[0]!.statusState).toBe("pending");
+      expect(statusActions[0]!.statusDescription).toBe("Review in progress");
+      expect(statusActions[0]!.prNumber).toBe(42);
+    });
+
+    it("review APPROVED emits set-commit-status success", () => {
+      orch = new Orchestrator({ mergeStrategy: "asap", reviewEnabled: true });
+      orch.addItem(makeTodo("CS-2"));
+      orch.setState("CS-2", "reviewing");
+      orch.getItem("CS-2")!.prNumber = 42;
+
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "CS-2", ciStatus: "pass", prState: "open", reviewDecision: "APPROVED" }]),
+      );
+
+      const statusActions = actions.filter((a) => a.type === "set-commit-status");
+      expect(statusActions).toHaveLength(1);
+      expect(statusActions[0]!.statusState).toBe("success");
+      expect(statusActions[0]!.statusDescription).toBe("Review passed — no blockers");
+    });
+
+    it("review CHANGES_REQUESTED + reviewCanApprove=true emits set-commit-status failure", () => {
+      orch = new Orchestrator({ mergeStrategy: "asap", reviewEnabled: true, reviewCanApprove: true });
+      orch.addItem(makeTodo("CS-3"));
+      orch.setState("CS-3", "reviewing");
+      orch.getItem("CS-3")!.prNumber = 42;
+
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "CS-3", ciStatus: "pass", prState: "open", reviewDecision: "CHANGES_REQUESTED" }]),
+      );
+
+      const statusActions = actions.filter((a) => a.type === "set-commit-status");
+      expect(statusActions).toHaveLength(1);
+      expect(statusActions[0]!.statusState).toBe("failure");
+      expect(statusActions[0]!.statusDescription).toBe("Review found blockers");
+    });
+
+    it("review CHANGES_REQUESTED + reviewCanApprove=false emits set-commit-status success (non-blocking)", () => {
+      orch = new Orchestrator({ mergeStrategy: "asap", reviewEnabled: true, reviewCanApprove: false });
+      orch.addItem(makeTodo("CS-4"));
+      orch.setState("CS-4", "reviewing");
+      orch.getItem("CS-4")!.prNumber = 42;
+
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "CS-4", ciStatus: "pass", prState: "open", reviewDecision: "CHANGES_REQUESTED" }]),
+      );
+
+      const statusActions = actions.filter((a) => a.type === "set-commit-status");
+      expect(statusActions).toHaveLength(1);
+      expect(statusActions[0]!.statusState).toBe("success");
+      expect(statusActions[0]!.statusDescription).toBe("Review found issues (non-blocking)");
+    });
+
+    // ── executeAction: set-commit-status ────────────────────────────
+
+    it("executeAction: set-commit-status calls deps.setCommitStatus", () => {
+      const setCommitStatus = vi.fn(() => true);
+      const deps = mockDeps({ setCommitStatus });
+      orch.addItem(makeTodo("CS-5"));
+      orch.setState("CS-5", "reviewing");
+      orch.getItem("CS-5")!.prNumber = 42;
+
+      const result = orch.executeAction(
+        { type: "set-commit-status", itemId: "CS-5", prNumber: 42, statusState: "pending", statusDescription: "Review in progress" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      expect(setCommitStatus).toHaveBeenCalledWith(
+        defaultCtx.projectRoot, 42, "pending", "ninthwave/review", "Review in progress",
+      );
+    });
+
+    it("executeAction: set-commit-status succeeds as no-op when dep not wired", () => {
+      const deps = mockDeps(); // no setCommitStatus dep
+      orch.addItem(makeTodo("CS-6"));
+      orch.setState("CS-6", "reviewing");
+      orch.getItem("CS-6")!.prNumber = 43;
+
+      const result = orch.executeAction(
+        { type: "set-commit-status", itemId: "CS-6", prNumber: 43, statusState: "success", statusDescription: "Review passed" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it("executeAction: set-commit-status fails when no PR number", () => {
+      const setCommitStatus = vi.fn(() => true);
+      const deps = mockDeps({ setCommitStatus });
+      orch.addItem(makeTodo("CS-7"));
+      orch.setState("CS-7", "reviewing");
+      // No prNumber
+
+      const result = orch.executeAction(
+        { type: "set-commit-status", itemId: "CS-7" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No PR number");
+    });
+
+    it("executeAction: set-commit-status uses resolvedRepoRoot for cross-repo items", () => {
+      const setCommitStatus = vi.fn(() => true);
+      const deps = mockDeps({ setCommitStatus });
+      orch.addItem(makeTodo("CS-8"));
+      orch.setState("CS-8", "reviewing");
+      orch.getItem("CS-8")!.prNumber = 44;
+      orch.getItem("CS-8")!.resolvedRepoRoot = "/tmp/other-repo";
+
+      const result = orch.executeAction(
+        { type: "set-commit-status", itemId: "CS-8", prNumber: 44, statusState: "success", statusDescription: "Review passed" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      expect(setCommitStatus).toHaveBeenCalledWith(
+        "/tmp/other-repo", 44, "success", "ninthwave/review", "Review passed",
+      );
     });
   });
 

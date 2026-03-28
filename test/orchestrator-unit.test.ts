@@ -68,7 +68,7 @@ const NOW = new Date("2026-01-15T12:00:00Z");
 
 describe("reconstructState", () => {
   it("sets implementing when worktree exists but no PR", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
 
     const fakeCheckPr = (_id: string, _root: string) => "H-1-1\t\tno-pr";
@@ -81,7 +81,7 @@ describe("reconstructState", () => {
   });
 
   it("sets ci-passed when PR status is ready", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
 
     // reconstructState only processes items whose worktree exists on disk.
@@ -92,7 +92,7 @@ describe("reconstructState", () => {
   });
 
   it("restores ciFailCount and retryCount from daemon state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
 
     const daemonState = {
@@ -109,7 +109,7 @@ describe("reconstructState", () => {
   });
 
   it("restores reviewCompleted from daemon state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
 
     const daemonState = {
@@ -132,7 +132,7 @@ describe("reconstructState", () => {
 
 describe("buildSnapshot", () => {
   it("computes readyIds for queued items with all deps done", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
     orch.setState("H-1-1", "done");
@@ -147,7 +147,7 @@ describe("buildSnapshot", () => {
   });
 
   it("does not include queued items with unmet deps in readyIds", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -162,7 +162,7 @@ describe("buildSnapshot", () => {
   });
 
   it("parses merged PR status into snapshot (already tracked PR)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     // Set prNumber so the merged check uses the "already tracked" fast path
@@ -181,7 +181,7 @@ describe("buildSnapshot", () => {
   });
 
   it("parses CI pass status with review approval", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
 
@@ -199,7 +199,7 @@ describe("buildSnapshot", () => {
   });
 
   it("parses failing status with CONFLICTING mergeable flag", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
 
@@ -215,7 +215,7 @@ describe("buildSnapshot", () => {
   });
 
   it("skips terminal states (done, stuck) in snapshot items", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2"));
     orch.setState("H-1-1", "done");
@@ -232,7 +232,7 @@ describe("buildSnapshot", () => {
   });
 
   it("sets eventTime from checkPr 5th field", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
 
@@ -251,7 +251,7 @@ describe("buildSnapshot", () => {
 
 describe("evaluateMerge", () => {
   it("asap strategy: merges immediately when CI passes", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -265,7 +265,7 @@ describe("evaluateMerge", () => {
   });
 
   it("asap strategy: blocks merge when CHANGES_REQUESTED", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -279,7 +279,7 @@ describe("evaluateMerge", () => {
   });
 
   it("approved strategy: merges only when APPROVED", () => {
-    const orch = new Orchestrator({ mergeStrategy: "approved" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -293,7 +293,7 @@ describe("evaluateMerge", () => {
   });
 
   it("approved strategy: waits in review-pending without approval", () => {
-    const orch = new Orchestrator({ mergeStrategy: "approved" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "approved" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -307,7 +307,7 @@ describe("evaluateMerge", () => {
   });
 
   it("ask strategy: never auto-merges, moves to review-pending", () => {
-    const orch = new Orchestrator({ mergeStrategy: "ask" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -377,7 +377,7 @@ describe("evaluateMerge", () => {
 
 describe("handleImplementing", () => {
   it("transitions to pr-open when PR appears", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -391,7 +391,7 @@ describe("handleImplementing", () => {
   });
 
   it("transitions to merged when PR auto-merges between polls", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -406,7 +406,7 @@ describe("handleImplementing", () => {
   });
 
   it("requires 3 consecutive not-alive checks before retry (debounce)", () => {
-    const orch = new Orchestrator({ maxRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -428,7 +428,7 @@ describe("handleImplementing", () => {
   });
 
   it("resets notAliveCount when worker comes back alive", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -443,7 +443,7 @@ describe("handleImplementing", () => {
   });
 
   it("detects launch timeout when no commits after launchTimeoutMs", () => {
-    const orch = new Orchestrator({ launchTimeoutMs: 1000 });
+    const orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -460,7 +460,7 @@ describe("handleImplementing", () => {
   });
 
   it("detects activity timeout when commits are stale", () => {
-    const orch = new Orchestrator({ activityTimeoutMs: 1000, maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, activityTimeoutMs: 1000, maxRetries: 0 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -477,7 +477,7 @@ describe("handleImplementing", () => {
   });
 
   it("emits sync-stack-comments when stacked PR opens", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     orch.getItem("H-1-1")!.baseBranch = "todo/H-1-0";
@@ -491,7 +491,7 @@ describe("handleImplementing", () => {
   });
 
   it("chains PR open through to CI handling in same cycle", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -510,7 +510,7 @@ describe("handleImplementing", () => {
 
 describe("heartbeat-based health detection", () => {
   it("worker with recent heartbeat (< 5 min) is not marked stuck even with no commits", () => {
-    const orch = new Orchestrator({ launchTimeoutMs: 1000 });
+    const orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -528,7 +528,7 @@ describe("heartbeat-based health detection", () => {
   });
 
   it("worker with stale heartbeat (> 5 min) and no recent commits transitions to stuck", () => {
-    const orch = new Orchestrator({ launchTimeoutMs: 1000, maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000, maxRetries: 0 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -546,7 +546,7 @@ describe("heartbeat-based health detection", () => {
   });
 
   it("worker with no heartbeat file falls back to commit-based timeout detection", () => {
-    const orch = new Orchestrator({ launchTimeoutMs: 1000, maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000, maxRetries: 0 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -563,7 +563,7 @@ describe("heartbeat-based health detection", () => {
   });
 
   it("worker with no heartbeat file and recent commits stays implementing", () => {
-    const orch = new Orchestrator({ activityTimeoutMs: 60_000 });
+    const orch = new Orchestrator({ reviewEnabled: false, activityTimeoutMs: 60_000 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -580,7 +580,7 @@ describe("heartbeat-based health detection", () => {
   });
 
   it("fresh heartbeat overrides stale commits to keep worker alive", () => {
-    const orch = new Orchestrator({ activityTimeoutMs: 1000, maxRetries: 0 });
+    const orch = new Orchestrator({ reviewEnabled: false, activityTimeoutMs: 1000, maxRetries: 0 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
 
@@ -615,7 +615,7 @@ describe("heartbeat-based health detection", () => {
 
 describe("handleCiPending", () => {
   it("transitions to ci-passed when CI passes", () => {
-    const orch = new Orchestrator({ mergeStrategy: "ask" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -629,7 +629,7 @@ describe("handleCiPending", () => {
   });
 
   it("transitions to ci-failed on CI failure", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -645,7 +645,7 @@ describe("handleCiPending", () => {
   });
 
   it("does not re-notify CI failure on subsequent ticks (deduplication)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -679,7 +679,7 @@ describe("handleCiPending", () => {
   });
 
   it("emits daemon-rebase on CI failure with merge conflict", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -695,7 +695,7 @@ describe("handleCiPending", () => {
   });
 
   it("detects merge conflicts on ci-pending PR and sends rebase (once)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -715,7 +715,7 @@ describe("handleCiPending", () => {
   });
 
   it("transitions to merged when PR is externally merged", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -733,7 +733,7 @@ describe("handleCiPending", () => {
 
 describe("handleCiPassed", () => {
   it("recovers from ci-failed to ci-passed when CI passes", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -748,7 +748,7 @@ describe("handleCiPassed", () => {
   });
 
   it("marks stuck when ciFailCount exceeds maxCiRetries", () => {
-    const orch = new Orchestrator({ maxCiRetries: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -763,7 +763,7 @@ describe("handleCiPassed", () => {
   });
 
   it("recovers from ci-failed to ci-pending when CI goes back to pending", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -796,7 +796,7 @@ describe("handleCiPassed", () => {
 
 describe("full lifecycle: queued → done", () => {
   it("drives an item through normal flow to merge", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap", wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap", wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
 
     // Step 1: queued → ready → launching
@@ -841,7 +841,7 @@ describe("full lifecycle: queued → done", () => {
 
 describe("merge queue prioritization", () => {
   it("only merges the highest-priority item when multiple are ci-passed", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("L-1-1", [], "low"));
     orch.addItem(makeTodo("C-1-1", [], "critical"));
 
@@ -865,7 +865,7 @@ describe("merge queue prioritization", () => {
   });
 
   it("passes through single merge action unchanged", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -882,7 +882,7 @@ describe("merge queue prioritization", () => {
 
 describe("stacked branch launches", () => {
   it("launches stacked item when dep is in ci-passed", () => {
-    const orch = new Orchestrator({ wipLimit: 5, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -903,7 +903,7 @@ describe("stacked branch launches", () => {
   });
 
   it("does not stack when dep is in implementing (non-stackable)", () => {
-    const orch = new Orchestrator({ wipLimit: 5, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -917,7 +917,7 @@ describe("stacked branch launches", () => {
   });
 
   it("does not stack when enableStacking is false", () => {
-    const orch = new Orchestrator({ wipLimit: 5, enableStacking: false });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 5, enableStacking: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -937,7 +937,7 @@ describe("stacked branch launches", () => {
 
 describe("stuck dep notification for stacked items", () => {
   it("notifies stacked dependent when dep goes stuck", () => {
-    const orch = new Orchestrator({ maxRetries: 0, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -965,7 +965,7 @@ describe("stuck dep notification for stacked items", () => {
   });
 
   it("reverts stacked dependent in ready state to queued when dep goes stuck", () => {
-    const orch = new Orchestrator({ maxRetries: 0, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -993,7 +993,7 @@ describe("stuck dep notification for stacked items", () => {
   });
 
   it("reverts stacked dependent in launching state to queued when dep goes stuck", () => {
-    const orch = new Orchestrator({ maxRetries: 0, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -1017,7 +1017,7 @@ describe("stuck dep notification for stacked items", () => {
   });
 
   it("sends pause message to stacked dependent in implementing state (existing behavior)", () => {
-    const orch = new Orchestrator({ maxRetries: 0, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -1048,7 +1048,7 @@ describe("stuck dep notification for stacked items", () => {
   });
 
   it("does not affect non-stacked dependents when dep goes stuck", () => {
-    const orch = new Orchestrator({ maxRetries: 0, enableStacking: true });
+    const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0, enableStacking: true });
     orch.addItem(makeTodo("H-1-1"));
     orch.addItem(makeTodo("H-1-2", ["H-1-1"]));
 
@@ -1079,7 +1079,7 @@ describe("stuck dep notification for stacked items", () => {
 
 describe("handleMerging", () => {
   it("transitions to merged when PR state is merged", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "merging");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1097,7 +1097,7 @@ describe("handleMerging", () => {
   });
 
   it("stays in merging when PR not yet merged", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "merging");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1339,7 +1339,7 @@ describe("executeLaunch stale branch cleanup", () => {
 
   it("calls cleanStaleBranch before launchSingleItem", () => {
     const callOrder: string[] = [];
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -1358,7 +1358,7 @@ describe("executeLaunch stale branch cleanup", () => {
   });
 
   it("proceeds with launch when cleanStaleBranch throws", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -1376,7 +1376,7 @@ describe("executeLaunch stale branch cleanup", () => {
   });
 
   it("launches normally when cleanStaleBranch is not provided", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -1391,7 +1391,7 @@ describe("executeLaunch stale branch cleanup", () => {
   });
 
   it("writes fresh heartbeat with progress 0.0 before launching", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -1438,7 +1438,7 @@ describe("executeMerge conflict-aware rebase", () => {
   };
 
   it("rebases and transitions to ci-pending when merge fails due to conflicts", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     const item = orch.getItem("H-1-1")!;
@@ -1466,7 +1466,7 @@ describe("executeMerge conflict-aware rebase", () => {
   });
 
   it("retries normally when merge fails but PR is not conflicting", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap", maxMergeRetries: 3 });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap", maxMergeRetries: 3 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     const item = orch.getItem("H-1-1")!;
@@ -1485,7 +1485,7 @@ describe("executeMerge conflict-aware rebase", () => {
   });
 
   it("falls back to worker rebase message when daemonRebase fails on conflicting PR", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     const item = orch.getItem("H-1-1")!;
@@ -1515,7 +1515,7 @@ describe("executeMerge conflict-aware rebase", () => {
   });
 
   it("falls back to worker rebase when daemonRebase throws on conflicting PR", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     const item = orch.getItem("H-1-1")!;
@@ -1541,7 +1541,7 @@ describe("executeMerge conflict-aware rebase", () => {
   });
 
   it("resets rebaseRequested when conflict detected", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap" });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap" });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     const item = orch.getItem("H-1-1")!;
@@ -1560,7 +1560,7 @@ describe("executeMerge conflict-aware rebase", () => {
   });
 
   it("handles merge failure without checkPrMergeable (treats as non-conflict)", () => {
-    const orch = new Orchestrator({ mergeStrategy: "asap", maxMergeRetries: 3 });
+    const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "asap", maxMergeRetries: 3 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-passed");
     const item = orch.getItem("H-1-1")!;
@@ -1582,7 +1582,7 @@ describe("executeMerge conflict-aware rebase", () => {
 
 describe("processComments (via processTransitions)", () => {
   it("generates send-message action when new trusted comment detected", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1608,7 +1608,7 @@ describe("processComments (via processTransitions)", () => {
   it("does not generate action for untrusted comments (not in snapshot)", () => {
     // Untrusted comments are filtered out during buildSnapshot (not included in newComments).
     // Verify that empty newComments generates no relay actions.
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1628,7 +1628,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("does not relay previously-seen comments (lastCommentCheck prevents duplicates)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1662,7 +1662,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("generates daemon-rebase action for 'rebase' keyword in comment", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1688,7 +1688,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("does not process comments for items without a prNumber", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -1710,7 +1710,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("does not process comments for items without a workspaceRef", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1731,7 +1731,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("skips orchestrator's own audit-trail comments", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1762,7 +1762,7 @@ describe("processComments (via processTransitions)", () => {
     ];
 
     for (const { state, ciStatus } of prStates) {
-      const orch = new Orchestrator({ mergeStrategy: "ask" }); // ask prevents auto-merge
+      const orch = new Orchestrator({ reviewEnabled: false, mergeStrategy: "ask" }); // ask prevents auto-merge
       orch.addItem(makeTodo("H-1-1"));
       orch.setState("H-1-1", state as any);
       orch.getItem("H-1-1")!.prNumber = 42;
@@ -1787,7 +1787,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("does not duplicate daemon-rebase when CI already triggered one", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1813,7 +1813,7 @@ describe("processComments (via processTransitions)", () => {
   });
 
   it("handles multiple comments in one tick", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -1949,7 +1949,7 @@ describe("statusDisplayForState", () => {
 
 describe("buildSnapshot heartbeat", () => {
   it("populates lastHeartbeat from heartbeat file", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -1976,7 +1976,7 @@ describe("buildSnapshot heartbeat", () => {
   });
 
   it("handles missing heartbeat file gracefully (null)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -2000,7 +2000,7 @@ describe("buildSnapshot heartbeat", () => {
 
 describe("executeClean heartbeat cleanup", () => {
   it("deletes heartbeat file during clean without error", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "done");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2071,7 +2071,7 @@ describe("syncWorkerDisplay", () => {
   }
 
   it("calls setStatus with correct args for implementing state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2095,7 +2095,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("calls setProgress with worker-reported data for implementing state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2117,7 +2117,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("calls setProgress with 1 and no label for ci-pending state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2140,7 +2140,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("calls setProgress with 1 and no label for review-pending state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "review-pending");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2162,7 +2162,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("calls setProgress with 1 and no label for merging state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "merging");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2184,7 +2184,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("calls setProgress with 1 and no label for pr-open state", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "pr-open");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2206,7 +2206,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("skips items without workspaceRef", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     // No workspaceRef set
@@ -2221,7 +2221,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("skips terminal-state items (done, stuck)", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "done");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2236,7 +2236,7 @@ describe("syncWorkerDisplay", () => {
   });
 
   it("sets progress to 0% for implementing when no heartbeat", () => {
-    const orch = new Orchestrator();
+    const orch = new Orchestrator({ reviewEnabled: false });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "implementing");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
@@ -2285,7 +2285,7 @@ describe("repair worker state transitions", () => {
   };
 
   it("daemon-rebase failure launches repair worker and transitions to repairing", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2304,7 +2304,7 @@ describe("repair worker state transitions", () => {
   });
 
   it("daemon-rebase success transitions to ci-pending without repair worker", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2324,7 +2324,7 @@ describe("repair worker state transitions", () => {
   });
 
   it("repairing transitions to ci-pending when CI restarts after push", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "repairing");
     const item = orch.getItem("H-1-1")!;
@@ -2344,7 +2344,7 @@ describe("repair worker state transitions", () => {
   });
 
   it("repairing transitions to stuck when repair worker dies", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "repairing");
     const item = orch.getItem("H-1-1")!;
@@ -2364,7 +2364,7 @@ describe("repair worker state transitions", () => {
   });
 
   it("executeCleanRepair cleans up the repair workspace", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2382,7 +2382,7 @@ describe("repair worker state transitions", () => {
   });
 
   it("executeLaunch transitions to ci-pending when existingPrNumber is returned", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -2400,7 +2400,7 @@ describe("repair worker state transitions", () => {
   });
 
   it("falls back to worker message when repair worker not available", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2447,7 +2447,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
   };
 
   it("circuit breaker marks stuck after maxRepairAttempts", () => {
-    const orch = new Orchestrator({ wipLimit: 1, maxRepairAttempts: 2 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1, maxRepairAttempts: 2 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2470,7 +2470,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
   });
 
   it("prefers worker message over repair when workspaceRef exists and sendMessage succeeds", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2494,7 +2494,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
   });
 
   it("falls back to repair when worker message fails (sendMessage returns false)", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2516,7 +2516,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
   });
 
   it("repairAttemptCount resets when conflicts resolve (isMergeable !== false)", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2535,7 +2535,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
   });
 
   it("repairAttemptCount preserves when conflicts persist (isMergeable === false)", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2554,7 +2554,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
   });
 
   it("repairAttemptCount increments on each repair launch", () => {
-    const orch = new Orchestrator({ wipLimit: 1, maxRepairAttempts: 5 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1, maxRepairAttempts: 5 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2574,7 +2574,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
 
   it("full loop terminates after maxRepairAttempts (integration-style)", () => {
     const maxAttempts = 3;
-    const orch = new Orchestrator({ wipLimit: 1, maxRepairAttempts: maxAttempts });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1, maxRepairAttempts: maxAttempts });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2655,7 +2655,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
   };
 
   it("daemon-rebase is never emitted in the same cycle as a worker launch for the same item", () => {
-    const orch = new Orchestrator({ wipLimit: 2 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2 });
     orch.addItem(makeTodo("H-1-1"));
 
     // Item starts in ready state — should get a launch action, NOT daemon-rebase
@@ -2671,7 +2671,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
   });
 
   it("ci-pending item with merge conflicts gets daemon-rebase but not launch", () => {
-    const orch = new Orchestrator({ wipLimit: 2 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 2 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-pending");
     const item = orch.getItem("H-1-1")!;
@@ -2694,7 +2694,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
   });
 
   it("executeNotifyCiFailure transitions to ready with needsCiFix when no workspace", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     const item = orch.getItem("H-1-1")!;
@@ -2715,7 +2715,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
   });
 
   it("executeLaunch with needsCiFix passes forceWorkerLaunch and launches worker", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
     const item = orch.getItem("H-1-1")!;
@@ -2741,7 +2741,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
   });
 
   it("executeLaunch without needsCiFix transitions to ci-pending on existingPrNumber", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "launching");
 
@@ -2759,7 +2759,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
   });
 
   it("full CI-failed restart cycle: ci-failed → notify fails → ready → launch with worker", () => {
-    const orch = new Orchestrator({ wipLimit: 1 });
+    const orch = new Orchestrator({ reviewEnabled: false, wipLimit: 1 });
     orch.addItem(makeTodo("H-1-1"));
     orch.setState("H-1-1", "ci-failed");
     const item = orch.getItem("H-1-1")!;
