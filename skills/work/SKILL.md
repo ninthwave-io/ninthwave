@@ -35,7 +35,7 @@ This skill is highly interactive. You MUST use your interactive question tool to
 
 ## Instructions
 
-This skill interactively selects TODO items, then delegates all orchestration to `nw watch` — a deterministic TypeScript daemon that handles launching workers, polling CI, merging PRs, cleaning up, and marking items done. The skill has three phases: Phase 1 (interactive selection), Phase 2 (launching the daemon), and Phase 3 (continuous delivery loop — checking for remaining work and looping back).
+This skill interactively selects work items, then delegates all orchestration to `nw watch` — a deterministic TypeScript daemon that handles launching workers, polling CI, merging PRs, cleaning up, and marking items done. The skill has three phases: Phase 1 (interactive selection), Phase 2 (launching the daemon), and Phase 3 (continuous delivery loop — checking for remaining work and looping back).
 
 > **CLI shortcut:** You can skip the interactive selection and run the orchestrator directly from any terminal:
 > ```
@@ -47,19 +47,29 @@ This skill interactively selects TODO items, then delegates all orchestration to
 
 ### Phase 1: SELECT
 
-**Goal:** Help the user choose which TODO items to work on and how to process them.
+**Goal:** Help the user choose which work items to work on and how to process them.
 
 > **Rule: Never trust `list --ready` without reconciling first.** Todo files in `.ninthwave/work/` may be stale if PRs were merged outside the orchestrator (manually, by another session, or by GitHub auto-merge). Always reconcile before listing.
 
-1. Run `ninthwave reconcile` to sync todo state with GitHub (removes files for merged PRs, cleans stale worktrees).
-2. Run `ninthwave list --depth 99` to get all reachable items across the full dependency chain. Also run `ninthwave list --ready` to identify which items can start immediately (depth 1).
-3. Parse the output and present a summary showing items grouped by depth tier:
+1. Check for uncommitted work files and commit+push if needed (e.g., after `/decompose` wrote new items):
+
+   ```bash
+   git add .ninthwave/work/
+   if ! git diff --cached --quiet; then
+     git commit -m "chore: sync work items before orchestration"
+     git push
+   fi
+   ```
+
+2. Run `ninthwave reconcile` to sync todo state with GitHub (removes files for merged PRs, cleans stale worktrees).
+3. Run `ninthwave list --depth 99` to get all reachable items across the full dependency chain. Also run `ninthwave list --ready` to identify which items can start immediately (depth 1).
+4. Parse the output and present a summary showing items grouped by depth tier:
    - **Depth 1 (starts now):** items with all deps already done
    - **Depth 2 (starts after depth 1):** items whose deps are all in depth 1 or done
    - **Depth N:** and so on until all items are shown
    Show: ID, priority, domain, title, and estimated complexity. Items with a `Repo:` field will indicate which target repo they belong to.
 
-4. **Quick-start detection:** If there are reachable items and the user invoked `/work` without specifying particular items or filters, offer a streamlined entry:
+5. **Quick-start detection:** If there are reachable items and the user invoked `/work` without specifying particular items or filters, offer a streamlined entry:
 
    AskUserQuestion -- "N items reachable (M at depth 1, K at depth 2, ...). How deep do you want to go?"
    - A) Full chain (depth N) with defaults (auto-merge ASAP, WIP 4) — recommended; the orchestrator queues deeper items until their deps merge
@@ -67,15 +77,15 @@ This skill interactively selects TODO items, then delegates all orchestration to
    - C) Interactive selection — choose items by feature, priority, or domain
    - D) Dry run — show the batch plan without launching
 
-   **If user picks A:** Skip to step 6 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit questions — use the defaults. Proceed directly to Phase 2.
+   **If user picks A:** Skip to step 7 (dependency analysis) with all reachable items selected, then skip the merge strategy / WIP limit questions — use the defaults. Proceed directly to Phase 2.
 
-   **If user picks B:** Skip to step 6 with only depth-1 items selected, using defaults. Proceed directly to Phase 2.
+   **If user picks B:** Skip to step 7 with only depth-1 items selected, using defaults. Proceed directly to Phase 2.
 
    **If user picks C:** Continue with the interactive selection flow below.
 
    **If user picks D:** Show the batch plan and exit.
 
-5. AskUserQuestion -- "How do you want to select items?"
+6. AskUserQuestion -- "How do you want to select items?"
    - Detect if any feature-code IDs exist (IDs with alphabetic characters like `BF5`, `UO`, `ST`).
    - Options:
      - A) By feature code -- select all items for a specific feature (only if feature IDs detected)
@@ -96,16 +106,16 @@ This skill interactively selects TODO items, then delegates all orchestration to
    - AskUserQuestion -- "Which domain?"
    - Filter items by chosen domain.
 
-6. **Dependency analysis:** Run `ninthwave batch-order <selected-IDs>` to check for dependency chains.
+7. **Dependency analysis:** Run `ninthwave batch-order <selected-IDs>` to check for dependency chains.
 
    - **If all items are in Batch 1** (no dependencies): proceed to conflict check.
    - **If items span multiple batches**: present the batch plan. The orchestrator handles dependency ordering automatically — all selected items can be passed together. **Stacking note:** items with in-flight dependencies will automatically launch stacked on the dependency's branch (no need to wait for it to merge first). This means multi-batch dependency chains often execute faster than the batch plan suggests.
 
-7. Run `ninthwave conflicts <batch-IDs>` to check for file overlaps.
+8. Run `ninthwave conflicts <batch-IDs>` to check for file overlaps.
 
-8. Present the conflict analysis. If conflicts, suggest splitting into sub-batches or lowering the WIP limit.
+9. Present the conflict analysis. If conflicts, suggest splitting into sub-batches or lowering the WIP limit.
 
-9. AskUserQuestion -- "Start this batch?"
+10. AskUserQuestion -- "Start this batch?"
    - Options:
      - A) Start these N items -- launch the orchestrator now
      - B) Remove conflicting items -- run only non-overlapping subset
@@ -133,17 +143,17 @@ This skill interactively selects TODO items, then delegates all orchestration to
 
 ---
 
-### Transition: Commit and push TODO changes
+### Transition: Commit and push work file changes
 
-**Goal:** Ensure all TODO file changes from Phase 1 (selection, reconciliation, ad-hoc edits) are committed and pushed before launching workers.
+**Goal:** Ensure all work file changes from Phase 1 (selection, reconciliation, ad-hoc edits) are committed and pushed before launching workers.
 
-> **Why?** Workers spawn in worktrees cloned from the remote. If TODO files are created, modified, or removed during Phase 1 but not pushed, workers won't see those changes — they'll operate on stale state from the last push.
+> **Why?** Workers spawn in worktrees cloned from the remote. If work files are created, modified, or removed during Phase 1 but not pushed, workers won't see those changes — they'll operate on stale state from the last push.
 
 ```bash
 git add .ninthwave/work/
 # Only commit if there are staged changes
 if ! git diff --cached --quiet; then
-  git commit -m "chore: sync TODO files before orchestration"
+  git commit -m "chore: sync work files before orchestration"
   git push
 fi
 ```
@@ -227,15 +237,15 @@ Then run `ninthwave list --ready` to see if any items were unblocked by the batc
 If in dogfooding mode:
 
 1. Read friction files from `.ninthwave/friction/` directory (excluding the `processed/` subdirectory). Each file is an individual friction observation.
-2. Identify any **new actionable entries** — friction items that don't already have corresponding TODOs in `.ninthwave/work/`.
+2. Identify any **new actionable entries** — friction items that don't already have corresponding work items in `.ninthwave/work/`.
 3. If actionable entries exist, present them to the user:
 
-   AskUserQuestion — "Friction log has N new actionable entries. Decompose into TODOs?"
-   - A) Yes — decompose into TODOs, then include them in the next batch
+   AskUserQuestion — "Friction log has N new actionable entries. Decompose into work items?"
+   - A) Yes — decompose into work items, then include them in the next batch
    - B) Skip — continue with existing ready items only
    - C) Show entries — display the friction entries before deciding
 
-   If the user chooses A, use the `/decompose` skill to break friction entries into TODOs. Pass the friction file contents as context. The newly created items will appear in the next `list --ready` call.
+   If the user chooses A, use the `/decompose` skill to break friction entries into work items. Pass the friction file contents as context. The newly created items will appear in the next `list --ready` call.
 
 4. **Mark processed friction entries:** After reviewing and decomposing friction entries (whether the user chose A or B), move all reviewed friction files to `.ninthwave/friction/processed/`. This prevents re-reviewing the same entries in the next loop iteration. The original files are preserved in `processed/` for audit trail purposes.
 
@@ -247,17 +257,18 @@ If in dogfooding mode:
    done
    ```
 
-5. **Commit friction artifacts:** Commit any new or moved friction files and decomposed TODOs so they are not lost between loop iterations. Only commit if there are staged changes — skip if nothing new.
+5. **Commit friction artifacts:** Commit any new or moved friction files and decomposed work items so they are not lost between loop iterations. Only commit if there are staged changes — skip if nothing new.
 
    ```bash
    git add .ninthwave/friction/ .ninthwave/work/
    # Only commit if there are staged changes
    if ! git diff --cached --quiet; then
-     git commit -m "chore: commit friction entries and decomposed TODOs"
+     git commit -m "chore: commit friction entries and decomposed work items"
+
    fi
    ```
 
-   > **Why commit here?** Without this step, friction files and newly decomposed TODOs accumulate uncommitted. If the session is interrupted or the orchestrator restarts, uncommitted friction work is lost. Committing ensures the friction-to-TODO pipeline is durable.
+   > **Why commit here?** Without this step, friction files and newly decomposed work items accumulate uncommitted. If the session is interrupted or the orchestrator restarts, uncommitted friction work is lost. Committing ensures the friction-to-work-item pipeline is durable.
 
 If **not** in dogfooding mode, skip this step entirely.
 
@@ -273,7 +284,7 @@ Check if an L-VIS-* item exists in `.ninthwave/work/` and is ready (all deps met
   - B) Skip vision — end this cycle
   - C) Run vision with scope constraint — limit vision to a specific area
 
-  If the user chooses A or C, process the vision item via the orchestrator (single item). After vision completes, run `ninthwave reconcile` to sync state. New TODOs created by the vision item feed back into the loop naturally — return to Step 1.
+  If the user chooses A or C, process the vision item via the orchestrator (single item). After vision completes, run `ninthwave reconcile` to sync state. New work items created by the vision item feed back into the loop naturally — return to Step 1.
 
   If the user chooses B, skip to Step 4.
 
@@ -307,7 +318,7 @@ At each checkpoint, display a summary:
 ║  Items merged:       7                   ║
 ║  Items stuck:        1                   ║
 ║  Friction reviewed:  3 entries           ║
-║  Friction → TODOs:   2 new items         ║
+║  Friction → items:   2 new items              ║
 ║  Vision items:       1 (L-VIS-4)         ║
 ║  New items created:  5                   ║
 ║  Ready for next:     5                   ║
@@ -335,7 +346,7 @@ The orchestrator daemon communicates with workers via `cmux send`:
 
 **PR comments (audit trail):** The daemon posts comments prefixed with `**[Orchestrator]**`.
 
-Workers prefix their comments with `**[Worker: TODO-ID]**`.
+Workers prefix their comments with `**[Worker: ITEM-ID]**`.
 
 ## Important Rules
 

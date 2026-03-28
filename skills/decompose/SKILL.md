@@ -58,7 +58,7 @@ This skill decomposes a feature spec into work items sized for individual human-
 
 5. If the hub repo has context about other repos (via agent instructions, `.ninthwave/repos.conf`, or project docs), consider which repo each piece of work targets. Features may span multiple repos.
 
-6. Assign a **feature code** for TODO IDs. Derive from the feature name (e.g., "User Onboarding" -> `UO`, "Search & Filters" -> `SF`). Keep it 2-4 uppercase alphanumeric characters.
+6. Assign a **feature code** for work item IDs. Derive from the feature name (e.g., "User Onboarding" -> `UO`, "Search & Filters" -> `SF`). Keep it 2-4 uppercase alphanumeric characters.
 
 ---
 
@@ -100,11 +100,11 @@ If yes and the project has an eng review skill, run it with the spec and delta s
 
 ### Phase 4: DECOMPOSE
 
-**Goal:** Break the feature into TODO items.
+**Goal:** Break the feature into work items.
 
 #### Sizing guidelines
 
-Each TODO should target one human-reviewable PR:
+Each work item should target one human-reviewable PR:
 - **~200-400 lines** of meaningful change
 - **Independently testable**
 - **Single concern**
@@ -125,11 +125,11 @@ Work from the bottom of the stack up:
 
 #### Target repo
 
-When a TODO targets a repo other than the hub repo, include the `**Repo:** <alias>` metadata field. Omit the field for items that target the hub repo itself.
+When a work item targets a repo other than the hub repo, include the `**Repo:** <alias>` metadata field. Omit the field for items that target the hub repo itself.
 
 #### Test plan (REQUIRED)
 
-Every TODO MUST include a `**Test plan:**` field. This is not optional — workers use it as a testing checklist during implementation.
+Every work item MUST include a `**Test plan:**` field. This is not optional -- workers use it as a testing checklist during implementation.
 
 Each test plan specifies:
 - **What tests** to write or verify (new tests vs. existing coverage)
@@ -144,7 +144,7 @@ Keep test plans concise — 2-4 bullet points per item.
 
 #### Dependency mapping
 
-Group TODOs into **batches**. Items within a batch can run in parallel. Batches run sequentially. **Stacking:** items with a single in-flight dependency can launch early — the orchestrator creates their worktree from the dependency's branch and rebases automatically after merge. This means dependency chains execute faster than strict batch ordering suggests, so prefer clear dependency declarations over artificially flattening items into a single batch.
+Group work items into **batches**. Items within a batch can run in parallel. Batches run sequentially. **Stacking:** items with a single in-flight dependency can launch early — the orchestrator creates their worktree from the dependency's branch and rebases automatically after merge. This means dependency chains execute faster than strict batch ordering suggests, so prefer clear dependency declarations over artificially flattening items into a single batch.
 
 #### ID assignment
 
@@ -171,11 +171,11 @@ Show totals and ask for approval. Options: looks good, adjust, re-decompose.
 
 ### Phase 6: WRITE
 
-**Goal:** Write each TODO as an individual file in `.ninthwave/work/`.
+**Goal:** Write each work item as an individual file in `.ninthwave/work/`.
 
 1. Ensure the directory exists: `mkdir -p .ninthwave/work`
 2. Read the format guide: `cat "$(cat .ninthwave/dir)/core/docs/todos-format.md"`
-3. Write each TODO as a separate file. The filename convention is:
+3. Write each work item as a separate file. The filename convention is:
 
    ```
    {priority_num}-{domain_slug}--{ID}.md
@@ -212,6 +212,15 @@ Key files: `path/to/file.ts`, `path/to/other.ex`
 
 5. Verify every item has a `**Test plan:**` section (non-optional for decomposed items)
 6. Verify parseable: `ls .ninthwave/work/` to confirm files were written, then `ninthwave list | grep <feature_code>`
+7. Commit and push the new work files so they are available to workers (which clone from remote):
+
+   ```bash
+   git add .ninthwave/work/
+   if ! git diff --cached --quiet; then
+     git commit -m "chore: add <feature_code> work items from decompose"
+     git push
+   fi
+   ```
 
 ---
 
@@ -223,10 +232,10 @@ Present summary and connect to `/work` for processing.
 
 ## Important Rules
 
-- **ASCII only:** TODO files must use only ASCII characters. Use `--` instead of em dashes, `-` instead of en dashes, `"` instead of smart quotes, `...` instead of ellipsis. Non-ASCII characters break `$'...'` shell quoting when the prompt is sent to workers via multiplexers (tmux/zellij).
-- **Spec fidelity:** Every requirement must map to at least one TODO
-- **No implementation:** This skill only plans and writes TODOs
-- **PR size discipline:** Split TODOs > ~500 LOC, combine < ~50 LOC
+- **ASCII only:** work files must use only ASCII characters. Use `--` instead of em dashes, `-` instead of en dashes, `"` instead of smart quotes, `...` instead of ellipsis. Non-ASCII characters break `$'...'` shell quoting when the prompt is sent to workers via multiplexers (tmux/zellij).
+- **Spec fidelity:** Every requirement must map to at least one work item
+- **No implementation:** This skill only plans and writes work items
+- **PR size discipline:** Split work items > ~500 LOC, combine < ~50 LOC
 - **File conflict awareness:** Items in the same batch should not modify the same files
-- **No VERSION/CHANGELOG:** TODOs should not mention modifying these files
+- **No VERSION/CHANGELOG:** work items should not mention modifying these files
 - **Idempotent:** Check `.ninthwave/work/` for existing files with the same ID before writing duplicates
