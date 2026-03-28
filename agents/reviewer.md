@@ -218,7 +218,7 @@ Inline comments are the primary feedback mechanism for the GitHub UI. Each findi
 
 #### Building the review payload
 
-Build the review JSON payload with a `comments` array. Each comment needs `path`, `line`, `side`, and `body`:
+Build the entire review as a single JSON payload passed via `--input`. Use an **unquoted** heredoc delimiter so shell variables (like `$COMMIT_SHA`) expand. Each inline comment needs `path`, `line`, `side`, and `body`:
 
 ```bash
 # Get the latest commit SHA for the review
@@ -227,17 +227,17 @@ COMMIT_SHA=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid)
 # Build and post the review in one API call
 gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews \
   --method POST \
-  -f commit_id="$COMMIT_SHA" \
-  -f body="Brief verdict summary here" \
-  -f event="APPROVE" \
-  --input - << 'REVIEW_EOF'
+  --input - << REVIEW_EOF
 {
+  "commit_id": "$COMMIT_SHA",
+  "body": "Brief verdict summary here",
+  "event": "APPROVE",
   "comments": [
     {
       "path": "path/to/file.ts",
       "line": 42,
       "side": "RIGHT",
-      "body": "**[NIT]** Description of issue.\n\n```suggestion\ncorrected code here\n```"
+      "body": "**[NIT]** Description of issue.\n\n\`\`\`suggestion\ncorrected code here\n\`\`\`"
     },
     {
       "path": "path/to/other.ts",
@@ -250,18 +250,22 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews \
 REVIEW_EOF
 ```
 
-**Important:** The `-f` flags and `--input` are merged into a single request body by `gh`. The `comments` array comes from `--input` while `commit_id`, `body`, and `event` come from `-f` flags.
+**Important:** All fields (`commit_id`, `body`, `event`, `comments`) must be in the `--input` JSON body. Do NOT use `-f` flags with `--input` -- when `--input` is used, `-f` flags are added to the URL query string instead of the request body, causing silent failures (e.g., the review is created in `PENDING` state because `event` never reaches the API).
 
 #### When there are no inline comments
 
-If the review has no line-specific findings (clean PR or only general observations), omit the `comments` array:
+If the review has no line-specific findings (clean PR or only general observations), omit the `comments` key:
 
 ```bash
 gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews \
   --method POST \
-  -f commit_id="$COMMIT_SHA" \
-  -f body="No issues found. Clean PR." \
-  -f event="APPROVE"
+  --input - << REVIEW_EOF
+{
+  "commit_id": "$COMMIT_SHA",
+  "body": "No issues found. Clean PR.",
+  "event": "APPROVE"
+}
+REVIEW_EOF
 ```
 
 #### Findings that span multiple lines or are about overall approach
