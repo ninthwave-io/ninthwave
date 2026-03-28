@@ -203,13 +203,13 @@ export function getMergeCommitSha(repoRoot: string, prNumber: number): string | 
 
 // ── Commit CI check ─────────────────────────────────────────────────
 
-/** Name of the ninthwave review status check to ignore in commit CI checks. */
-const IGNORED_CHECK_NAMES = new Set(["ninthwave/review"]);
+/** Name of the Ninthwave review status check to ignore in commit CI checks. */
+const IGNORED_CHECK_NAMES = new Set(["Ninthwave / Review"]);
 
 /**
  * Check CI status on a specific commit SHA (e.g., merge commit on main).
  * Uses the GitHub Check Runs API to get check statuses.
- * Ignores the ninthwave/review check to avoid self-referential loops.
+ * Ignores the Ninthwave / Review check to avoid self-referential loops.
  *
  * @returns "pass" if all checks passed, "fail" if any failed, "pending" if still running or no checks found.
  */
@@ -242,7 +242,7 @@ export function checkCommitCI(
     return "pending";
   }
 
-  // Filter out ignored checks (e.g., ninthwave/review to avoid self-referential loops)
+  // Filter out ignored checks (e.g., Ninthwave / Review to avoid self-referential loops)
   const relevantRuns = checkRuns.filter((r) => !IGNORED_CHECK_NAMES.has(r.name));
 
   if (relevantRuns.length === 0) {
@@ -278,7 +278,7 @@ export function checkCommitCI(
  * @param repoRoot - Repo root for gh CLI context
  * @param sha - The commit SHA to set status on
  * @param state - Status state: "pending", "success", or "failure"
- * @param context - Status context string (e.g., "ninthwave/review")
+ * @param context - Status context string (e.g., "Ninthwave / Review")
  * @param description - Short description (e.g., "2 nits, 0 blockers")
  * @param targetUrl - Optional URL linking to the review comment
  * @returns true on success, false on failure
@@ -488,12 +488,20 @@ export function upsertOrchestratorComment(
   const existing = comments.find((c) => c.body.includes(ORCHESTRATOR_COMMENT_MARKER));
 
   if (existing) {
-    // Append the new row to the existing table
-    const updatedBody = existing.body + "\n" + newRow;
+    // Insert new row before the branding footer (if present), otherwise append.
+    // The footer in the created body is: "\n\n---\n*Powered by...*"
+    // (blank line before --- to avoid setext heading interpretation).
+    const footerMarker = "\n\n---\n*Powered by [Ninthwave](https://ninthwave.dev)*";
+    let updatedBody: string;
+    if (existing.body.includes(footerMarker)) {
+      updatedBody = existing.body.replace(footerMarker, "\n" + newRow + footerMarker);
+    } else {
+      updatedBody = existing.body + "\n" + newRow;
+    }
     return client.updateComment(repoRoot, existing.id, updatedBody);
   }
 
-  // Create new comment with header + first row
+  // Create new comment with header + first row + branding footer
   const body = [
     ORCHESTRATOR_COMMENT_MARKER,
     `**[Orchestrator]** Status for ${itemId}`,
@@ -501,6 +509,9 @@ export function upsertOrchestratorComment(
     "| Time | Event |",
     "|------|-------|",
     newRow,
+    "",
+    "---",
+    "*Powered by [Ninthwave](https://ninthwave.dev)*",
   ].join("\n");
 
   return client.createComment(repoRoot, prNumber, body);

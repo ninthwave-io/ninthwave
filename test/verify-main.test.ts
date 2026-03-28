@@ -426,9 +426,9 @@ describe("merge commit SHA retrieval in executeMerge", () => {
   });
 });
 
-// ── checkCommitCI ignores ninthwave/review ───────────────────────────
+// ── checkCommitCI ignores Ninthwave / Review ───────────────────────────
 
-describe("checkCommitCI ignores ninthwave/review check", () => {
+describe("checkCommitCI ignores Ninthwave / Review check", () => {
   it("buildSnapshot correctly passes sha to checkCommitCI", () => {
     const orch = new Orchestrator({ verifyMain: true });
     orch.addItem(makeWorkItem("H-1-1"));

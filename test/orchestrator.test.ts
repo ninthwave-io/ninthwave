@@ -6249,7 +6249,7 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       expect(setCommitStatus).toHaveBeenCalledWith(
-        defaultCtx.projectRoot, 42, "pending", "ninthwave/review", "Review in progress",
+        defaultCtx.projectRoot, 42, "pending", "Ninthwave / Review", "Review in progress",
       );
     });
 
@@ -6301,8 +6301,88 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       expect(setCommitStatus).toHaveBeenCalledWith(
-        "/tmp/other-repo", 44, "success", "ninthwave/review", "Review passed",
+        "/tmp/other-repo", 44, "success", "Ninthwave / Review", "Review passed",
       );
+    });
+  });
+
+  // ── executeAction: post-review (M-RX-4) ───────────────────────────
+
+  describe("executeAction: post-review includes agent link and footer", () => {
+    it("approve verdict includes agent link and branding footer", () => {
+      const prComment = vi.fn(() => true);
+      const deps = mockDeps({ prComment });
+      orch.addItem(makeWorkItem("PR-1"));
+      orch.setState("PR-1", "reviewing");
+      orch.getItem("PR-1")!.prNumber = 50;
+
+      const verdict = { verdict: "approve" as const, summary: "All good.", blockerCount: 0, nitCount: 1, preExistingCount: 0 };
+      const result = orch.executeAction(
+        { type: "post-review", itemId: "PR-1", prNumber: 50, verdict },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      const body = prComment.mock.calls[0]![2] as string;
+      expect(body).toContain("**[Reviewer](agents/reviewer.md)**");
+      expect(body).toContain("*Powered by [Ninthwave](https://ninthwave.dev)*");
+      expect(body).toContain("Approved");
+      expect(body).toContain("0 blockers, 1 nits");
+    });
+
+    it("request-changes verdict includes agent link and branding footer", () => {
+      const prComment = vi.fn(() => true);
+      const deps = mockDeps({ prComment });
+      orch.addItem(makeWorkItem("PR-2"));
+      orch.setState("PR-2", "reviewing");
+      orch.getItem("PR-2")!.prNumber = 51;
+
+      const verdict = { verdict: "request-changes" as const, summary: "Found issues.", blockerCount: 3, nitCount: 2, preExistingCount: 1 };
+      const result = orch.executeAction(
+        { type: "post-review", itemId: "PR-2", prNumber: 51, verdict },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      const body = prComment.mock.calls[0]![2] as string;
+      expect(body).toContain("**[Reviewer](agents/reviewer.md)**");
+      expect(body).toContain("*Powered by [Ninthwave](https://ninthwave.dev)*");
+      expect(body).toContain("Changes Requested");
+      expect(body).toContain("3 blockers, 2 nits");
+    });
+
+    it("status descriptions use new format (colon, no em dashes)", () => {
+      orch = new Orchestrator({ mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("PR-3"));
+      orch.setState("PR-3", "reviewing");
+      orch.getItem("PR-3")!.prNumber = 52;
+
+      const approveVerdict = { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 2, preExistingCount: 0 };
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "PR-3", ciStatus: "pass", prState: "open", reviewVerdict: approveVerdict }]),
+      );
+
+      const statusActions = actions.filter((a) => a.type === "set-commit-status");
+      expect(statusActions).toHaveLength(1);
+      expect(statusActions[0]!.statusDescription).toBe("Review passed: 0 blockers, 2 nits");
+    });
+
+    it("request-changes status description uses new format", () => {
+      orch = new Orchestrator({ mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("PR-4"));
+      orch.setState("PR-4", "reviewing");
+      orch.getItem("PR-4")!.prNumber = 53;
+
+      const changesVerdict = { verdict: "request-changes" as const, summary: "Issues", blockerCount: 5, nitCount: 0, preExistingCount: 0 };
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "PR-4", ciStatus: "pass", prState: "open", reviewVerdict: changesVerdict }]),
+      );
+
+      const statusActions = actions.filter((a) => a.type === "set-commit-status");
+      expect(statusActions).toHaveLength(1);
+      expect(statusActions[0]!.statusDescription).toBe("Changes requested: 5 blockers found");
     });
   });
 
