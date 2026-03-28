@@ -1,4 +1,4 @@
-// Tests for core/commands/stop.ts — stop command for daemon termination.
+// Tests for core/commands/stop.ts -- stop command for daemon termination.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cmdStop, type StopDeps } from "../core/commands/stop.ts";

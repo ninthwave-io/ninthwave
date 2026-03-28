@@ -44,7 +44,7 @@ export function cmdMarkDone(
 }
 
 /**
- * Check each worktree's branch — if merged, print its ID.
+ * Check each worktree's branch -- if merged, print its ID.
  */
 export function cmdMergedIds(
   worktreeDir: string,

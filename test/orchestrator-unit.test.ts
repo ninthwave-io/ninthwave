@@ -1,7 +1,7 @@
 // Focused unit tests for the orchestrator state machine functions.
 // Tests processTransitions (which drives handleImplementing, handlePrLifecycle, evaluateMerge)
 // and the standalone reconstructState/buildSnapshot from orchestrate.ts.
-// No vi.mock — all isolation via dependency injection.
+// No vi.mock -- all isolation via dependency injection.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
@@ -87,7 +87,7 @@ describe("reconstructState", () => {
     orch.getItem("H-1-1")!.reviewCompleted = true;
 
     // reconstructState only processes items whose worktree exists on disk.
-    // Without a real worktree, items remain queued — verifying the guard.
+    // Without a real worktree, items remain queued -- verifying the guard.
     const fakeCheckPr = (_id: string, _root: string) => "H-1-1\t42\tready";
     reconstructState(orch, "/tmp/proj", "/tmp/proj/.worktrees", undefined, fakeCheckPr);
     expect(orch.getItem("H-1-1")!.state).toBe("queued");
@@ -453,7 +453,7 @@ describe("setMergeStrategy", () => {
     orch.setState("H-1-2", "review-pending");
     orch.getItem("H-1-2")!.prNumber = 20;
 
-    // Switch to auto — H-1-1 (ci-passed) will be affected, H-1-2 (review-pending) stays
+    // Switch to auto -- H-1-1 (ci-passed) will be affected, H-1-2 (review-pending) stays
     orch.setMergeStrategy("auto");
     const actions = orch.processTransitions(
       snapshotWith([
@@ -464,7 +464,7 @@ describe("setMergeStrategy", () => {
 
     // H-1-1 should merge (ci-passed + auto)
     expect(orch.getItem("H-1-1")!.state).toBe("merging");
-    // H-1-2 was already in review-pending — stays there (not re-evaluated for merge in that state)
+    // H-1-2 was already in review-pending -- stays there (not re-evaluated for merge in that state)
     expect(orch.getItem("H-1-2")!.state).toBe("review-pending");
   });
 });
@@ -556,7 +556,7 @@ describe("handleImplementing", () => {
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.setState("H-1-1", "implementing");
 
-    // Transition timestamp is "now" from setState — advance past timeout
+    // Transition timestamp is "now" from setState -- advance past timeout
     // workerAlive=false means launch timeout applies (not suppressed by liveness)
     const futureTime = new Date(Date.now() + 2000);
     const actions = orch.processTransitions(
@@ -747,7 +747,7 @@ describe("process liveness timeout suppression", () => {
       futureTime,
     );
 
-    // Process is alive — should NOT be stuck despite exceeding launchTimeoutMs
+    // Process is alive -- should NOT be stuck despite exceeding launchTimeoutMs
     expect(orch.getItem("H-1-1")!.state).toBe("implementing");
     expect(actions).toHaveLength(0);
   });
@@ -815,7 +815,7 @@ describe("process liveness timeout suppression", () => {
       t1,
     );
 
-    // Should NOT be stuck — timeout measures from lastAliveAt, not lastTransition
+    // Should NOT be stuck -- timeout measures from lastAliveAt, not lastTransition
     expect(orch.getItem("H-1-1")!.state).toBe("implementing");
   });
 
@@ -834,7 +834,7 @@ describe("process liveness timeout suppression", () => {
       futureTime,
     );
 
-    // Fresh heartbeat wins — worker stays implementing regardless of timeouts
+    // Fresh heartbeat wins -- worker stays implementing regardless of timeouts
     expect(orch.getItem("H-1-1")!.state).toBe("implementing");
     expect(actions).toHaveLength(0);
   });
@@ -1350,7 +1350,7 @@ describe("stuck dep notification for stacked items", () => {
 
     // H-1-2 depends on H-1-1 but has no baseBranch (not stacked)
     orch.setState("H-1-2", "ready");
-    // No baseBranch set — not stacked
+    // No baseBranch set -- not stacked
 
     const actions = orch.processTransitions(
       snapshotWith([
@@ -1505,7 +1505,7 @@ describe("handleReviewPending", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
-    // No actions needed for pending — just a state transition
+    // No actions needed for pending -- just a state transition
     expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(false);
   });
 
@@ -1606,7 +1606,7 @@ describe("multi-round review cycle", () => {
   it("request-changes → ci-pending → ci-passed → reviewing → approve → merge", () => {
     const orch = new Orchestrator({ mergeStrategy: "auto" });
     orch.addItem(makeWorkItem("H-1-1"));
-    // reviewCompleted starts false — the item entered reviewing via evaluateMerge
+    // reviewCompleted starts false -- the item entered reviewing via evaluateMerge
     orch.getItem("H-1-1")!.reviewCompleted = false;
     orch.setState("H-1-1", "reviewing");
     orch.getItem("H-1-1")!.prNumber = 42;
@@ -2068,7 +2068,7 @@ describe("executeMerge conflict-aware rebase", () => {
 
     const deps = makeMinimalDeps({
       prMerge: () => false,
-      // checkPrMergeable intentionally omitted — should default to non-conflict
+      // checkPrMergeable intentionally omitted -- should default to non-conflict
     });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
@@ -2221,7 +2221,7 @@ describe("processComments (via processTransitions)", () => {
         id: "H-1-1",
         ciStatus: "pending",
         prState: "open",
-        // No newComments — buildSnapshot filtered them because lastCommentCheck is after them
+        // No newComments -- buildSnapshot filtered them because lastCommentCheck is after them
       }]),
     );
     expect(actions2.filter((a) => a.type === "send-message")).toHaveLength(0);
@@ -2537,7 +2537,7 @@ describe("buildSnapshot heartbeat", () => {
     const fakeCheckPr = () => null;
     const fakeCommitTime = () => null;
 
-    // Build snapshot — readHeartbeat will return null since no file exists at /tmp/proj
+    // Build snapshot -- readHeartbeat will return null since no file exists at /tmp/proj
     const snap = buildSnapshot(
       orch, "/tmp/proj", "/tmp/proj/.worktrees",
       fakeMux, fakeCommitTime, fakeCheckPr,
@@ -3219,7 +3219,7 @@ describe("repair rebase circuit breaker and worker message priority", () => {
     const finalRebase = finalActions.find(a => a.type === "daemon-rebase");
 
     if (finalRebase) {
-      // Execute the final daemon-rebase — circuit breaker should trigger
+      // Execute the final daemon-rebase -- circuit breaker should trigger
       orch.executeAction(finalRebase, ctx, deps);
     }
 
@@ -3258,7 +3258,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
 
-    // Item starts in ready state — should get a launch action, NOT daemon-rebase
+    // Item starts in ready state -- should get a launch action, NOT daemon-rebase
     const snap = snapshotWith([{ id: "H-1-1" }], ["H-1-1"]);
     const actions = orch.processTransitions(snap);
 
@@ -3303,7 +3303,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
     item.ciFailCount = 1;
-    // No workspaceRef — simulating restart with dead worker
+    // No workspaceRef -- simulating restart with dead worker
 
     const deps = makeMinimalDeps();
     const result = orch.executeAction(
@@ -3372,7 +3372,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
     item.ciFailCount = 1;
-    // No workspaceRef — dead worker after restart
+    // No workspaceRef -- dead worker after restart
 
     const deps = makeMinimalDeps({
       launchSingleItem: (_item, _td, _wd, _pr, _ai, _bb, forceWorkerLaunch) => {
@@ -3456,7 +3456,7 @@ describe("onTransition callback", () => {
     orch.processTransitions(snapshotWith([{ id: "H-1-1", workerAlive: true }]));
     const countAfterFirst = calls.length;
 
-    // Second call with same snapshot: still implementing, no-op — no new callbacks
+    // Second call with same snapshot: still implementing, no-op -- no new callbacks
     orch.processTransitions(snapshotWith([{ id: "H-1-1", workerAlive: true }]));
     expect(calls.length).toBe(countAfterFirst);
   });
@@ -3466,7 +3466,7 @@ describe("onTransition callback", () => {
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
 
-    // Should not throw — item transitions through ready → launching
+    // Should not throw -- item transitions through ready → launching
     const actions = orch.processTransitions(snapshotWith([], ["H-1-1"]));
     expect(["ready", "launching"]).toContain(orch.getItem("H-1-1")!.state);
     expect(actions).toBeDefined();

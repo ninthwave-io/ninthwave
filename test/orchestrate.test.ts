@@ -1,4 +1,4 @@
-// Tests for core/commands/orchestrate.ts — Event loop, state reconstruction,
+// Tests for core/commands/orchestrate.ts -- Event loop, state reconstruction,
 // adaptive polling, structured logging, SIGINT handling, and daemon mode.
 
 import { describe, it, expect, vi } from "vitest";
@@ -649,7 +649,7 @@ describe("orchestrateLoop", () => {
     expect(sweepCloseEntries.length).toBeGreaterThan(0);
 
     // For each item with a workspace ref, close should happen before clean
-    // Find the last close and first clean — close should come first per-item
+    // Find the last close and first clean -- close should come first per-item
     for (const item of orch.getAllItems()) {
       if (item.workspaceRef) {
         const closeIdx = callOrder.indexOf(`close:${item.workspaceRef}`);
@@ -872,7 +872,7 @@ describe("orchestrateLoop", () => {
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 }, abortController.signal);
 
     expect(logs.some((l) => l.event === "shutdown" && l.reason === "SIGINT")).toBe(true);
-    // Loop exited cleanly — did not process to completion
+    // Loop exited cleanly -- did not process to completion
     expect(logs.some((l) => l.event === "orchestrate_complete")).toBe(false);
   });
 
@@ -916,7 +916,7 @@ describe("orchestrateLoop", () => {
     // Item reaches done
     expect(orch.getItem("D-1-1")!.state).toBe("done");
 
-    // No mark-done action — workers remove their own work item file in their PR branch
+    // No mark-done action -- workers remove their own work item file in their PR branch
     expect(
       logs.every((l) => !(l.event === "action_execute" && l.action === "mark-done")),
     ).toBe(true);
@@ -982,7 +982,7 @@ describe("reconstructState", () => {
     orch.addItem(makeWorkItem("R-1-1"));
     orch.getItem("R-1-1")!.reviewCompleted = true;
 
-    // Non-existent worktree dir — items stay queued
+    // Non-existent worktree dir -- items stay queued
     reconstructState(orch, "/nonexistent", "/nonexistent/.worktrees");
 
     expect(orch.getItem("R-1-1")!.state).toBe("queued");
@@ -1122,7 +1122,7 @@ describe("reconstructState", () => {
     orch.addItem(makeWorkItem("REC-3"));
     orch.getItem("REC-3")!.reviewCompleted = true;
 
-    // No worktree dir needed — items without worktrees are skipped
+    // No worktree dir needed -- items without worktrees are skipped
     reconstructState(orch, "/nonexistent", "/nonexistent/.worktrees", undefined, () => null, null);
 
     const item = orch.getItem("REC-3")!;
@@ -1199,7 +1199,7 @@ describe("reconstructState", () => {
     const wtPath = join(wtDir, "ninthwave-WR-1");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
-    // checkPr returns "pending" status — existing PR with CI pending
+    // checkPr returns "pending" status -- existing PR with CI pending
     const pendingCheckPr = () => "WR-1\t271\tpending";
 
     reconstructState(orch, tmpDir, wtDir, undefined, pendingCheckPr);
@@ -1836,10 +1836,10 @@ describe("buildSnapshot merge detection", () => {
     item.title = "Fix the daemon polling loop";
     orch.addItem(item);
     orch.setState("MRG-1-1", "implementing");
-    // prNumber is never set — either stale PR or auto-merged before daemon saw it
+    // prNumber is never set -- either stale PR or auto-merged before daemon saw it
     expect(orch.getItem("MRG-1-1")!.prNumber).toBeUndefined();
 
-    // checkPr returns merged with a completely different title — stale PR from previous cycle
+    // checkPr returns merged with a completely different title -- stale PR from previous cycle
     const checkPr = () => "MRG-1-1\t99\tmerged\t\t\trefactor: rewrite polling internals";
     const mux = mockMux();
 
@@ -1871,7 +1871,7 @@ describe("reconstructState merge detection", () => {
 
     reconstructState(orch, tmpDir, wtDir, undefined, checkPr);
 
-    // Should NOT be marked merged — title mismatch means it's a stale PR
+    // Should NOT be marked merged -- title mismatch means it's a stale PR
     expect(orch.getItem("MRG-2-1")!.state).toBe("implementing");
 
     require("fs").rmSync(tmpDir, { recursive: true, force: true });
@@ -1894,7 +1894,7 @@ describe("reconstructState merge detection", () => {
 
     reconstructState(orch, tmpDir, wtDir, undefined, checkPr);
 
-    // Should be merged — prNumber match bypasses title check
+    // Should be merged -- prNumber match bypasses title check
     expect(orch.getItem("MRG-3-1")!.state).toBe("merged");
 
     require("fs").rmSync(tmpDir, { recursive: true, force: true });
@@ -2073,7 +2073,7 @@ describe("setupKeyboardShortcuts", () => {
 
     setupKeyboardShortcuts(ac, () => {}, stdin, tuiState);
 
-    // Cycle through all positions — should only visit auto and manual
+    // Cycle through all positions -- should only visit auto and manual
     const visited: string[] = [];
     for (let i = 0; i < 4; i++) {
       (stdin as any)._emit("data", "\x1B[Z");
@@ -2762,8 +2762,8 @@ describe("executeClean readScreen diagnostics", () => {
     // This is the critical safety test: without maxIterations, a stuck item
     // causes the while(true) loop to spin forever. Because tests use
     // sleep: () => Promise.resolve() (microtask), the loop monopolizes the
-    // event loop and macrotask-based timers (setTimeout/setInterval) — including
-    // the SIGKILL safety guard — never fire.
+    // event loop and macrotask-based timers (setTimeout/setInterval) -- including
+    // the SIGKILL safety guard -- never fire.
     const orch = new Orchestrator({ wipLimit: 1, mergeStrategy: "auto" });
     orch.addItem(makeWorkItem("SPIN-1"));
     orch.getItem("SPIN-1")!.reviewCompleted = true;
@@ -2777,7 +2777,7 @@ describe("executeClean readScreen diagnostics", () => {
       for (const item of o.getAllItems()) {
         if (item.state === "queued") readyIds.push(item.id);
       }
-      // After launch, always return empty — item stuck in "launching" forever
+      // After launch, always return empty -- item stuck in "launching" forever
       return { items: [], readyIds };
     };
 
@@ -2790,7 +2790,7 @@ describe("executeClean readScreen diagnostics", () => {
 
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 50 });
 
-    // Guard fired — loop terminated
+    // Guard fired -- loop terminated
     const exceeded = logs.find((l) => l.event === "max_iterations_exceeded");
     expect(exceeded).toBeDefined();
     expect(exceeded!.iterations).toBe(51);
@@ -2936,7 +2936,7 @@ describe("orchestrateLoop watch mode", () => {
       },
     };
 
-    // No watch flag — should exit after all done
+    // No watch flag -- should exit after all done
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
 
     expect(orch.getItem("N-1-1")!.state).toBe("done");
@@ -3114,7 +3114,7 @@ describe("orchestrateLoop watch mode", () => {
       actionDeps: mockActionDeps(),
       scanWorkItems: () => {
         scanCount++;
-        // Return 3 items — but WIP limit is 1, so they should be queued/serial
+        // Return 3 items -- but WIP limit is 1, so they should be queued/serial
         return [makeWorkItem("L-1-1"), makeWorkItem("L-1-2"), makeWorkItem("L-1-3")];
       },
     };
@@ -3226,7 +3226,7 @@ describe("orchestrateLoop crew mode", () => {
     };
   }
 
-  it("filters launch actions through crew broker — only claimed items launch", async () => {
+  it("filters launch actions through crew broker -- only claimed items launch", async () => {
     const orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "auto" });
     orch.addItem(makeWorkItem("T-1"));
     orch.getItem("T-1")!.reviewCompleted = true;
@@ -3265,7 +3265,7 @@ describe("orchestrateLoop crew mode", () => {
       log: (e) => logs.push(e),
       actionDeps: actionDepsOverride,
       crewBroker: broker,
-      getFreeMem: () => 16 * 1024 ** 3, // 16GB — prevent memory-based WIP reduction
+      getFreeMem: () => 16 * 1024 ** 3, // 16GB -- prevent memory-based WIP reduction
     };
 
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 2 });

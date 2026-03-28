@@ -38,7 +38,7 @@ describe("getBundleDir", () => {
 
     it("skips NINTHWAVE_HOME when set but invalid (no marker)", () => {
       const tmp = setupTempRepo();
-      // Don't create bundle marker — directory exists but is not valid
+      // Don't create bundle marker -- directory exists but is not valid
       process.env.NINTHWAVE_HOME = tmp;
       // Ensure binary prefix won't match
       process.argv[0] = "/usr/local/not-a-real-binary";
@@ -82,7 +82,7 @@ describe("getBundleDir", () => {
 
     it("skips binary prefix when argv[0] is not in a bin/ directory", () => {
       delete process.env.NINTHWAVE_HOME;
-      // argv[0] not in a /bin/ directory — falls through to dev resolution
+      // argv[0] not in a /bin/ directory -- falls through to dev resolution
       process.argv[0] = "/tmp/ninthwave";
 
       const result = getBundleDir();

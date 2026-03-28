@@ -67,7 +67,7 @@ describe("acquireLock / releaseLock", () => {
   it("steals a lock with missing pid file", () => {
     const lockPath = join(TEST_DIR, "nopid.lock");
     mkdirSync(lockPath);
-    // No pid file at all — should be considered stale
+    // No pid file at all -- should be considered stale
     acquireLock(lockPath);
     expect(existsSync(join(lockPath, "pid"))).toBe(true);
     releaseLock(lockPath);
@@ -79,7 +79,7 @@ describe("acquireLock / releaseLock", () => {
     // Simulate a race: another process steals the lock after our first mkdir+writePid.
     // We do this by creating the lock dir with a foreign PID, which makes acquireLock
     // detect it as stale, remove it, re-mkdir, and writePid. We intercept by
-    // overwriting the PID file right after it's created — but since we can't hook
+    // overwriting the PID file right after it's created -- but since we can't hook
     // into the middle of acquireLock synchronously, we instead verify the behavior
     // indirectly: after acquireLock succeeds, the PID file MUST contain our PID.
     // This confirms the verify step ran and accepted the lock.
@@ -106,7 +106,7 @@ describe("acquireLock / releaseLock", () => {
 
     // Start with a stale lock (missing PID = stale)
     mkdirSync(lockPath);
-    // No PID file — isLockStale returns true, lock gets stolen
+    // No PID file -- isLockStale returns true, lock gets stolen
 
     acquireLock(lockPath);
     expect(existsSync(join(lockPath, "pid"))).toBe(true);
@@ -132,7 +132,7 @@ describe("acquireLock / releaseLock", () => {
   it("preserves default timeout of 5000ms", () => {
     // Verify the function signature accepts no timeout (uses default)
     const lockPath = join(TEST_DIR, "default-timeout.lock");
-    // Don't actually wait 5s — just verify it works with default when lock is free
+    // Don't actually wait 5s -- just verify it works with default when lock is free
     acquireLock(lockPath);
     expect(existsSync(join(lockPath, "pid"))).toBe(true);
     releaseLock(lockPath);
@@ -143,7 +143,7 @@ describe("acquireLock / releaseLock", () => {
     const start = Date.now();
     acquireLock(lockPath);
     const elapsed = Date.now() - start;
-    // Should be near-instant — well under the initial 10ms backoff
+    // Should be near-instant -- well under the initial 10ms backoff
     expect(elapsed).toBeLessThan(50);
     releaseLock(lockPath);
   });
@@ -247,7 +247,7 @@ describe("releaseLock", () => {
   it("cleans up directory even when pid file is already missing", () => {
     const lockPath = join(TEST_DIR, "nopid-release.lock");
     mkdirSync(lockPath);
-    // No pid file — releaseLock should still remove the directory
+    // No pid file -- releaseLock should still remove the directory
     releaseLock(lockPath);
     expect(existsSync(lockPath)).toBe(false);
   });

@@ -1,5 +1,5 @@
 // Interactive CLI prompts for the orchestrate command.
-// Uses Node's built-in readline — no external dependencies.
+// Uses Node's built-in readline -- no external dependencies.
 // All I/O is injectable for testing.
 
 import { createInterface } from "readline";
@@ -52,7 +52,7 @@ const MERGE_STRATEGIES: StrategyOption[] = [
   {
     value: "manual",
     label: "manual",
-    description: "Create PR, never auto-merge — human clicks merge",
+    description: "Create PR, never auto-merge -- human clicks merge",
   },
 ];
 
@@ -75,7 +75,7 @@ export function shouldEnterInteractive(
 /**
  * Render a read-only numbered list of available work items.
  * Sorted by priority with color coding and dependency info.
- * Display-only — no selection prompt.
+ * Display-only -- no selection prompt.
  */
 export function displayItemsSummary(todos: WorkItem[]): void {
   if (todos.length === 0) {
@@ -123,8 +123,8 @@ export type Mode = "orchestrate" | "launch" | "quit";
 export async function promptMode(
   prompt: PromptFn,
 ): Promise<Mode> {
-  console.log(`  ${BOLD}1${RESET}. ${CYAN}Orchestrate${RESET}  ${DIM}— daemon mode with auto-merge and monitoring${RESET} ${GREEN}(default)${RESET}`);
-  console.log(`  ${BOLD}2${RESET}. ${CYAN}Launch subset${RESET} ${DIM}— targeted work on selected items${RESET}`);
+  console.log(`  ${BOLD}1${RESET}. ${CYAN}Orchestrate${RESET}  ${DIM}-- daemon mode with auto-merge and monitoring${RESET} ${GREEN}(default)${RESET}`);
+  console.log(`  ${BOLD}2${RESET}. ${CYAN}Launch subset${RESET} ${DIM}-- targeted work on selected items${RESET}`);
   console.log();
 
   while (true) {
@@ -254,7 +254,7 @@ export async function promptMergeStrategy(
     const s = MERGE_STRATEGIES[i]!;
     const defaultTag = s.value === "auto" ? ` ${GREEN}(default)${RESET}` : "";
     console.log(
-      `  ${BOLD}${i + 1}${RESET}. ${CYAN}${s.label}${RESET}  ${DIM}— ${s.description}${RESET}${defaultTag}`,
+      `  ${BOLD}${i + 1}${RESET}. ${CYAN}${s.label}${RESET}  ${DIM}-- ${s.description}${RESET}${defaultTag}`,
     );
   }
   console.log();

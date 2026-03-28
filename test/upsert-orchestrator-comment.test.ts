@@ -1,4 +1,4 @@
-// Tests for upsertOrchestratorComment — living PR comment upsert pattern.
+// Tests for upsertOrchestratorComment -- living PR comment upsert pattern.
 // Uses dependency injection (PrCommentClient) for testability without real GitHub API.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

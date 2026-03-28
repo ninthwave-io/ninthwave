@@ -1,4 +1,4 @@
-// Tests for core/commands/retry.ts — retry command for stuck/done items.
+// Tests for core/commands/retry.ts -- retry command for stuck/done items.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cmdRetry, type RetryDeps } from "../core/commands/retry.ts";

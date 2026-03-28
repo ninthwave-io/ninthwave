@@ -275,7 +275,7 @@ describe("install.sh", () => {
       expect(result.status).toBe(0);
 
       const bashrc = readFileSync(join(home, ".bashrc"), "utf-8");
-      // Count occurrences — should be exactly 1
+      // Count occurrences -- should be exactly 1
       const matches = bashrc.match(/\.ninthwave\/bin/g);
       expect(matches).toHaveLength(1);
     });

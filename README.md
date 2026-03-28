@@ -18,7 +18,7 @@
 
 ---
 
-**ninthwave orchestrates parallel AI coding sessions from work item files.** Each work item gets its own git worktree and a full native instance of Claude Code, OpenCode, or Copilot CLI — focused on one task. Workers open PRs, handle review feedback and CI failures, and idle with full context until needed. The orchestrator sequences dependencies as stacked PRs, runs automated code review, auto-rebases, auto-merges, and cleans up. Two skills — `/decompose` and `/work` — take you from spec to shipped code.
+**ninthwave orchestrates parallel AI coding sessions from work item files.** Each work item gets its own git worktree and a full native instance of Claude Code, OpenCode, or Copilot CLI -- focused on one task. Workers open PRs, handle review feedback and CI failures, and idle with full context until needed. The orchestrator sequences dependencies as stacked PRs, runs automated code review, auto-rebases, auto-merges, and cleans up. Two skills -- `/decompose` and `/work` -- take you from spec to shipped code.
 
 - **Parallel sessions.** Each work item gets its own git worktree and AI coding session.
 - **Stacked PRs.** Dependent items target their dependency's branch. Reviewers see clean diffs. GitHub retargets on merge.
@@ -26,7 +26,7 @@
 - **CI failure recovery.** Orchestrator detects failures, notifies the worker, retries up to 3x, marks stuck if unresolvable.
 - **Auto-rebase.** Daemon rebases branches automatically. Falls back to a repair worker on conflicts.
 - **Auto-merge.** Approved PRs merge on CI pass, or gate on manual confirmation.
-- **Crew mode.** Multiple daemons on different machines coordinate via [ninthwave.sh](https://ninthwave.sh) broker. Creator-affinity scheduling prefers routing items to the daemon whose human decomposed them — enabling easier steering and intervention. Affinity is a preference within WIP limits: when the creator's daemon is full, queued items overflow to other daemons.
+- **Crew mode.** Multiple daemons on different machines coordinate via [ninthwave.sh](https://ninthwave.sh) broker. Creator-affinity scheduling prefers routing items to the daemon whose human decomposed them -- enabling easier steering and intervention. Affinity is a preference within WIP limits: when the creator's daemon is full, queued items overflow to other daemons.
 - **Convention over configuration.** Cross-repo via sibling directories, port isolation, domain mapping. Zero config for the common case.
 
 ## Install
@@ -66,7 +66,7 @@ The orchestrator is deterministic: no LLM calls in the event loop. Workers are t
 
 | Command | |
 |---------|---|
-| `nw` | Interactive guide — pick items, choose how to run |
+| `nw` | Interactive guide -- pick items, choose how to run |
 | `nw <ID> [ID2...]` | Launch items by ID |
 | `nw init` | Initialize project |
 | `nw watch` | Full pipeline: launch, monitor CI, merge |

@@ -2,12 +2,12 @@
 
 ## What happened
 1. Ran `ninthwave orchestrate --mux zellij` outside a zellij session → orchestrator launched all 4 workers, all failed with "cmux launch failed" (wrong mux name in error), went to stuck state. Wasted 20+ minutes before user noticed.
-2. Started a zellij session and ran the command inside it → "Bye from Zellij!" — session immediately exited, losing the terminal.
+2. Started a zellij session and ran the command inside it → "Bye from Zellij!" -- session immediately exited, losing the terminal.
 
 ## Impact
 - Complete inability to use zellij as a multiplexer
 - Misleading error messages (says "cmux" when zellij was selected)
-- No fail-fast — silent failure wastes significant time
+- No fail-fast -- silent failure wastes significant time
 - Destructive behavior (kills the user's terminal session)
 
 ## Root causes

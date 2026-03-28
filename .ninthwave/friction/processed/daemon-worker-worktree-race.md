@@ -1,7 +1,7 @@
 # Daemon and worker race on same worktree during rebase
 
 **Date:** 2026-03-27
-**Severity:** High — causes loss of prior work, redundant re-implementation
+**Severity:** High -- causes loss of prior work, redundant re-implementation
 **Observed during:** Orchestrator restart with existing PR #271 for H-NTF-1
 
 ## Symptoms
@@ -20,7 +20,7 @@ When an existing branch with an open PR is reused, the orchestrator:
 2. Launches a worker into that worktree
 3. Detects the PR is behind main and runs daemon-rebase
 
-Steps 2 and 3 race — the daemon modifies the worktree (rebase, force-push) while the worker is simultaneously reading/writing in the same directory.
+Steps 2 and 3 race -- the daemon modifies the worktree (rebase, force-push) while the worker is simultaneously reading/writing in the same directory.
 
 ## Fix needed
 
@@ -29,4 +29,4 @@ When reusing a branch with an existing open PR:
 - Instead, transition to `ci-pending` state and let the daemon handle rebase + CI + merge
 - Only launch a worker if additional work is needed (e.g., CI failed, review feedback pending)
 
-Alternative: if a worker must be launched, do NOT daemon-rebase — let the worker handle the rebase via `send-message` so there's no concurrent mutation.
+Alternative: if a worker must be launched, do NOT daemon-rebase -- let the worker handle the rebase via `send-message` so there's no concurrent mutation.

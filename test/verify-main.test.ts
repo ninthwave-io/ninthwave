@@ -1,5 +1,5 @@
 // Tests for post-merge CI verification state machine (H-VF-1).
-// No vi.mock — all isolation via dependency injection.
+// No vi.mock -- all isolation via dependency injection.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -69,7 +69,7 @@ describe("merged → verifying transition (verifyMain=true)", () => {
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.setState("H-1-1", "merged");
-    // No mergeCommitSha set — graceful fallback to done
+    // No mergeCommitSha set -- graceful fallback to done
 
     orch.processTransitions(emptySnapshot(), NOW);
 
@@ -377,7 +377,7 @@ describe("merge commit SHA retrieval in executeMerge", () => {
       deps,
     );
 
-    // mergeCommitSha not set — when processTransitions runs, it goes merged → done
+    // mergeCommitSha not set -- when processTransitions runs, it goes merged → done
     expect(orch.getItem("H-1-1")!.mergeCommitSha).toBeUndefined();
 
     // Now run processTransitions to trigger merged → done
@@ -418,7 +418,7 @@ describe("merge commit SHA retrieval in executeMerge", () => {
       deps,
     );
 
-    // mergeCommitSha not set due to error — falls back to done
+    // mergeCommitSha not set due to error -- falls back to done
     expect(orch.getItem("H-1-1")!.mergeCommitSha).toBeUndefined();
 
     orch.processTransitions(emptySnapshot(), NOW);
@@ -541,7 +541,7 @@ describe("end-to-end: merge → verify → done flow", () => {
     orch.setState("H-1-1", "merging");
     orch.getItem("H-1-1")!.prNumber = 42;
 
-    // Cycle 1: PR gets merged externally — merging → merged
+    // Cycle 1: PR gets merged externally -- merging → merged
     orch.processTransitions(
       snapshotWith([{ id: "H-1-1", prState: "merged" }]),
       NOW,
@@ -729,7 +729,7 @@ describe("repairing-main state handling", () => {
     );
     expect(orch.getItem("H-1-1")!.state).toBe("repairing-main");
 
-    // Poll 5: fifth consecutive — transition to stuck
+    // Poll 5: fifth consecutive -- transition to stuck
     const actions = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", workerAlive: false }]),
       NOW,

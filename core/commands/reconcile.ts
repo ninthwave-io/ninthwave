@@ -257,7 +257,7 @@ export function reconcile(
   // Step 3: Find items that are merged but still have work item files.
   // Collision safety (H-MID-1): compare the merged PR's title with the work item file's
   // title. If they don't match, the merged PR belongs to a previous cycle that reused
-  // the same ID — skip it to avoid falsely deleting the new work item.
+  // the same ID -- skip it to avoid falsely deleting the new work item.
   const openIds = new Set(deps.getOpenItemIds(workDir));
   const mergedPrTitleById = new Map(mergedItems.map((m) => [m.id, m.prTitle]));
   const toMarkDone: string[] = [];
@@ -339,7 +339,7 @@ export function reconcile(
     info(`Closed ${closedWorkspaces} stale workspace(s).`);
   }
 
-  // Step 4.6: Clean orphaned worktrees — worktrees with no matching work item file.
+  // Step 4.6: Clean orphaned worktrees -- worktrees with no matching work item file.
   // Skip IDs already handled by step 4 (merged items) to avoid double-cleaning.
   const refreshedOpenIds = new Set(deps.getOpenItemIds(workDir));
   const refreshedWorktreeIds = deps.getWorktreeIds(worktreeDir);
@@ -366,7 +366,7 @@ export function reconcile(
     info(`Cleaned ${orphanCount} orphaned worktree(s).`);
   }
 
-  // Step 4.7: Clean stale worktrees — worktrees with zero commits beyond main and no open PR.
+  // Step 4.7: Clean stale worktrees -- worktrees with zero commits beyond main and no open PR.
   // These are left behind by aborted orchestration runs and incorrectly mark items as in-progress.
   const postCleanWorktreeIds = deps.getWorktreeIds(worktreeDir);
   let staleCount = 0;
@@ -413,7 +413,7 @@ export function reconcile(
       info("No todo file changes to commit.");
     }
   } else {
-    console.log(`${GREEN}Everything in sync — no changes needed.${RESET}`);
+    console.log(`${GREEN}Everything in sync -- no changes needed.${RESET}`);
   }
 }
 

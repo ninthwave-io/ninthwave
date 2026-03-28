@@ -1,5 +1,5 @@
-// Tests for core/orchestrator.ts — Orchestrator state machine and action execution.
-// No vi.mock — executeAction uses dependency injection to stay bun-test compatible.
+// Tests for core/orchestrator.ts -- Orchestrator state machine and action execution.
+// No vi.mock -- executeAction uses dependency injection to stay bun-test compatible.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
@@ -437,13 +437,13 @@ describe("Orchestrator", () => {
     orch.getItem("H-1-1")!.prNumber = 42;
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
-    // First poll — sends rebase
+    // First poll -- sends rebase
     const actions1 = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", prState: "open", isMergeable: false }]),
     );
     expect(actions1.filter((a) => a.type === "daemon-rebase")).toHaveLength(1);
 
-    // Second poll — same conflict, no duplicate daemon-rebase
+    // Second poll -- same conflict, no duplicate daemon-rebase
     const actions2 = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", prState: "open", isMergeable: false }]),
     );
@@ -1205,7 +1205,7 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      // Daemon rebase succeeded — no need to check mergeable or send worker message
+      // Daemon rebase succeeded -- no need to check mergeable or send worker message
       expect(daemonRebase).toHaveBeenCalledTimes(1);
       expect(checkPrMergeable).not.toHaveBeenCalled();
       expect(deps.sendMessage).not.toHaveBeenCalled();
@@ -1231,7 +1231,7 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      // Daemon rebase failed, PR is conflicting — fall back to worker message
+      // Daemon rebase failed, PR is conflicting -- fall back to worker message
       expect(daemonRebase).toHaveBeenCalledTimes(1);
       expect(checkPrMergeable).toHaveBeenCalledWith(defaultCtx.projectRoot, 43);
       expect(deps.sendMessage).toHaveBeenCalledWith(
@@ -1260,7 +1260,7 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      // Daemon rebase failed but PR is not conflicting — no message needed
+      // Daemon rebase failed but PR is not conflicting -- no message needed
       expect(daemonRebase).toHaveBeenCalledTimes(1);
       expect(checkPrMergeable).toHaveBeenCalledWith(defaultCtx.projectRoot, 43);
       expect(deps.sendMessage).not.toHaveBeenCalled();
@@ -1279,7 +1279,7 @@ describe("Orchestrator", () => {
       orch.getItem("H-1-1")!.prNumber = 42;
       orch.setState("H-1-2", "ci-pending");
       orch.getItem("H-1-2")!.prNumber = 43;
-      // No workspaceRef — worker is dead
+      // No workspaceRef -- worker is dead
 
       orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
@@ -1309,7 +1309,7 @@ describe("Orchestrator", () => {
       orch.getItem("H-1-1")!.prNumber = 42;
       orch.setState("H-1-2", "ci-pending");
       orch.getItem("H-1-2")!.prNumber = 43;
-      // No workspaceRef — worker is dead
+      // No workspaceRef -- worker is dead
 
       orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
@@ -1366,7 +1366,7 @@ describe("Orchestrator", () => {
 
       expect(deps.sendMessage).toHaveBeenCalledWith(
         "workspace:1",
-        "CI failed — please investigate and fix.",
+        "CI failed -- please investigate and fix.",
       );
     });
 
@@ -1423,7 +1423,7 @@ describe("Orchestrator", () => {
 
       expect(deps.sendMessage).toHaveBeenCalledWith(
         "workspace:1",
-        "Review feedback received — please address.",
+        "Review feedback received -- please address.",
       );
     });
 
@@ -1531,7 +1531,7 @@ describe("Orchestrator", () => {
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.setState("H-1-1", "merged");
-      // No workspaceRef — closeWorkspace is not called, so only worktree cleanup matters
+      // No workspaceRef -- closeWorkspace is not called, so only worktree cleanup matters
 
       const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
@@ -1744,7 +1744,7 @@ describe("Orchestrator", () => {
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.setState("H-1-1", "ci-failed");
       orch.getItem("H-1-1")!.reviewCompleted = true;
-      // No workspaceRef — worker is dead
+      // No workspaceRef -- worker is dead
 
       const result = orch.executeAction(
         { type: "daemon-rebase", itemId: "H-1-1" },
@@ -1793,7 +1793,7 @@ describe("Orchestrator", () => {
       orch.getItem("H-1-1")!.prNumber = 42;
       orch.setState("H-1-2", "ci-pending");
       orch.getItem("H-1-2")!.prNumber = 43;
-      // No workspaceRef — worker is dead
+      // No workspaceRef -- worker is dead
 
       orch.executeAction(
         { type: "merge", itemId: "H-1-1", prNumber: 42 },
@@ -2932,12 +2932,12 @@ describe("Orchestrator", () => {
       orch.processTransitions(emptySnapshot(["A-1-1", "B-1-1"]));
       expect(orch.getItem("C-1-1")!.state).toBe("queued");
 
-      // A done, B still in progress — C not ready
+      // A done, B still in progress -- C not ready
       orch.setState("A-1-1", "done");
       orch.processTransitions(emptySnapshot([]));
       expect(orch.getItem("C-1-1")!.state).toBe("queued");
 
-      // Both done — C ready
+      // Both done -- C ready
       orch.setState("B-1-1", "done");
       orch.processTransitions(emptySnapshot(["C-1-1"]));
       expect(orch.getItem("C-1-1")!.state).toBe("launching");
@@ -3075,7 +3075,7 @@ describe("Orchestrator", () => {
   // ── M-EVT-1: Deduplicate state transition events ─────────────────
 
   describe("State transition deduplication (M-EVT-1)", () => {
-    it("same-state transition is a no-op — timestamps unchanged", () => {
+    it("same-state transition is a no-op -- timestamps unchanged", () => {
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.setState("H-1-1", "merged");
@@ -3088,7 +3088,7 @@ describe("Orchestrator", () => {
       expect(item.state).toBe("done");
       const doneTimestamp = item.lastTransition;
 
-      // Second call: item is already done — should NOT update lastTransition
+      // Second call: item is already done -- should NOT update lastTransition
       orch.processTransitions(emptySnapshot());
       expect(item.state).toBe("done");
       expect(item.lastTransition).toBe(doneTimestamp);
@@ -3120,13 +3120,13 @@ describe("Orchestrator", () => {
       if (item.state !== prev2) transitions.push({ from: prev2, to: item.state });
       expect(item.state).toBe("done");
 
-      // Cycle 3: done — stable, no transition
+      // Cycle 3: done -- stable, no transition
       const prev3 = item.state;
       orch.processTransitions(mergedSnap);
       if (item.state !== prev3) transitions.push({ from: prev3, to: item.state });
       expect(item.state).toBe("done");
 
-      // Exactly one transition TO "merged" — no duplicates
+      // Exactly one transition TO "merged" -- no duplicates
       const mergedEntries = transitions.filter((t) => t.to === "merged");
       expect(mergedEntries).toHaveLength(1);
 
@@ -3352,7 +3352,7 @@ describe("Orchestrator", () => {
       // Should chain through to review-pending (waiting for approval)
       expect(orch.getItem("C-2-1")!.state).toBe("review-pending");
       expect(orch.getItem("C-2-1")!.prNumber).toBe(101);
-      // No merge action should be emitted — still waiting for review
+      // No merge action should be emitted -- still waiting for review
       expect(actions.some((a) => a.type === "merge")).toBe(false);
     });
 
@@ -3372,10 +3372,10 @@ describe("Orchestrator", () => {
         }]),
       );
 
-      // Should stop at ci-pending — CI hasn't passed yet
+      // Should stop at ci-pending -- CI hasn't passed yet
       expect(orch.getItem("C-3-1")!.state).toBe("ci-pending");
       expect(orch.getItem("C-3-1")!.prNumber).toBe(102);
-      // No merge or notify actions — just waiting
+      // No merge or notify actions -- just waiting
       expect(actions.some((a) => a.type === "merge")).toBe(false);
       expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(false);
     });
@@ -3661,7 +3661,7 @@ describe("Orchestrator", () => {
         snapshotWith([{ id: "R-1-1", workerAlive: false }]),
       );
 
-      // Execute retry action — closes workspace but preserves worktree
+      // Execute retry action -- closes workspace but preserves worktree
       const retryAction = actions.find((a) => a.type === "retry")!;
       const retryResult = orch.executeAction(retryAction, defaultCtx, deps);
       expect(retryResult.success).toBe(true);
@@ -3669,7 +3669,7 @@ describe("Orchestrator", () => {
       expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
       expect(orch.getItem("R-1-1")!.workspaceRef).toBeUndefined();
 
-      // Execute launch action — reuses existing worktree
+      // Execute launch action -- reuses existing worktree
       const launchAction = actions.find((a) => a.type === "launch")!;
       const launchResult = orch.executeAction(launchAction, defaultCtx, deps);
       expect(launchResult.success).toBe(true);
@@ -3703,7 +3703,7 @@ describe("Orchestrator", () => {
       orch.getItem("R-1-1")!.reviewCompleted = true;
       orch.setState("R-1-1", "implementing");
 
-      // First crash — debounce: 5 consecutive not-alive checks required
+      // First crash -- debounce: 5 consecutive not-alive checks required
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
@@ -3717,7 +3717,7 @@ describe("Orchestrator", () => {
       );
       expect(orch.getItem("R-1-1")!.state).toBe("implementing");
 
-      // Second crash — debounce: 5 consecutive not-alive checks required
+      // Second crash -- debounce: 5 consecutive not-alive checks required
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
@@ -3732,7 +3732,7 @@ describe("Orchestrator", () => {
       orch.getItem("R-1-1")!.reviewCompleted = true;
       orch.setState("R-1-1", "launching");
 
-      // First crash — debounce: 5 consecutive not-alive checks required
+      // First crash -- debounce: 5 consecutive not-alive checks required
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
@@ -3744,7 +3744,7 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-1-1")!.state).toBe("launching");
       expect(actions.some((a) => a.type === "retry")).toBe(true);
 
-      // Second crash — notAliveCount resets on retry, needs 5 consecutive checks again
+      // Second crash -- notAliveCount resets on retry, needs 5 consecutive checks again
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
@@ -3756,7 +3756,7 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-1-1")!.state).toBe("launching");
       expect(actions.some((a) => a.type === "retry")).toBe(true);
 
-      // Third crash — notAliveCount resets again, 5 more checks → permanently stuck
+      // Third crash -- notAliveCount resets again, 5 more checks → permanently stuck
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
@@ -3871,7 +3871,7 @@ describe("Orchestrator", () => {
       orch.setState("H-1-1", "implementing");
 
       const now = new Date();
-      // Last commit was 10 minutes ago — well within timeout
+      // Last commit was 10 minutes ago -- well within timeout
       const recentCommitTime = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
       orch.processTransitions(
@@ -3914,7 +3914,7 @@ describe("Orchestrator", () => {
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.setState("H-1-1", "implementing");
 
-      // lastTransition is very recent (just now) — within grace period
+      // lastTransition is very recent (just now) -- within grace period
       const now = new Date();
 
       orch.processTransitions(
@@ -3936,7 +3936,7 @@ describe("Orchestrator", () => {
       const item = orch.getItem("H-1-1")!;
       item.lastCommitTime = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
 
-      // Snapshot does not include lastCommitTime — item's value is used as fallback
+      // Snapshot does not include lastCommitTime -- item's value is used as fallback
       orch.processTransitions(
         snapshotWith([{ id: "H-1-1", workerAlive: true }]),
         now,
@@ -4118,7 +4118,7 @@ describe("Orchestrator", () => {
       expect(mergeActions1).toHaveLength(1);
       expect(mergeActions1[0]!.itemId).toBe("C-1-1");
 
-      // Execute merge for C-1-1 (simulated) — daemon-rebase succeeds for siblings
+      // Execute merge for C-1-1 (simulated) -- daemon-rebase succeeds for siblings
       const daemonRebase = vi.fn(() => true);
       const deps = mockDeps({ daemonRebase });
       orch.executeAction(mergeActions1[0]!, defaultCtx, deps);
@@ -4237,7 +4237,7 @@ describe("Orchestrator", () => {
 
     it("calculates detectionLatencyMs correctly", () => {
       // Use "manual" strategy so ci-passed doesn't immediately chain to merging
-      // without approval — item stays in review-pending with the eventTime carried through
+      // without approval -- item stays in review-pending with the eventTime carried through
       orch = new Orchestrator({ mergeStrategy: "manual" });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -4734,7 +4734,7 @@ describe("Orchestrator", () => {
         expect(forcePush).toHaveBeenCalledWith(
           `${defaultCtx.worktreeDir}/ninthwave-A-1-2`,
         );
-        // baseBranch cleared — no longer stacked
+        // baseBranch cleared -- no longer stacked
         expect(orch.getItem("A-1-2")!.baseBranch).toBeUndefined();
       });
 
@@ -4789,7 +4789,7 @@ describe("Orchestrator", () => {
         orch.setState("A-1-2", "ci-pending");
         orch.getItem("A-1-2")!.prNumber = 43;
         orch.getItem("A-1-2")!.workspaceRef = "workspace:2";
-        // No baseBranch — not stacked
+        // No baseBranch -- not stacked
 
         orch.executeAction(
           { type: "merge", itemId: "A-1-1", prNumber: 42 },
@@ -4833,7 +4833,7 @@ describe("Orchestrator", () => {
           deps,
         );
 
-        // sendMessage should NOT be called — stacked item was handled by rebaseOnto
+        // sendMessage should NOT be called -- stacked item was handled by rebaseOnto
         // (no generic "Dependency merged" message, no conflict fallback message)
         expect(deps.sendMessage).not.toHaveBeenCalled();
       });
@@ -4939,7 +4939,7 @@ describe("Orchestrator", () => {
         orch.getItem("A-1-1")!.ciFailCount = 10;
         orch.setState("A-1-2", "ci-pending");
         orch.getItem("A-1-2")!.workspaceRef = "workspace:2";
-        // No baseBranch — not stacked
+        // No baseBranch -- not stacked
 
         const actions = orch.processTransitions(
           snapshotWith([
@@ -4995,7 +4995,7 @@ describe("Orchestrator", () => {
         orch.getItem("A-1-1")!.ciFailCount = 1;
         orch.setState("A-1-2", "ci-pending");
         orch.getItem("A-1-2")!.workspaceRef = "workspace:2";
-        // No baseBranch — not stacked
+        // No baseBranch -- not stacked
 
         const actions = orch.processTransitions(
           snapshotWith([
@@ -5161,7 +5161,7 @@ describe("Orchestrator", () => {
         orch.getItem("A-1-1")!.reviewCompleted = true;
         orch.setState("A-1-1", "implementing");
         orch.getItem("A-1-1")!.workspaceRef = "workspace:1";
-        // No baseBranch — not stacked
+        // No baseBranch -- not stacked
 
         const actions = orch.processTransitions(
           snapshotWith([
@@ -5230,7 +5230,7 @@ describe("Orchestrator", () => {
         orch.getItem("A-1-1")!.reviewCompleted = true;
         orch.setState("A-1-1", "pr-open");
         orch.getItem("A-1-1")!.prNumber = 10;
-        // No baseBranch, no one stacked on it — chain is [A-1-1] (length 1)
+        // No baseBranch, no one stacked on it -- chain is [A-1-1] (length 1)
 
         const result = orch.executeAction(
           { type: "sync-stack-comments", itemId: "A-1-1" },
@@ -5291,7 +5291,7 @@ describe("Orchestrator", () => {
         orch.setState("A-1-2", "ci-pending");
         orch.getItem("A-1-2")!.prNumber = 11;
         orch.getItem("A-1-2")!.workspaceRef = "workspace:2";
-        // No baseBranch — not stacked
+        // No baseBranch -- not stacked
 
         orch.executeAction(
           { type: "merge", itemId: "A-1-1", prNumber: 10 },
@@ -5324,7 +5324,7 @@ describe("Orchestrator", () => {
           deps,
         );
 
-        // Restack failed — don't sync comments (worker needs to resolve manually)
+        // Restack failed -- don't sync comments (worker needs to resolve manually)
         expect(syncStackComments).not.toHaveBeenCalled();
       });
 
@@ -5351,7 +5351,7 @@ describe("Orchestrator", () => {
           deps,
         );
 
-        // Chain is just [B] after A merged — single item, no stack to show
+        // Chain is just [B] after A merged -- single item, no stack to show
         expect(syncStackComments).not.toHaveBeenCalled();
       });
     });
@@ -5463,7 +5463,7 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      // Worktree preserved for retry continuation — no cleanup
+      // Worktree preserved for retry continuation -- no cleanup
       expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
       expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:5");
     });
@@ -5482,7 +5482,7 @@ describe("Orchestrator", () => {
       orch.getItem("X-1-6")!.prNumber = 46;
       orch.getItem("X-1-6")!.resolvedRepoRoot = "/path/to/target-repo";
 
-      // Sibling in the SAME repo — should be rebased
+      // Sibling in the SAME repo -- should be rebased
       orch.setState("X-1-7", "ci-pending");
       orch.getItem("X-1-7")!.prNumber = 47;
       orch.getItem("X-1-7")!.resolvedRepoRoot = "/path/to/target-repo";
@@ -5514,7 +5514,7 @@ describe("Orchestrator", () => {
       orch.getItem("X-1-6b")!.prNumber = 46;
       orch.getItem("X-1-6b")!.resolvedRepoRoot = "/path/to/target-repo";
 
-      // Sibling in a DIFFERENT repo — should NOT be rebased
+      // Sibling in a DIFFERENT repo -- should NOT be rebased
       orch.setState("X-1-7b", "ci-pending");
       orch.getItem("X-1-7b")!.prNumber = 47;
       orch.getItem("X-1-7b")!.resolvedRepoRoot = "/path/to/other-repo";
@@ -5806,7 +5806,7 @@ describe("Orchestrator", () => {
         ]),
       );
 
-      // R-8-3 should be launched — only 1 main WIP item, limit is 2
+      // R-8-3 should be launched -- only 1 main WIP item, limit is 2
       expect(orch.getItem("R-8-3")!.state).toBe("launching");
       expect(actions.some((a) => a.type === "launch" && a.itemId === "R-8-3")).toBe(true);
     });
@@ -5847,7 +5847,7 @@ describe("Orchestrator", () => {
       orch.getItem("R-9-2")!.ciFailCount = 1;
       orch.getItem("R-9-2")!.reviewCompleted = true;
 
-      // CI restarts — reviewCompleted was already reset by ci-failed,
+      // CI restarts -- reviewCompleted was already reset by ci-failed,
       // then re-set to true above. ci-pending does NOT reset it.
       orch.processTransitions(
         snapshotWith([{ id: "R-9-2", ciStatus: "pending", prState: "open" }]),
@@ -6173,7 +6173,7 @@ describe("Orchestrator", () => {
         orch.addItem(makeWorkItem(`WR-${i + 1}`));
         orch.setState(`WR-${i + 1}`, state);
       });
-      // Add reviewing item — should NOT count
+      // Add reviewing item -- should NOT count
       orch.addItem(makeWorkItem("WR-9"));
       orch.setState("WR-9", "reviewing");
 

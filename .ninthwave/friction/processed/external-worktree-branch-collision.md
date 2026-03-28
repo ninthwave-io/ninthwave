@@ -1,7 +1,7 @@
 # External worktree branch collision causes launch failure
 
 **Date:** 2026-03-27
-**Severity:** High — blocks items from launching, requires manual cleanup
+**Severity:** High -- blocks items from launching, requires manual cleanup
 **Observed during:** `/work` orchestration with stale `.claude/worktrees/` from prior agent sessions
 
 ## Symptoms
@@ -12,7 +12,7 @@
 
 ## Root causes
 
-1. **Silent branch deletion failure.** `start.ts:441-445` catches and ignores the error when `git branch -D` fails. But `git branch -D` refuses to delete a branch checked out in *any* worktree — the ignore means the code proceeds as if the branch was deleted.
+1. **Silent branch deletion failure.** `start.ts:441-445` catches and ignores the error when `git branch -D` fails. But `git branch -D` refuses to delete a branch checked out in *any* worktree -- the ignore means the code proceeds as if the branch was deleted.
 
 2. **No awareness of external worktrees.** The orchestrator only checks `.worktrees/` for existing worktrees. It never calls `git worktree list` to discover worktrees created by other tools (e.g., Claude Code agents in `.claude/worktrees/`).
 

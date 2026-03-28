@@ -1,4 +1,4 @@
-// Tests for core/work-item-files.ts — file-per-item operations.
+// Tests for core/work-item-files.ts -- file-per-item operations.
 
 import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "fs";

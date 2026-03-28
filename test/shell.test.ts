@@ -1,4 +1,4 @@
-// Tests for core/shell.ts — run() with timeout support.
+// Tests for core/shell.ts -- run() with timeout support.
 // Uses real Bun.spawnSync (no mocking needed for shell integration tests).
 
 import { describe, it, expect } from "vitest";
@@ -91,7 +91,7 @@ describe("run()", () => {
   // ── Edge case: very short timeout ───────────────────────────────────
 
   it("very short timeout (1ms) does not cause flaky behavior", () => {
-    // With 1ms timeout, sleep should always time out — but the key test
+    // With 1ms timeout, sleep should always time out -- but the key test
     // is that it doesn't throw or crash, and returns a valid RunResult.
     const result = run("sleep", ["1"], { timeout: 1 });
     // It should either time out or (very rarely) complete

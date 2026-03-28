@@ -391,8 +391,8 @@ describe("reconcile", () => {
     });
 
     captureOutput(() => reconcile(workDir, worktreeDir, projectRoot, deps));
-    // X-OLD-1 has no work item file — should be cleaned as orphan
-    // M-CI-1 has a matching work item file — should NOT be cleaned
+    // X-OLD-1 has no work item file -- should be cleaned as orphan
+    // M-CI-1 has a matching work item file -- should NOT be cleaned
     expect(cleaned).not.toContain("M-CI-1");
     expect(cleaned).toContain("X-OLD-1");
   });
@@ -769,7 +769,7 @@ describe("closeWorkspacesForIds", () => {
 
     // H-WRK-1 should not match nw-H-WRK-10-1 (substring but not exact ID)
     const count = closeWorkspacesForIds(new Set(["H-WRK-1"]), mux);
-    // H-WRK-1 is a substring of H-WRK-10 — this is a known limitation
+    // H-WRK-1 is a substring of H-WRK-10 -- this is a known limitation
     // since nw-prefixed session names don't have delimiters around the ID.
     // The includes() check will match, which is acceptable since
     // in practice item IDs are unique enough to avoid collisions.

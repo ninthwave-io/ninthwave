@@ -86,7 +86,7 @@ export function closeWorkspace(workspaceRef: string): boolean {
 
 /**
  * Set status text, icon, and color for a cmux workspace.
- * Best-effort — returns true on success, false on failure.
+ * Best-effort -- returns true on success, false on failure.
  *
  * Wraps: `cmux set-status <key> <text> --icon <icon> --color <color> --workspace <ref>`
  */
@@ -102,7 +102,7 @@ export function setStatus(
 
 /**
  * Set progress value (0.0–1.0) and optional label for a cmux workspace.
- * Best-effort — returns true on success, false on failure.
+ * Best-effort -- returns true on success, false on failure.
  *
  * Wraps: `cmux set-progress <value> [--label <label>] --workspace <ref>`
  */
@@ -127,7 +127,7 @@ export function splitPane(command: string): string | null {
 }
 
 /**
- * Injectable implementation of splitPane — testable without vi.mock.
+ * Injectable implementation of splitPane -- testable without vi.mock.
  * @internal Exported for testing only.
  */
 export function splitPaneImpl(
@@ -137,7 +137,7 @@ export function splitPaneImpl(
   const result = runner("cmux", ["new-split", "right"]);
   if (result.exitCode !== 0) return null;
 
-  // new-split returns a ref — surface:N, pane:N, or similar
+  // new-split returns a ref -- surface:N, pane:N, or similar
   const match = result.stdout.match(/(?:surface|pane):\d+/);
   const ref = match ? match[0] : null;
   if (!ref) return null;
@@ -149,7 +149,7 @@ export function splitPaneImpl(
     ref,
     `${command}\n`,
   ]);
-  if (sendResult.exitCode !== 0) return ref; // split succeeded, send failed — return ref anyway
+  if (sendResult.exitCode !== 0) return ref; // split succeeded, send failed -- return ref anyway
 
   return ref;
 }

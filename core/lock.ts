@@ -50,7 +50,7 @@ function verifyPid(lockPath: string): boolean {
     const contents = readFileSync(join(lockPath, PID_FILE), "utf-8").trim();
     return contents === String(process.pid);
   } catch {
-    // PID file was deleted between write and verify — lock was stolen
+    // PID file was deleted between write and verify -- lock was stolen
     return false;
   }
 }
@@ -85,10 +85,10 @@ export function acquireLock(lockPath: string, timeoutMs = 5000): void {
       if (verifyPid(lockPath)) {
         return;
       }
-      // Another process stole the lock between write and verify — retry
+      // Another process stole the lock between write and verify -- retry
     }
 
-    // Lock exists — check for staleness
+    // Lock exists -- check for staleness
     if (isLockStale(lockPath)) {
       removeLockDir(lockPath);
       if (tryMkdir(lockPath)) {
@@ -96,7 +96,7 @@ export function acquireLock(lockPath: string, timeoutMs = 5000): void {
         if (verifyPid(lockPath)) {
           return;
         }
-        // Stolen between write and verify — retry
+        // Stolen between write and verify -- retry
       }
     }
 

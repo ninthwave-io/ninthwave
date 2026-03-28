@@ -1,6 +1,6 @@
 # Database Migration
 
-Common pattern for schema changes — new tables, columns, indexes, or data migrations.
+Common pattern for schema changes -- new tables, columns, indexes, or data migrations.
 
 ## Keywords
 
@@ -10,7 +10,7 @@ migration, schema, database, table, column, index, alter, create table, foreign 
 
 | # | Item | Description | Suggested LOC |
 |---|------|-------------|---------------|
-| 1 | Migration File | DDL changes — CREATE TABLE, ALTER TABLE, indexes, constraints | 30–100 |
+| 1 | Migration File | DDL changes -- CREATE TABLE, ALTER TABLE, indexes, constraints | 30–100 |
 | 2 | Schema/Model Update | ORM schema, type definitions, associations | 50–150 |
 | 3 | Data Backfill | One-time data migration for existing records (if needed) | 50–200 |
 | 4 | Context/Query Updates | Update queries and business logic for the new schema | 100–250 |
@@ -33,7 +33,7 @@ migration, schema, database, table, column, index, alter, create table, foreign 
 ## Guidance
 
 - Migration must be reversible (include rollback/down logic).
-- Keep DDL and data changes in separate migration files — DDL runs in a transaction, large data backfills may not.
+- Keep DDL and data changes in separate migration files -- DDL runs in a transaction, large data backfills may not.
 - If the migration is additive (new nullable column, new table), it can be deployed before the code that uses it. This enables zero-downtime deploys.
 - For destructive changes (drop column, rename), use a multi-phase approach: add new → migrate data → update code → remove old.
-- Data backfill items should be idempotent — safe to re-run if interrupted.
+- Data backfill items should be idempotent -- safe to re-run if interrupted.

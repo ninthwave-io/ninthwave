@@ -1,4 +1,4 @@
-// Tests for cmux splitPaneImpl — verifies correct cmux CLI commands and ref parsing.
+// Tests for cmux splitPaneImpl -- verifies correct cmux CLI commands and ref parsing.
 // Uses dependency injection (injectable runner) per project conventions.
 
 import { describe, it, expect, vi } from "vitest";

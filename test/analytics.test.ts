@@ -478,7 +478,7 @@ describe("orchestrateLoop analytics integration", () => {
       aiTool: "claude",
     };
 
-    // Should not throw — analytics failure is non-fatal
+    // Should not throw -- analytics failure is non-fatal
     await orchestrateLoop(orch, defaultCtx, deps, { ...config, maxIterations: 200 });
 
     // Item still completes
@@ -491,7 +491,7 @@ describe("orchestrateLoop analytics integration", () => {
   });
 
   it("handles zero-item run gracefully in the loop", async () => {
-    // Create orchestrator with no items — all terminal immediately
+    // Create orchestrator with no items -- all terminal immediately
     const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "auto" });
 
     const io = mockAnalyticsIO();
@@ -1504,7 +1504,7 @@ describe("formatAnalytics with cost data", () => {
 
     expect(output).toContain("Cost");
     expect(output).toContain("$1.25");
-    expect(output).toContain("—");
+    expect(output).toContain("-");
   });
 
   it("hides Cost column when no run has cost data", () => {
@@ -1773,7 +1773,7 @@ describe("computeDetectionLatency", () => {
   });
 
   it("sorts latencies before computing percentiles", () => {
-    // Unsorted input — should still compute correctly
+    // Unsorted input -- should still compute correctly
     const latencies = [50000, 10000, 30000, 20000, 40000];
     const stats = computeDetectionLatency(latencies)!;
 
@@ -1922,7 +1922,7 @@ describe("collectRunMetrics with detection latency", () => {
         state: "done",
         ciFailCount: 0,
         lastTransition: new Date().toISOString(),
-        detectionLatencyMs: 0, // No delay — should be excluded
+        detectionLatencyMs: 0, // No delay -- should be excluded
       },
     ];
 
@@ -2470,7 +2470,7 @@ describe("formatAnalytics Cost Summary section", () => {
     const output = formatAnalytics(summary, false).join("\n");
 
     expect(output).toContain("$1.00");
-    expect(output).toContain("—");
+    expect(output).toContain("-");
   });
 
   it("omits input/output breakdown when not available", () => {

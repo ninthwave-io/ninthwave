@@ -16,7 +16,7 @@ function forceKill(code: number): never {
   try {
     process.kill(process.pid, "SIGKILL");
   } catch {
-    // Fallback — process.kill might fail in sandboxed environments
+    // Fallback -- process.kill might fail in sandboxed environments
     process.exit(code);
   }
   // Unreachable, but satisfies TypeScript's `never` return type
@@ -34,7 +34,7 @@ const timer = setTimeout(() => {
 // .unref() so the timer doesn't keep the process alive if tests finish normally
 timer.unref();
 
-// Memory watchdog — poll RSS and kill if it exceeds the ceiling.
+// Memory watchdog -- poll RSS and kill if it exceeds the ceiling.
 // Catches mock leaks, unbounded allocations, and duplicate test processes.
 const memoryWatch = setInterval(() => {
   const rssMB = process.memoryUsage.rss() / (1024 * 1024);

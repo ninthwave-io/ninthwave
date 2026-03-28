@@ -250,7 +250,7 @@ describe("matchTemplates", () => {
   });
 
   it("uses word boundary matching for single keywords", () => {
-    // "page" should not match "pages" in the wrong context — but it should
+    // "page" should not match "pages" in the wrong context -- but it should
     // match "page" as a word boundary
     const matches = matchTemplates("Create a settings page", allTemplates);
     const uiMatch = matches.find((m) => m.template.slug === "frontend-component");
@@ -286,7 +286,7 @@ describe("matchTemplates", () => {
 
 // --- Pre-compiled keyword regexes ---
 
-describe("parseTemplate — keywordPatterns", () => {
+describe("parseTemplate -- keywordPatterns", () => {
   it("populates keywordPatterns parallel to keywords", () => {
     const content = "# Test\n\n## Keywords\n\napi, endpoint, create table\n";
     const result = parseTemplate("test.md", content);
@@ -350,7 +350,7 @@ describe("parseTemplate — keywordPatterns", () => {
 
 // --- Integration: loadTemplates from real templates/ dir ---
 
-describe("loadTemplates — real templates directory", () => {
+describe("loadTemplates -- real templates directory", () => {
   it("loads the bundled templates from the project root", () => {
     // Resolve the real templates/ directory relative to this test file
     const projectRoot = join(import.meta.dirname, "..");

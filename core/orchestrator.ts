@@ -1,5 +1,5 @@
 // Orchestrator state machine for parallel TODO processing.
-// processTransitions is pure — takes a snapshot and returns actions, no side effects.
+// processTransitions is pure -- takes a snapshot and returns actions, no side effects.
 // executeAction bridges the pure state machine to external dependencies via injected deps.
 
 import { join } from "path";
@@ -92,9 +92,9 @@ export interface OrchestratorItem {
   exitCode?: number | null;
   /** Last N lines of stderr captured from the worker on failure (for diagnostics). */
   stderrTail?: string;
-  /** Number of consecutive polls where isWorkerAlive returned false. Used to debounce stuck detection — a single flaky listing shouldn't kill a healthy worker. */
+  /** Number of consecutive polls where isWorkerAlive returned false. Used to debounce stuck detection -- a single flaky listing shouldn't kill a healthy worker. */
   notAliveCount?: number;
-  /** ISO timestamp of the last poll cycle where workerAlive was true. Used as timeout baseline — timeouts measure from last-known-alive, not from state transition. */
+  /** ISO timestamp of the last poll cycle where workerAlive was true. Used as timeout baseline -- timeouts measure from last-known-alive, not from state transition. */
   lastAliveAt?: string;
   /** Number of consecutive merge failures for this item. Resets on successful merge. */
   mergeFailCount?: number;
@@ -295,7 +295,7 @@ export interface OrchestratorDeps {
    * Clean up stale branches when a TODO ID is reused with different work.
    * Called before launching a worker. Checks for merged PRs with title mismatches
    * and deletes both local and remote branches so the worker starts fresh.
-   * Non-fatal — launch proceeds even if cleanup fails.
+   * Non-fatal -- launch proceeds even if cleanup fails.
    */
   cleanStaleBranch?: (todo: WorkItem, projectRoot: string) => void;
   /**
@@ -596,7 +596,7 @@ export class Orchestrator {
   /**
    * Pure state machine transition function.
    * Takes a poll snapshot (external state) and returns actions to execute.
-   * Does NOT execute the actions — the caller is responsible for that.
+   * Does NOT execute the actions -- the caller is responsible for that.
    * @param now - Current time for heartbeat calculations (injectable for testing).
    */
   processTransitions(snapshot: PollSnapshot, now: Date = new Date()): Action[] {
@@ -660,9 +660,9 @@ export class Orchestrator {
     item.detectionLatencyMs = Number.isFinite(detectedMs) && Number.isFinite(eventMs)
       ? Math.max(0, detectedMs - eventMs)
       : 0;
-    // Clear rebase flag on any state change — the worker pushed or CI restarted
+    // Clear rebase flag on any state change -- the worker pushed or CI restarted
     item.rebaseRequested = false;
-    // Reset reviewCompleted on CI failure — requires fresh review after fixes.
+    // Reset reviewCompleted on CI failure -- requires fresh review after fixes.
     // ci-pending is not included: the initial ci-pending has reviewCompleted=false by default,
     // and regressions always go through ci-failed first (which resets it).
     if (state === "ci-failed") {
@@ -706,7 +706,7 @@ export class Orchestrator {
         break;
 
       case "bootstrapping":
-        // Bootstrap is synchronous — it transitions to launching or stuck
+        // Bootstrap is synchronous -- it transitions to launching or stuck
         // in executeBootstrap. Nothing to do here in the snapshot-based loop.
         actions = [];
         break;
@@ -838,7 +838,7 @@ export class Orchestrator {
       item.prNumber = snap.prNumber;
       this.transition(item, "pr-open", snap?.eventTime);
       const actions: Action[] = [];
-      // Stacked PR just opened — sync stack navigation comments on all PRs in the chain
+      // Stacked PR just opened -- sync stack navigation comments on all PRs in the chain
       if (item.baseBranch) {
         actions.push({ type: "sync-stack-comments", itemId: item.id });
       }
@@ -867,10 +867,10 @@ export class Orchestrator {
     if (heartbeat?.ts) {
       const heartbeatAge = nowMs - new Date(heartbeat.ts).getTime();
       if (heartbeatAge < HEARTBEAT_TIMEOUT_MS) {
-        // Worker is actively heartbeating — healthy, skip timeout checks
+        // Worker is actively heartbeating -- healthy, skip timeout checks
         return [];
       }
-      // Stale heartbeat — fall through to process liveness / commit-based timeout
+      // Stale heartbeat -- fall through to process liveness / commit-based timeout
     }
 
     // ── Process liveness as activity signal ──
@@ -892,7 +892,7 @@ export class Orchestrator {
       : new Date(item.lastTransition).getTime();
 
     if (!commitTime) {
-      // No commits yet — check launch timeout or activity timeout based on liveness
+      // No commits yet -- check launch timeout or activity timeout based on liveness
       const sinceTransition = nowMs - new Date(item.lastTransition).getTime();
       const sinceLastAlive = nowMs - lastPositiveSignal;
       if (workerAlive) {
@@ -900,7 +900,7 @@ export class Orchestrator {
         if (sinceTransition > this.config.activityTimeoutMs) {
           return this.stuckOrRetry(item, "worker-stalled: process alive but no commits after activity timeout");
         }
-        // Suppressed launch timeout — log it if we would have timed out
+        // Suppressed launch timeout -- log it if we would have timed out
         if (sinceTransition > this.config.launchTimeoutMs) {
           this.config.onEvent?.(item.id, "timeout-suppressed-by-liveness", {
             sinceTransitionMs: sinceTransition,
@@ -912,7 +912,7 @@ export class Orchestrator {
         return this.stuckOrRetry(item, "worker-stalled: no commits after launch timeout");
       }
     } else {
-      // Has commits — check against activity timeout (same for alive or dead)
+      // Has commits -- check against activity timeout (same for alive or dead)
       const sinceCommit = nowMs - new Date(commitTime).getTime();
       if (sinceCommit > this.config.activityTimeoutMs) {
         return this.stuckOrRetry(item, "worker-stalled: no new commits after activity timeout");
@@ -985,7 +985,7 @@ export class Orchestrator {
         if (item.ciFailureNotified && item.lastCommitTime !== item.ciFailureNotifiedAt) {
           item.ciFailureNotified = false;
         }
-        // Still failing — only notify once per failure cycle to avoid comment spam
+        // Still failing -- only notify once per failure cycle to avoid comment spam
         if (!item.ciFailureNotified) {
           item.ciFailureNotified = true;
           item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
@@ -993,7 +993,7 @@ export class Orchestrator {
             type: "notify-ci-failure",
             itemId: item.id,
             prNumber: item.prNumber,
-            message: "[ORCHESTRATOR] CI Fix Request: CI is still failing — please investigate and fix.",
+            message: "[ORCHESTRATOR] CI Fix Request: CI is still failing -- please investigate and fix.",
           });
         }
         return actions;
@@ -1026,7 +1026,7 @@ export class Orchestrator {
           type: "notify-ci-failure",
           itemId: item.id,
           prNumber: item.prNumber,
-          message: "[ORCHESTRATOR] CI Fix Request: CI failed — please investigate and fix.",
+          message: "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
         });
       }
       return actions;
@@ -1037,7 +1037,7 @@ export class Orchestrator {
       return [];
     }
 
-    // Detect merge conflicts on PRs stuck in ci-pending — a CONFLICTING
+    // Detect merge conflicts on PRs stuck in ci-pending -- a CONFLICTING
     // PR will never get CI results, so waiting is pointless. Send a rebase
     // request (once) so the worker can resolve and re-push.
     if (item.state === "ci-pending" && snap?.isMergeable === false && !item.rebaseRequested) {
@@ -1054,12 +1054,12 @@ export class Orchestrator {
       if (item.state !== "ci-passed") {
         this.transition(item, "ci-passed", snap?.eventTime);
       }
-      // CI passed — evaluate merge strategy (pass eventTime for chained transitions)
+      // CI passed -- evaluate merge strategy (pass eventTime for chained transitions)
       actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
       return actions;
     }
 
-    // No CI status change or unknown — stay in current state
+    // No CI status change or unknown -- stay in current state
     // But if we're already in ci-passed, re-evaluate merge
     if (item.state === "ci-passed") {
       actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
@@ -1088,11 +1088,11 @@ export class Orchestrator {
       return actions;
     }
 
-    // CI status changes — worker pushed fixes after review feedback.
+    // CI status changes -- worker pushed fixes after review feedback.
     // CI fail is always actionable regardless of reviewCompleted.
     // CI pending/pass transitions only apply when reviewCompleted is false
     // (worker addressing AI review feedback). When reviewCompleted is true,
-    // the item waits for human review or manual merge — CI pass would loop
+    // the item waits for human review or manual merge -- CI pass would loop
     // through evaluateMerge back to review-pending.
     const ciStatus = snap?.ciStatus;
 
@@ -1118,7 +1118,7 @@ export class Orchestrator {
           type: "notify-ci-failure",
           itemId: item.id,
           prNumber: item.prNumber,
-          message: "[ORCHESTRATOR] CI Fix Request: CI failed — please investigate and fix.",
+          message: "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
         });
       }
       return actions;
@@ -1137,7 +1137,7 @@ export class Orchestrator {
       }
     }
 
-    // Merge conflict without CI failure — send rebase request
+    // Merge conflict without CI failure -- send rebase request
     if (snap?.isMergeable === false && !item.rebaseRequested) {
       item.rebaseRequested = true;
       actions.push({
@@ -1152,7 +1152,7 @@ export class Orchestrator {
 
   /**
    * Handle reviewing state.
-   * Review worker is active — check for verdict file, CI regression, external merge, or worker death.
+   * Review worker is active -- check for verdict file, CI regression, external merge, or worker death.
    */
   private handleReviewing(
     item: OrchestratorItem,
@@ -1180,7 +1180,7 @@ export class Orchestrator {
         type: "notify-ci-failure",
         itemId: item.id,
         prNumber: item.prNumber,
-        message: "[ORCHESTRATOR] CI Fix Request: CI failed during review — please investigate and fix.",
+        message: "[ORCHESTRATOR] CI Fix Request: CI failed during review -- please investigate and fix.",
       });
       return actions;
     }
@@ -1204,7 +1204,7 @@ export class Orchestrator {
           itemId: item.id,
           prNumber: item.prNumber,
           statusState: "success",
-          statusDescription: `Review passed — ${v.blockerCount} blockers, ${v.nitCount} nits`,
+          statusDescription: `Review passed -- ${v.blockerCount} blockers, ${v.nitCount} nits`,
         });
         actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
         return actions;
@@ -1229,7 +1229,7 @@ export class Orchestrator {
         actions.push({
           type: "notify-review",
           itemId: item.id,
-          message: "[ORCHESTRATOR] Review Feedback: Review worker requested changes — please address.",
+          message: "[ORCHESTRATOR] Review Feedback: Review worker requested changes -- please address.",
         });
         return actions;
       }
@@ -1250,7 +1250,7 @@ export class Orchestrator {
   ): Action[] {
     const actions: Action[] = [];
 
-    // Repair worker pushed — CI re-triggered
+    // Repair worker pushed -- CI re-triggered
     if (snap?.ciStatus === "pending" || snap?.ciStatus === "pass" || snap?.ciStatus === "fail") {
       this.transition(item, "ci-pending");
       item.rebaseRequested = false;
@@ -1305,7 +1305,7 @@ export class Orchestrator {
         item.failureReason = `verify-failed: CI failed on main for merge commit ${item.mergeCommitSha}`;
         return [];
       case "pending":
-        // Still waiting — no transition
+        // Still waiting -- no transition
         return [];
     }
   }
@@ -1492,14 +1492,14 @@ export class Orchestrator {
         break;
 
       case "manual":
-        // Never auto-merge — just move to review-pending
+        // Never auto-merge -- just move to review-pending
         if (item.state !== "review-pending") {
           this.transition(item, "review-pending", eventTime);
         }
         break;
 
       case "bypass":
-        // Admin override merge — skips branch protection human review requirement.
+        // Admin override merge -- skips branch protection human review requirement.
         // CI and AI review still run (we only get here after ci-passed + review gate).
         // Guard: never bypass when a reviewer has explicitly requested changes
         if (snap?.reviewDecision === "CHANGES_REQUESTED") {
@@ -1612,9 +1612,9 @@ export class Orchestrator {
       item.resolvedRepoRoot = result.path;
     }
     // status === "exists" should not normally happen (needsBootstrap checks resolvedRepoRoot),
-    // but is harmless — resolvedRepoRoot remains unset and launch will resolve normally.
+    // but is harmless -- resolvedRepoRoot remains unset and launch will resolve normally.
 
-    // Transition to launching — the next processTransitions cycle will not
+    // Transition to launching -- the next processTransitions cycle will not
     // re-emit a launch action (launching is handled by transitionItem).
     // Instead, we return success so the execution layer can emit a follow-up launch.
     this.transition(item, "launching");
@@ -1635,7 +1635,7 @@ export class Orchestrator {
       try {
         deps.cleanStaleBranch(item.workItem, ctx.projectRoot);
       } catch (e) {
-        // Non-fatal — log and attempt launch anyway
+        // Non-fatal -- log and attempt launch anyway
         const msg = e instanceof Error ? e.message : String(e);
         deps.warn?.(`cleanStaleBranch failed for ${item.id}: ${msg}`);
       }
@@ -1645,7 +1645,7 @@ export class Orchestrator {
     // showing 100% during the startup gap (~30-60s until worker's first heartbeat).
     try {
       writeHeartbeat(ctx.projectRoot, item.id, 0, "Starting");
-    } catch { /* best-effort — heartbeat reset failure doesn't block launch */ }
+    } catch { /* best-effort -- heartbeat reset failure doesn't block launch */ }
 
     // When needsCiFix is set, force worker launch even if an existing PR is
     // found. This ensures CI failures on restart are addressed by a live worker
@@ -1674,7 +1674,7 @@ export class Orchestrator {
         return { success: false, error: `Launch failed for ${item.id}` };
       }
 
-      // Existing PR detected — skip worker launch, transition to ci-pending.
+      // Existing PR detected -- skip worker launch, transition to ci-pending.
       // The daemon will handle rebase and CI tracking from here.
       if (result.existingPrNumber) {
         item.prNumber = result.existingPrNumber;
@@ -1717,7 +1717,7 @@ export class Orchestrator {
       // If conflicting, rebase and re-enter CI instead of blindly retrying the same failing merge.
       const isMergeable = deps.checkPrMergeable?.(repoRoot, prNum) ?? true;
       if (!isMergeable) {
-        // Conflict-caused failure — rebase instead of retrying.
+        // Conflict-caused failure -- rebase instead of retrying.
         // Do NOT increment mergeFailCount since this isn't a genuine merge failure.
         item.rebaseRequested = false; // Reset so the rebase path works correctly
         if (deps.daemonRebase) {
@@ -1733,10 +1733,10 @@ export class Orchestrator {
               return { success: false, error: `Merge failed for PR #${prNum} due to conflicts, rebased and waiting for CI` };
             }
           } catch {
-            // Daemon rebase failed — fall through to worker rebase
+            // Daemon rebase failed -- fall through to worker rebase
           }
         }
-        // Daemon rebase unavailable or failed — send worker a rebase message
+        // Daemon rebase unavailable or failed -- send worker a rebase message
         if (item.workspaceRef) {
           deps.sendMessage(
             item.workspaceRef,
@@ -1747,7 +1747,7 @@ export class Orchestrator {
         return { success: false, error: `Merge failed for PR #${prNum} due to conflicts, rebase requested` };
       }
 
-      // Non-conflict merge failure — normal retry behavior
+      // Non-conflict merge failure -- normal retry behavior
       item.mergeFailCount = (item.mergeFailCount ?? 0) + 1;
       if (item.mergeFailCount >= this.config.maxMergeRetries) {
         this.transition(item, "stuck");
@@ -1769,7 +1769,7 @@ export class Orchestrator {
           item.mergeCommitSha = sha;
         }
       } catch {
-        // Non-fatal — fall back to done (skip verification)
+        // Non-fatal -- fall back to done (skip verification)
       }
     }
 
@@ -1788,7 +1788,7 @@ export class Orchestrator {
       deps.fetchOrigin(repoRoot, "main");
       deps.ffMerge(repoRoot, "main");
     } catch {
-      // Non-fatal — main will be pulled on next cycle
+      // Non-fatal -- main will be pulled on next cycle
     }
 
     // Also pull latest main in the hub repo if this was cross-repo
@@ -1802,7 +1802,7 @@ export class Orchestrator {
     }
 
     // Restack stacked dependents using rebaseOnto (squash-merge safe).
-    // These items had baseBranch set to the merged dep's branch — replay only
+    // These items had baseBranch set to the merged dep's branch -- replay only
     // their unique commits onto main, avoiding duplicate commits from squash merge.
     const restackedIds = new Set<string>();
     const successfulRestacks = new Set<string>();
@@ -1816,7 +1816,7 @@ export class Orchestrator {
       if (other.id === item.id) continue;
       if (!other.workItem.dependencies.includes(item.id)) continue;
       if (!WIP_STATES.has(other.state)) continue;
-      if (!other.baseBranch) continue; // not stacked — handled below
+      if (!other.baseBranch) continue; // not stacked -- handled below
 
       restackedIds.add(other.id);
 
@@ -1826,7 +1826,7 @@ export class Orchestrator {
       const otherBranch = `ninthwave/${other.id}`;
 
       if (!deps.rebaseOnto || !deps.forcePush) {
-        // rebaseOnto or forcePush not available — send worker manual rebase instructions
+        // rebaseOnto or forcePush not available -- send worker manual rebase instructions
         if (other.workspaceRef) {
           deps.sendMessage(
             other.workspaceRef,
@@ -1843,7 +1843,7 @@ export class Orchestrator {
           other.baseBranch = undefined; // no longer stacked
           successfulRestacks.add(other.id);
         } else {
-          // Conflict — send worker manual rebase instructions
+          // Conflict -- send worker manual rebase instructions
           if (other.workspaceRef) {
             deps.sendMessage(
               other.workspaceRef,
@@ -1852,7 +1852,7 @@ export class Orchestrator {
           }
         }
       } catch {
-        // Unexpected error — fall back to worker message
+        // Unexpected error -- fall back to worker message
         if (other.workspaceRef) {
           deps.sendMessage(
             other.workspaceRef,
@@ -1863,7 +1863,7 @@ export class Orchestrator {
     }
 
     // Send rebase requests to non-stacked dependent items in WIP states.
-    // Stacked items were handled above via rebaseOnto — skip them.
+    // Stacked items were handled above via rebaseOnto -- skip them.
     for (const other of this.getAllItems()) {
       if (other.id === item.id) continue;
       if (!other.workItem.dependencies.includes(item.id)) continue;
@@ -1879,15 +1879,15 @@ export class Orchestrator {
 
     // Post-merge daemon-rebase: proactively rebase in-flight sibling PRs in the same repo.
     // This eliminates most conflicts before workers notice, reducing CI churn.
-    // Skip restacked items — they were already rebased with --onto above.
-    // Skip items in different repos — their main didn't change from this merge.
+    // Skip restacked items -- they were already rebased with --onto above.
+    // Skip items in different repos -- their main didn't change from this merge.
     for (const other of this.getAllItems()) {
       if (other.id === item.id) continue;
       if (!WIP_STATES.has(other.state)) continue;
       if (!other.prNumber) continue;
       if (restackedIds.has(other.id)) continue;
 
-      // Only rebase siblings in the same target repo — a merge in repo-B
+      // Only rebase siblings in the same target repo -- a merge in repo-B
       // doesn't affect main in repo-A
       const otherRepoRoot2 = other.resolvedRepoRoot ?? ctx.projectRoot;
       if (otherRepoRoot2 !== repoRoot) continue;
@@ -1908,11 +1908,11 @@ export class Orchestrator {
 
       if (daemonSuccess) continue; // CI re-runs automatically on force-push
 
-      // Daemon rebase failed or unavailable — check if actually conflicting
+      // Daemon rebase failed or unavailable -- check if actually conflicting
       if (deps.checkPrMergeable) {
         const mergeable = deps.checkPrMergeable(otherRepoRoot2, other.prNumber);
         if (!mergeable) {
-          // Actually conflicting — send worker rebase message as fallback
+          // Actually conflicting -- send worker rebase message as fallback
           if (other.workspaceRef) {
             deps.sendMessage(
               other.workspaceRef,
@@ -1924,7 +1924,7 @@ export class Orchestrator {
             );
           }
         }
-        // Not conflicting — skip, no action needed
+        // Not conflicting -- skip, no action needed
       }
     }
 
@@ -1934,7 +1934,7 @@ export class Orchestrator {
       const synced = new Set<string>();
       for (const id of successfulRestacks) {
         const chain = this.buildStackChain(id);
-        if (chain.length < 2) continue; // single item — no stack to show
+        if (chain.length < 2) continue; // single item -- no stack to show
         const rootKey = chain[0]!.id;
         if (synced.has(rootKey)) continue; // already synced this chain
         synced.add(rootKey);
@@ -1952,7 +1952,7 @@ export class Orchestrator {
     ctx: ExecutionContext,
     deps: OrchestratorDeps,
   ): ActionResult {
-    const message = action.message || "CI failed — please investigate and fix.";
+    const message = action.message || "CI failed -- please investigate and fix.";
 
     if (!item.workspaceRef) {
       // No live worker (e.g., daemon restarted). Re-launch with a fresh worker
@@ -1986,10 +1986,10 @@ export class Orchestrator {
     action: Action,
     deps: OrchestratorDeps,
   ): ActionResult {
-    const message = action.message || "Review feedback received — please address.";
+    const message = action.message || "Review feedback received -- please address.";
 
     if (!item.workspaceRef) {
-      return { success: false, error: `No workspace reference for ${item.id} — cannot notify worker of review feedback` };
+      return { success: false, error: `No workspace reference for ${item.id} -- cannot notify worker of review feedback` };
     }
 
     const sent = deps.sendMessage(item.workspaceRef, message);
@@ -2006,7 +2006,7 @@ export class Orchestrator {
     ctx: ExecutionContext,
     deps: OrchestratorDeps,
   ): ActionResult {
-    // Read screen before closing — capture error output for stuck diagnostics
+    // Read screen before closing -- capture error output for stuck diagnostics
     if (item.workspaceRef && deps.readScreen && item.state === "stuck") {
       try {
         const screen = deps.readScreen(item.workspaceRef, 50);
@@ -2033,7 +2033,7 @@ export class Orchestrator {
       if (existsSync(hbPath)) {
         unlinkSync(hbPath);
       }
-    } catch { /* best-effort — heartbeat cleanup failure doesn't block clean */ }
+    } catch { /* best-effort -- heartbeat cleanup failure doesn't block clean */ }
 
     // Partial cleanup (one of two succeeds) is still OK.
     // Fail only when every attempted operation failed.
@@ -2057,7 +2057,7 @@ export class Orchestrator {
     item: OrchestratorItem,
     deps: OrchestratorDeps,
   ): ActionResult {
-    // Read screen before closing — capture error output for stuck diagnostics
+    // Read screen before closing -- capture error output for stuck diagnostics
     if (item.workspaceRef && deps.readScreen) {
       try {
         const screen = deps.readScreen(item.workspaceRef, 50);
@@ -2068,7 +2068,7 @@ export class Orchestrator {
       } catch { /* best-effort */ }
     }
 
-    // Close workspace but do NOT remove worktree — preserve for manual inspection
+    // Close workspace but do NOT remove worktree -- preserve for manual inspection
     if (item.workspaceRef) {
       const closed = deps.closeWorkspace(item.workspaceRef);
       if (!closed) {
@@ -2088,7 +2088,7 @@ export class Orchestrator {
     const message = action.message || "Are you still making progress?";
 
     if (!item.workspaceRef) {
-      return { success: false, error: `No workspace reference for ${item.id} — cannot send message` };
+      return { success: false, error: `No workspace reference for ${item.id} -- cannot send message` };
     }
 
     const sent = deps.sendMessage(item.workspaceRef, message);
@@ -2166,7 +2166,7 @@ export class Orchestrator {
       try {
         const success = deps.daemonRebase(worktreePath, branch);
         if (success) {
-          // Rebase succeeded — transition back to ci-pending so CI re-runs
+          // Rebase succeeded -- transition back to ci-pending so CI re-runs
           this.transition(item, "ci-pending");
           return { success: true };
         }
@@ -2175,7 +2175,7 @@ export class Orchestrator {
       }
     }
 
-    // Daemon rebase failed — prefer sending message to live worker over launching repair.
+    // Daemon rebase failed -- prefer sending message to live worker over launching repair.
     // The original worker knows the code best and can resolve conflicts properly.
     const message = action.message || "Please rebase onto latest main.";
     if (item.workspaceRef) {
@@ -2183,14 +2183,14 @@ export class Orchestrator {
       if (sent) {
         return { success: true };
       }
-      // sendMessage failed — worker may be unresponsive, fall through to repair
+      // sendMessage failed -- worker may be unresponsive, fall through to repair
     }
 
     // Circuit breaker: stop launching repairs after maxRepairAttempts
     const attemptCount = item.repairAttemptCount ?? 0;
     if (attemptCount >= this.config.maxRepairAttempts) {
       this.transition(item, "stuck");
-      item.failureReason = `repair-loop: exceeded max repair attempts (${this.config.maxRepairAttempts}) — rebase conflicts could not be resolved`;
+      item.failureReason = `repair-loop: exceeded max repair attempts (${this.config.maxRepairAttempts}) -- rebase conflicts could not be resolved`;
       deps.warn?.(
         `[Orchestrator] ${item.id} stuck after ${attemptCount} repair attempts. Manual intervention needed.`,
       );
@@ -2215,7 +2215,7 @@ export class Orchestrator {
       }
     }
 
-    // No live worker, no repair — log warning
+    // No live worker, no repair -- log warning
     deps.warn?.(
       `[Orchestrator] PR for ${item.id} (branch ${branch}) has merge conflicts but daemon rebase failed and no worker/repair available. Manual rebase needed.`,
     );
@@ -2228,7 +2228,7 @@ export class Orchestrator {
     ctx: ExecutionContext,
     deps: OrchestratorDeps,
   ): ActionResult {
-    // Read screen before closing — capture error output for diagnostics
+    // Read screen before closing -- capture error output for diagnostics
     if (item.workspaceRef && deps.readScreen) {
       try {
         const screen = deps.readScreen(item.workspaceRef, 50);
@@ -2245,7 +2245,7 @@ export class Orchestrator {
       item.workspaceRef = undefined;
     }
 
-    // Preserve the worktree and branch — the retried worker will launch
+    // Preserve the worktree and branch -- the retried worker will launch
     // into the existing worktree and pick up uncommitted edits + pushed
     // commits from the previous attempt.
     return { success: true };
@@ -2262,7 +2262,7 @@ export class Orchestrator {
 
     const chain = this.buildStackChain(item.id);
     if (chain.length < 2) {
-      return { success: true }; // single item — no stack to show
+      return { success: true }; // single item -- no stack to show
     }
 
     // Base branch: the root item's baseBranch (if still stacked) or "main"
@@ -2403,7 +2403,7 @@ export class Orchestrator {
     const body = [
       `**[Reviewer]** Reviewed PR #${prNum}`,
       "",
-      `**Verdict:** ${verdictLabel} — ${statsLine}`,
+      `**Verdict:** ${verdictLabel} -- ${statsLine}`,
       "",
       "<details><summary>Review details</summary>",
       "",
@@ -2494,7 +2494,7 @@ export class Orchestrator {
 
     const keepId = sorted[0]!.action.itemId;
 
-    // Revert deferred items back to ci-passed — they'll be merged next cycle
+    // Revert deferred items back to ci-passed -- they'll be merged next cycle
     for (const { item } of sorted.slice(1)) {
       this.transition(item, "ci-passed");
     }
@@ -2519,7 +2519,7 @@ export class Orchestrator {
 
     for (const depId of deps) {
       const dep = this.items.get(depId);
-      if (!dep) return { canStack: false }; // unknown dep — can't stack
+      if (!dep) return { canStack: false }; // unknown dep -- can't stack
 
       if (dep.state === "done" || dep.state === "merged" || dep.state === "verifying" || dep.state === "verify-failed") {
         continue; // this dep is finished (code is on main)
@@ -2527,7 +2527,7 @@ export class Orchestrator {
 
       if (STACKABLE_STATES.has(dep.state)) {
         if (stackableDep) {
-          // More than one in-flight dep in stackable state — can't stack
+          // More than one in-flight dep in stackable state -- can't stack
           return { canStack: false };
         }
         stackableDep = dep;
@@ -2538,7 +2538,7 @@ export class Orchestrator {
     }
 
     if (!stackableDep) {
-      // All deps are done/merged — this should be in readyIds, not stacked
+      // All deps are done/merged -- this should be in readyIds, not stacked
       return { canStack: false };
     }
 
@@ -2584,7 +2584,7 @@ export class Orchestrator {
       current = child;
     }
 
-    // Filter to active items with PRs (exclude merged/done/verifying — their PRs are closed)
+    // Filter to active items with PRs (exclude merged/done/verifying -- their PRs are closed)
     const POST_MERGE_STATES = new Set(["done", "merged", "verifying", "verify-failed", "repairing-main"]);
     return chain
       .filter((i) => i.prNumber != null && !POST_MERGE_STATES.has(i.state))

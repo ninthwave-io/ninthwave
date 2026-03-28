@@ -37,7 +37,7 @@ const args = process.argv.slice(3);
 const command =
   rawCommand === "--version" || rawCommand === "-v" ? "version" : rawCommand;
 
-// ── Handle --help / -h / no args (before project root — works outside git repos)
+// ── Handle --help / -h / no args (before project root -- works outside git repos)
 
 if (command === "--help-all") {
   printHelpAll();
@@ -51,7 +51,7 @@ if (command === "--help" || command === "-h") {
 
 // No args: detect project state and route to the appropriate flow
 if (!command) {
-  // Only auto-launch on TTY — non-TTY no-args prints help (handled by cmdNoArgs)
+  // Only auto-launch on TTY -- non-TTY no-args prints help (handled by cmdNoArgs)
   if (process.stdin.isTTY) {
     ensureMuxOrAutoLaunch(process.argv.slice(2));
   }
@@ -108,7 +108,7 @@ if (allAreIds) {
 
 const entry = lookupCommand(command);
 if (!entry) {
-  // Check if the command looks like a lowercase TODO ID — offer a hint
+  // Check if the command looks like a lowercase TODO ID -- offer a hint
   const lowercaseIdPattern = /^[a-z]+-[a-z0-9]+-\d+[a-z]*$/;
   if (lowercaseIdPattern.test(command)) {
     const suggestion = command.toUpperCase();

@@ -80,7 +80,7 @@ nw heartbeat --progress 0.3 --label "Writing code"     # while implementing chan
 nw heartbeat --progress 0.5 --label "Writing tests"    # when adding/updating tests
 ```
 
-You don't need to hit every milestone — call heartbeat when you transition between phases of work.
+You don't need to hit every milestone -- call heartbeat when you transition between phases of work.
 
 ### Label guidelines
 
@@ -102,11 +102,11 @@ The heartbeat command supports optional cost/token flags for analytics. If your 
 nw heartbeat --progress 1.0 --label "PR created" --tokens-in 45000 --tokens-out 12000 --model "claude-sonnet-4-20250514"
 ```
 
-- `--tokens-in <N>` — input tokens consumed (optional)
-- `--tokens-out <N>` — output tokens consumed (optional)
-- `--model <name>` — model identifier (optional)
+- `--tokens-in <N>` -- input tokens consumed (optional)
+- `--tokens-out <N>` -- output tokens consumed (optional)
+- `--model <name>` -- model identifier (optional)
 
-This data powers cost-per-PR analytics in `nw analytics`. Omit the flags if token data is not available — the analytics display will show `-` for workers without cost data.
+This data powers cost-per-PR analytics in `nw analytics`. Omit the flags if token data is not available -- the analytics display will show `-` for workers without cost data.
 
 ### No-Op Path: When No Code Change Is Needed
 
@@ -119,17 +119,17 @@ Sometimes a work item requires no code change. Valid reasons include:
 
 **"No code change needed" is a valid outcome.** When you determine this is the case:
 
-1. **Verify thoroughly** — read the affected files, run relevant tests, and confirm the work item's acceptance criteria are already met or not applicable. Document your reasoning.
+1. **Verify thoroughly** -- read the affected files, run relevant tests, and confirm the work item's acceptance criteria are already met or not applicable. Document your reasoning.
 2. **Skip Phases 5–6** (no code to commit or test).
 3. **Skip Phase 7** pre-PR check (no diff to review).
-4. **Proceed to Phase 8** — remove your work item file as usual.
+4. **Proceed to Phase 8** -- remove your work item file as usual.
 5. **Create a no-op PR in Phase 9** using the adjusted template below.
 
 The no-op PR template (replace the standard Phase 9 template):
 
 ```bash
 gh label create "domain:YOUR_DOMAIN" --color 0E8A16 --force || true
-gh pr create --label "domain:YOUR_DOMAIN" --title "chore: close YOUR_TODO_ID — no code change needed" --body "$(cat <<'EOF'
+gh pr create --label "domain:YOUR_DOMAIN" --title "chore: close YOUR_TODO_ID -- no code change needed" --body "$(cat <<'EOF'
 ## Summary
 Closes YOUR_TODO_ID: <title>
 
@@ -142,7 +142,7 @@ Closes YOUR_TODO_ID: <title>
 - <Why the acceptance criteria are already met or not applicable>
 
 ## Acceptance Criteria
-- [x] <criterion — explain how it's already met or why it's N/A>
+- [x] <criterion -- explain how it's already met or why it's N/A>
 - [x] <criterion>
 
 ## Work Item Reference
@@ -154,7 +154,7 @@ EOF
 
 This keeps the orchestrator's PR-based lifecycle working (the orchestrator handles work-item-file-only PRs the same as any other PR) and provides an audit trail for why the work item was closed without a code change.
 
-> **Important:** Do not silently skip a work item. Every work item must result in a PR — either with code changes or as a no-op with an explanation.
+> **Important:** Do not silently skip a work item. Every work item must result in a PR -- either with code changes or as a no-op with an explanation.
 
 ## 5. Commit Your Changes
 
@@ -207,9 +207,9 @@ nw heartbeat --progress 0.7 --label "Tests passing"
 ## 7. Pre-PR Check
 
 Run `git diff origin/main` and verify:
-1. **No scope drift** — only files related to the work item were modified
-2. **No exposed secrets** — no API keys, tokens, passwords, or credentials in the diff
-3. **No debug artifacts** — no `console.log`, stray task-marker comments, or commented-out code
+1. **No scope drift** -- only files related to the work item were modified
+2. **No exposed secrets** -- no API keys, tokens, passwords, or credentials in the diff
+3. **No debug artifacts** -- no `console.log`, stray task-marker comments, or commented-out code
 
 Fix any issues found before proceeding.
 
@@ -227,7 +227,7 @@ Before creating the PR, delete your work item file so that merging the PR automa
 2. Verify it's gone: `ls ${HUB_ROOT}/.ninthwave/work/*--YOUR_TODO_ID.md` should return "No such file"
 3. Commit: `git add ${HUB_ROOT}/.ninthwave/work/ && git commit -m "chore: remove YOUR_TODO_ID"`
 
-> **Why?** Each work item is a separate file in `.ninthwave/work/`. Deleting your file cannot conflict with other workers' changes — they each touch only their own file.
+> **Why?** Each work item is a separate file in `.ninthwave/work/`. Deleting your file cannot conflict with other workers' changes -- they each touch only their own file.
 
 **Cross-repo items** (when `PROJECT_ROOT` differs from `HUB_ROOT`):
 
@@ -251,7 +251,7 @@ gh pr create --base $BASE_BRANCH --title "..." --body "..."
 
 This gives reviewers a clean diff showing only your changes, not the dependency's changes. When the dependency merges, GitHub will automatically retarget your PR to main.
 
-If `BASE_BRANCH` is **not** set in your system prompt, create the PR normally (no `--base` flag needed — it defaults to main).
+If `BASE_BRANCH` is **not** set in your system prompt, create the PR normally (no `--base` flag needed -- it defaults to main).
 
 ### Create labels
 

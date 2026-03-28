@@ -1,6 +1,6 @@
 // Tests for external PR review: scanExternalPRs, ExternalReviewItem persistence,
 // and processExternalReviews orchestration.
-// No vi.mock — uses dependency injection to stay bun-test compatible.
+// No vi.mock -- uses dependency injection to stay bun-test compatible.
 
 import { describe, it, expect, vi } from "vitest";
 import { scanExternalPRs, type ExternalPR, type ScanExternalPRsDeps } from "../core/commands/pr-monitor.ts";
@@ -225,7 +225,7 @@ describe("ExternalReviewItem persistence", () => {
 
     writeExternalReviews("/tmp/proj", items, io);
 
-    // Simulate restart — read from same store
+    // Simulate restart -- read from same store
     const restored = readExternalReviews("/tmp/proj", io);
     expect(restored).toHaveLength(1);
     expect(restored[0]!.prNumber).toBe(99);
@@ -256,7 +256,7 @@ describe("processExternalReviews", () => {
 
     const result = processExternalReviews("/tmp/repo", [], 2, 0, deps);
 
-    // Draft PR is filtered out — not tracked at all
+    // Draft PR is filtered out -- not tracked at all
     expect(result).toHaveLength(0);
     expect(launched).toEqual([]);
   });
@@ -443,7 +443,7 @@ describe("processExternalReviews", () => {
 
     const result = processExternalReviews("/tmp/repo", existing, 2, 0, deps);
 
-    // Should not re-launch — already reviewing
+    // Should not re-launch -- already reviewing
     expect(launched).toEqual([]);
     expect(result).toHaveLength(1);
     expect(result[0]!.state).toBe("reviewing");

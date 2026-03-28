@@ -19,8 +19,8 @@ Both comments were posted by the same user, at the same time, with identical tex
 ## Expected behavior
 
 Dedup PR comments before posting. Options:
-1. **Check for existing identical comment** before posting — query recent comments, skip if the same text was posted within the last N minutes
-2. **Use a comment ID/nonce** — include a state transition ID in the comment, and check if that transition was already commented on
-3. **Edit existing comment** instead of posting a new one — update the previous orchestrator comment with the new state
+1. **Check for existing identical comment** before posting -- query recent comments, skip if the same text was posted within the last N minutes
+2. **Use a comment ID/nonce** -- include a state transition ID in the comment, and check if that transition was already commented on
+3. **Edit existing comment** instead of posting a new one -- update the previous orchestrator comment with the new state
 
 Option 1 is simplest. The orchestrator should never post the same comment text twice in a row on the same PR.

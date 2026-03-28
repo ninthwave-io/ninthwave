@@ -24,13 +24,13 @@ H-CP-18 Log SigV4 signi...
 It's unclear what each field's source/contract is:
 - Who sets the subtitle line? Worker or orchestrator?
 - Should the cmux sidebar show orchestrator state at all, or only worker-local state?
-- The TUI already shows orchestrator state — duplicating it in cmux adds noise.
+- The TUI already shows orchestrator state -- duplicating it in cmux adds noise.
 
 ## Expected behavior
 
 Clear separation of concerns:
 - **TUI**: shows orchestrator-managed state (queued → launching → implementing → ci-pending → merging → done)
-- **cmux sidebar**: shows worker-local state only (what the worker is doing right now — "Reading code", "Writing tests", "Running cargo test", etc.)
+- **cmux sidebar**: shows worker-local state only (what the worker is doing right now -- "Reading code", "Writing tests", "Running cargo test", etc.)
 - **Contract**: workers set their own status line via cmux (free-form text describing current activity). The orchestrator owns the lifecycle state and should NOT duplicate it into the cmux sidebar.
 
-This means the cmux sidebar should NOT show "CI Pending" or "Implementing" — those are orchestrator states visible in the TUI. The sidebar should show what the worker process is actually doing.
+This means the cmux sidebar should NOT show "CI Pending" or "Implementing" -- those are orchestrator states visible in the TUI. The sidebar should show what the worker process is actually doing.

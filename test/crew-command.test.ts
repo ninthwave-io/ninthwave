@@ -1,4 +1,4 @@
-// Tests for core/commands/crew.ts — argument parsing, interactive prompt,
+// Tests for core/commands/crew.ts -- argument parsing, interactive prompt,
 // direct join shorthand, non-TTY fallback, and invalid crew code handling.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";

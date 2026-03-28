@@ -665,7 +665,7 @@ describe("cmdWatchReady cross-repo", () => {
     const repo = setupTempRepo();
     const worktreeDir = join(repo, ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
-    // No .cross-repo-index file — should not crash
+    // No .cross-repo-index file -- should not crash
 
     (gh.prList as Mock).mockReturnValue([]);
 

@@ -1,7 +1,7 @@
-// Tests for core/worker-health.ts — screen-parsing utilities for detecting
+// Tests for core/worker-health.ts -- screen-parsing utilities for detecting
 // worker state, ready-wait, post-send verification, and health checking.
 //
-// Uses dependency injection (mock Multiplexer) — no vi.mock needed.
+// Uses dependency injection (mock Multiplexer) -- no vi.mock needed.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -40,7 +40,7 @@ function fakeMux(
 /** No-op sleep for tests. */
 const noopSleep = () => {};
 
-/** Tracking sleep — records sleep calls. */
+/** Tracking sleep -- records sleep calls. */
 function trackingSleep() {
   const calls: number[] = [];
   const sleep = (ms: number) => calls.push(ms);
@@ -95,7 +95,7 @@ describe("isInputPromptVisible", () => {
   });
 
   it("does not false-positive on '>' without trailing space", () => {
-    // The indicator is "> " with a space — bare ">" in content shouldn't match
+    // The indicator is "> " with a space -- bare ">" in content shouldn't match
     const screen = "git log --oneline >output.txt\nDone.";
     expect(isInputPromptVisible(screen)).toBe(false);
   });
@@ -258,7 +258,7 @@ describe("getWorkerHealthStatus", () => {
   });
 
   it("processing takes priority over prompt", () => {
-    // Worker showing both prompt and processing — it's actively working
+    // Worker showing both prompt and processing -- it's actively working
     const screen = "❯ Start\n⠋ Thinking about the task...\nLine3\nLine4";
     expect(getWorkerHealthStatus(screen)).toBe("processing");
   });

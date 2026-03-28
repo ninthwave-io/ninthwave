@@ -261,11 +261,11 @@ function getWorktreeAge(wtDir: string): number {
  *   Scroll indicators show when items overflow. Terminal resize is handled.
  *
  * Keyboard shortcuts (TTY only):
- *   m — toggle metrics panel
- *   d — toggle deps detail view
- *   ? — toggle help footer
- *   ↑/↓ — scroll item list
- *   q — quit
+ *   m -- toggle metrics panel
+ *   d -- toggle deps detail view
+ *   ? -- toggle help footer
+ *   ↑/↓ -- scroll item list
+ *   q -- quit
  *
  * Each keypress triggers an immediate re-render (does not wait for interval).
  * Non-TTY mode uses default ViewOptions and skips keyboard setup.
@@ -277,7 +277,7 @@ export async function cmdStatusWatch(
   signal?: AbortSignal,
   flat: boolean = false,
 ): Promise<void> {
-  // Mutable view state — toggled by keyboard shortcuts
+  // Mutable view state -- toggled by keyboard shortcuts
   const viewOpts: ViewOptions = {
     showBlockerDetail: false,
   };

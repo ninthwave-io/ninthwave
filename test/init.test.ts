@@ -769,7 +769,7 @@ describe("initProject", () => {
       getEnv: () => undefined,
     };
 
-    // Should NOT throw — init never aborts on missing tools
+    // Should NOT throw -- init never aborts on missing tools
     const detection = initProject(projectDir, bundleDir, deps);
 
     expect(detection.mux).toBeNull();
@@ -893,7 +893,7 @@ describe("initProject", () => {
 
 // --- initProject symlink gitignore entries ---
 
-describe("initProject — symlink gitignore entries", () => {
+describe("initProject -- symlink gitignore entries", () => {
   it("adds symlink directories to .gitignore for non-ninthwave projects", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -1585,7 +1585,7 @@ const defaultInitDeps: InitDeps = {
 
 // --- Prerequisite checks warn instead of die ---
 
-describe("initProject — prerequisite checking", () => {
+describe("initProject -- prerequisite checking", () => {
   it("warns but does not abort when prerequisites are missing", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -1595,7 +1595,7 @@ describe("initProject — prerequisite checking", () => {
       getEnv: () => undefined,
     };
 
-    // Should NOT throw — init warns but never aborts on missing tools
+    // Should NOT throw -- init warns but never aborts on missing tools
     const detection = initProject(projectDir, bundleDir, deps);
 
     // Setup still completed
@@ -1653,7 +1653,7 @@ describe("initProject — prerequisite checking", () => {
 
 // --- Agent selection ---
 
-describe("initProject — agent selection", () => {
+describe("initProject -- agent selection", () => {
   it("installs all agents to all tool dirs by default", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -1756,7 +1756,7 @@ describe("initProject — agent selection", () => {
 
 // --- nw symlink ---
 
-describe("initProject — nw symlink", () => {
+describe("initProject -- nw symlink", () => {
   it("creates nw symlink via opts.resolveCommandPath", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -1816,7 +1816,7 @@ describe("initProject — nw symlink", () => {
 
 // --- --global mode ---
 
-describe("initProject — global mode", () => {
+describe("initProject -- global mode", () => {
   it("setupGlobal creates skill symlinks in ~/.claude/skills/", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -1879,7 +1879,7 @@ describe("setup command removal", () => {
 
 // --- Merged flow: idempotency ---
 
-describe("initProject — idempotency", () => {
+describe("initProject -- idempotency", () => {
   it("running init twice produces consistent result (steady state)", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -1956,7 +1956,7 @@ describe("initProject — idempotency", () => {
 
 // --- Merged flow: preserves existing files ---
 
-describe("initProject — preserves existing files", () => {
+describe("initProject -- preserves existing files", () => {
   it("creates .ninthwave/ directory with config and domains.conf", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
@@ -2084,7 +2084,7 @@ describe("initProject — preserves existing files", () => {
     expect(content).toContain("node_modules/");
     expect(content).toContain(".worktrees/");
 
-    // Run again — should not duplicate
+    // Run again -- should not duplicate
     initProject(projectDir, bundleDir, deps);
 
     const content2 = readFileSync(join(projectDir, ".gitignore"), "utf-8");

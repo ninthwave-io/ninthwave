@@ -16,7 +16,7 @@ export interface RetryOptions {
  *
  * Returns true if the message appears to have been submitted (not stuck in the
  * input field). If the last non-blank screen line contains a significant prefix
- * of the message, the message is likely still sitting in an input field —
+ * of the message, the message is likely still sitting in an input field --
  * meaning Return fired before the paste completed.
  */
 export function checkDelivery(

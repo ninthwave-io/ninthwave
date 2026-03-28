@@ -1,4 +1,4 @@
-// Command registry — single source of truth for all CLI commands.
+// Command registry -- single source of truth for all CLI commands.
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -613,7 +613,7 @@ export function printCommandHelp(cmd: string): void {
   }
 
   // Header
-  console.log(`nw ${entry.name} — ${entry.description}`);
+  console.log(`nw ${entry.name} -- ${entry.description}`);
   console.log();
 
   // Usage

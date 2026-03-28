@@ -273,7 +273,7 @@ export function checkCommitCI(
 
 /**
  * Set a commit status on a specific SHA via the GitHub Statuses API.
- * Uses `gh api repos/{owner}/{repo}/statuses/{sha}` — requires standard `repo` scope.
+ * Uses `gh api repos/{owner}/{repo}/statuses/{sha}` -- requires standard `repo` scope.
  *
  * @param repoRoot - Repo root for gh CLI context
  * @param sha - The commit SHA to set status on
@@ -384,7 +384,7 @@ export function fetchTrustedPrComments(
  * Apply the resolved GitHub token to process.env.GH_TOKEN.
  * This makes all gh CLI invocations (daemon + workers) use the custom identity.
  * Workers inherit GH_TOKEN via environment when launched.
- * No-op if no custom token is configured — preserves default gh auth behavior.
+ * No-op if no custom token is configured -- preserves default gh auth behavior.
  */
 export function applyGithubToken(projectRoot: string): void {
   const token = resolveGithubToken(projectRoot);

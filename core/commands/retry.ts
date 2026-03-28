@@ -96,7 +96,7 @@ export function cmdRetry(
 
     if (ACTIVE_STATES.has(item.state)) {
       deps.logError(
-        `${id}: cannot retry — currently in "${item.state}" state. Only stuck or done items can be retried.`,
+        `${id}: cannot retry -- currently in "${item.state}" state. Only stuck or done items can be retried.`,
       );
       results.push(`${id}: skipped (active: ${item.state})`);
       continue;
@@ -104,7 +104,7 @@ export function cmdRetry(
 
     if (!RETRYABLE_STATES.has(item.state)) {
       deps.logError(
-        `${id}: cannot retry — unexpected state "${item.state}"`,
+        `${id}: cannot retry -- unexpected state "${item.state}"`,
       );
       results.push(`${id}: skipped (${item.state})`);
       continue;

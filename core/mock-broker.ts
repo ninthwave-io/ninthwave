@@ -5,7 +5,7 @@
 // disconnect/reconnect, and JSONL event logging.
 //
 // Author affinity rationale: AI agents do NOT carry persistent context between
-// work items — each session starts fresh. The benefit of author-based affinity
+// work items -- each session starts fresh. The benefit of author-based affinity
 // is human steering: the person who authored work items can intervene, steer, and
 // review more easily when those items run on their own machine. Affinity matches
 // each item's author field against the requesting daemon's operatorId (the git
@@ -502,7 +502,7 @@ export class MockBroker {
         this.logEvent(crew.code, daemon.id, "abandon", todoPath, {});
       }
     }
-    // Don't clear claimedItems here — the reconnect handler needs it
+    // Don't clear claimedItems here -- the reconnect handler needs it
     // to build the reconnect_state message. It will clean up the set.
   }
 
@@ -556,7 +556,7 @@ export class MockBroker {
       mkdirSync(dirname(this.eventLogPath), { recursive: true });
       appendFileSync(this.eventLogPath, JSON.stringify(entry) + "\n");
     } catch {
-      // Swallow write errors in mock broker — tests can check the log if needed
+      // Swallow write errors in mock broker -- tests can check the log if needed
     }
   }
 
@@ -566,7 +566,7 @@ export class MockBroker {
     try {
       ws.send(JSON.stringify(msg));
     } catch {
-      // Swallow send errors — client may have disconnected
+      // Swallow send errors -- client may have disconnected
     }
   }
 }

@@ -1,4 +1,4 @@
-// Tests for core/git.ts — direct tests of error handling paths.
+// Tests for core/git.ts -- direct tests of error handling paths.
 //
 // Uses real temp git repos to trigger failures naturally.
 //
@@ -96,7 +96,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── branchExists() — mocked elsewhere, tested via run() ───────────
+  // ── branchExists() -- mocked elsewhere, tested via run() ───────────
   // branchExists does: run("git", ["-C", repoRoot, "rev-parse", "--verify", branch])
   // and returns result.exitCode === 0.
 
@@ -123,7 +123,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── commitCount() — NOT mocked, tested directly ───────────────────
+  // ── commitCount() -- NOT mocked, tested directly ───────────────────
 
   describe("commitCount()", () => {
     it("returns 0 when rev-list fails (invalid refs)", () => {
@@ -148,7 +148,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── diffStat() — NOT mocked, tested directly ─────────────────────
+  // ── diffStat() -- NOT mocked, tested directly ─────────────────────
 
   describe("diffStat()", () => {
     it("returns {insertions: 0, deletions: 0} on failure (invalid range)", () => {
@@ -191,7 +191,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── getStagedFiles() — NOT mocked, tested directly ────────────────
+  // ── getStagedFiles() -- NOT mocked, tested directly ────────────────
 
   describe("getStagedFiles()", () => {
     it("returns empty array when diff --cached fails (invalid repo path)", () => {
@@ -213,7 +213,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── isBranchMerged() — mocked elsewhere, tested via run() ────────
+  // ── isBranchMerged() -- mocked elsewhere, tested via run() ────────
   // isBranchMerged does: run("git", ["-C", repoRoot, "branch", "--merged", into])
   // returns false if exitCode !== 0, else checks if branch is in stdout.
 
@@ -226,7 +226,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── fetchOrigin() — mocked elsewhere, tested via run() ────────────
+  // ── fetchOrigin() -- mocked elsewhere, tested via run() ────────────
   // fetchOrigin does: run("git", ["-C", repoRoot, "fetch", "origin", branch, "--quiet"])
   // throws if exitCode !== 0.
 
@@ -240,7 +240,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── ffMerge() — mocked elsewhere, tested via run() ────────────────
+  // ── ffMerge() -- mocked elsewhere, tested via run() ────────────────
   // ffMerge does: run("git", ["-C", repoRoot, "merge", "--ff-only", `origin/${branch}`, "--quiet"])
   // throws if exitCode !== 0.
 
@@ -254,7 +254,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── getProjectRoot() — NOT mocked, tested directly ────────────────
+  // ── getProjectRoot() -- NOT mocked, tested directly ────────────────
 
   describe("getProjectRoot()", () => {
     it("returns a valid path from inside a git repository", () => {
@@ -278,7 +278,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── hasChanges() — NOT mocked, tested directly ────────────────────
+  // ── hasChanges() -- NOT mocked, tested directly ────────────────────
 
   describe("hasChanges()", () => {
     it("returns false in a clean repo", () => {
@@ -295,7 +295,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── rebaseOnto() — NOT mocked, tested directly ──────────────────
+  // ── rebaseOnto() -- NOT mocked, tested directly ──────────────────
 
   describe("rebaseOnto()", () => {
     it("replays only dependent commits after a squash merge (no duplicate commits)", () => {
@@ -378,7 +378,7 @@ describe("git.ts error handling", () => {
       const success = rebaseOnto(repo, "main", base, "conflicting");
       expect(success).toBe(false);
 
-      // Verify rebase was aborted cleanly — no rebase-apply or rebase-merge dirs
+      // Verify rebase was aborted cleanly -- no rebase-apply or rebase-merge dirs
       const rebaseApply = run("git", ["-C", repo, "rev-parse", "--git-path", "rebase-apply"]);
       const rebaseMerge = run("git", ["-C", repo, "rev-parse", "--git-path", "rebase-merge"]);
 
@@ -389,7 +389,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── deleteRemoteBranch() — mocked elsewhere, tested via run() ────────
+  // ── deleteRemoteBranch() -- mocked elsewhere, tested via run() ────────
   // deleteRemoteBranch does: run("git", ["-C", repoRoot, "push", "origin", "--delete", branch])
   // It suppresses "remote ref does not exist" errors (branch already deleted,
   // e.g. by GitHub's auto-delete head branches setting) and throws for other
@@ -438,7 +438,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── REMOTE_REF_GONE_RE — regex pattern coverage ────────────────────────
+  // ── REMOTE_REF_GONE_RE -- regex pattern coverage ────────────────────────
   // Exported from git.ts for testability. Verifies all known stderr formats
   // are matched, including edge cases across git versions and transports.
 
@@ -530,7 +530,7 @@ describe("git.ts error handling", () => {
       spawnSync("git", ["clone", "--bare", repo, bare], { stdio: "pipe" });
       gitSetup(repo, "remote", "add", "origin", bare);
 
-      // Push to delete a nonexistent branch — captures the actual stderr
+      // Push to delete a nonexistent branch -- captures the actual stderr
       const result = run("git", [
         "-C",
         repo,
@@ -547,7 +547,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── findWorktreeForBranch() — mocked in start.test.ts, tested via run() ──
+  // ── findWorktreeForBranch() -- mocked in start.test.ts, tested via run() ──
 
   describe("findWorktreeForBranch() (via run)", () => {
     /** Reimplement findWorktreeForBranch using run() to bypass mock leakage. */
@@ -612,7 +612,7 @@ describe("git.ts error handling", () => {
     });
   });
 
-  // ── createWorktree() startPoint — mocked elsewhere, tested via run() ──
+  // ── createWorktree() startPoint -- mocked elsewhere, tested via run() ──
 
   describe("createWorktree() startPoint (via run)", () => {
     it("creates a worktree from a specified start point (not HEAD)", () => {

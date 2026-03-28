@@ -442,7 +442,7 @@ describe("existing cross-repo behavior unchanged", () => {
     const depWi = makeWorkItem("H-DEP-1", { dependencies: ["H-BST-10"] });
     orch.addItem(depWi);
 
-    // Process — dep should stay queued since bootstrap isn't done
+    // Process -- dep should stay queued since bootstrap isn't done
     const actions = orch.processTransitions(emptySnapshot([]));
 
     const depItem = orch.getItem("H-DEP-1")!;
@@ -482,7 +482,7 @@ describe("bootstrapping state in transitionItem", () => {
     const item = orch.getItem("H-BST-11")!;
     item.state = "bootstrapping" as any;
 
-    // Process transitions with a snapshot — bootstrapping items should be inert
+    // Process transitions with a snapshot -- bootstrapping items should be inert
     const snapshot: PollSnapshot = {
       items: [{ id: "H-BST-11" }],
       readyIds: [],

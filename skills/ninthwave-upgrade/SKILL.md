@@ -37,7 +37,7 @@ if [ "$INSTALL_TYPE" != "brew" ]; then
   elif [ -n "$NINTHWAVE_DIR" ]; then
     INSTALL_TYPE="vendored"
   else
-    # No .ninthwave/dir and not brew — unknown
+    # No .ninthwave/dir and not brew -- unknown
     echo "Cannot detect ninthwave installation. Run 'nw init' first."
     exit 1
   fi

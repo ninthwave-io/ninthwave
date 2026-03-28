@@ -1,4 +1,4 @@
-// Tests for core/status-render.ts — shared rendering module, TUI mode detection,
+// Tests for core/status-render.ts -- shared rendering module, TUI mode detection,
 // and OrchestratorItem → StatusItem conversion.
 
 import { describe, it, expect } from "vitest";
@@ -813,11 +813,11 @@ describe("formatStatusTable", () => {
     ];
     const table = stripAnsi(formatStatusTable(items, 120));
     const lines = table.split("\n");
-    // M-NW-5 has 1 unresolved blocker (H-NW-2) — DEPS column shows "1"
+    // M-NW-5 has 1 unresolved blocker (H-NW-2) -- DEPS column shows "1"
     const m5Line = lines.find(l => l.includes("M-NW-5"));
     expect(m5Line).toBeDefined();
     expect(m5Line).toContain("1");
-    // M-NW-6 has 1 unresolved blocker (M-NW-5) — DEPS column shows "1"
+    // M-NW-6 has 1 unresolved blocker (M-NW-5) -- DEPS column shows "1"
     const m6Line = lines.find(l => l.includes("M-NW-6"));
     expect(m6Line).toBeDefined();
     expect(m6Line).toContain("1");
@@ -1282,7 +1282,7 @@ describe("renderTuiFrame", () => {
     const items = [makeOrchestratorItem("C-1-1", "merged")];
     renderTuiFrame(items, undefined, (s) => written.push(s));
     const full = stripAnsi(written.join(""));
-    // The DORA-style metrics panel was removed — only title-line metrics remain
+    // The DORA-style metrics panel was removed -- only title-line metrics remain
     expect(full).not.toContain("Session Metrics");
   });
 });
@@ -1917,7 +1917,7 @@ describe("formatUnifiedProgress", () => {
       makeStatusItem({ id: "A-1", state: "merged" }),
       makeStatusItem({ id: "A-2", state: "implementing" }),
     ];
-    // Very narrow — should still contain the data
+    // Very narrow -- should still contain the data
     const text = stripAnsi(formatUnifiedProgress(items, 30));
     expect(text).toContain("merged");
     expect(text).toContain("implementing");
@@ -1948,7 +1948,7 @@ describe("formatTitleMetrics", () => {
     expect(text).toContain("Lead:");
     expect(text).toContain("Thru:");
     expect(text).toContain("Session:");
-    // Output must never fill termWidth exactly — leave 1 char safety margin
+    // Output must never fill termWidth exactly -- leave 1 char safety margin
     expect(text.length).toBeLessThanOrEqual(termWidth - 1);
   });
 
@@ -1977,7 +1977,7 @@ describe("formatTitleMetrics", () => {
         endedAt: new Date(now - 300_000).toISOString(),
       }),
     ];
-    // Width of 60 — right at the threshold, should still show metrics if they fit
+    // Width of 60 -- right at the threshold, should still show metrics if they fit
     const text60 = stripAnsi(formatTitleMetrics(items, 60, new Date(now - 3_600_000).toISOString()));
     expect(text60).toContain("ninthwave status");
   });
@@ -2060,7 +2060,7 @@ describe("formatTitleMetrics", () => {
     expect(text).toContain(metricsStr);
     // Session duration must have its unit suffix (e.g., "1h 30m" not "1h 30")
     expect(text).toMatch(/Session: \d+h \d+m/);
-    // Output stays within safety margin — never fills termWidth exactly
+    // Output stays within safety margin -- never fills termWidth exactly
     expect(text.length).toBeLessThanOrEqual(minWidth - 1);
   });
 
@@ -2082,7 +2082,7 @@ describe("formatTitleMetrics", () => {
     const metricsStr = wideText.trimEnd().slice(wideText.trimEnd().lastIndexOf("Lead:"));
     const minWidth = plainTitle.length + 4 + metricsStr.length;
 
-    // Set width 1 below minWidth — enough for the 60-char threshold but not for the gap
+    // Set width 1 below minWidth -- enough for the 60-char threshold but not for the gap
     const tooNarrow = minWidth - 1;
     expect(tooNarrow).toBeGreaterThanOrEqual(60); // sanity: not hitting the < 60 fallback
 
@@ -2117,7 +2117,7 @@ describe("small terminal fallback", () => {
       itemLines: ["I1", "I2", "I3"],
       footerLines: ["F"],
     };
-    // Only 4 rows total — barely enough for header + footer + 1 item
+    // Only 4 rows total -- barely enough for header + footer + 1 item
     const frame = renderFullScreenFrame(layout, 4, 40, 0);
     // Should not crash and should contain header/footer
     expect(frame.join("\n")).toContain("H");

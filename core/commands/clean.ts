@@ -150,7 +150,7 @@ export function cmdClean(
 ): void {
   const targetId = args[0] ?? "";
 
-  // Close workspaces — scoped to target when cleaning a specific item.
+  // Close workspaces -- scoped to target when cleaning a specific item.
   // For broad cleanup (no targetId), workspace closing is deferred until
   // we know which items are merged, to preserve active workers.
   if (targetId) {

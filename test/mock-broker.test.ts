@@ -199,7 +199,7 @@ describe("mock-broker", () => {
         ws.close();
         expect.unreachable("Should have failed");
       } catch {
-        // Expected — the upgrade should fail
+        // Expected -- the upgrade should fail
       }
     });
 
@@ -264,11 +264,11 @@ describe("mock-broker", () => {
         "todo-B": { author: "bob@example.com" },
       });
 
-      // d1 (alice) claims — should prefer alice-authored item (author affinity)
+      // d1 (alice) claims -- should prefer alice-authored item (author affinity)
       const claim1 = await sendClaim(ws1, "d1");
       expect(claim1.todoId).toBe("todo-A");
 
-      // d2 (bob) claims — should get bob-authored item
+      // d2 (bob) claims -- should get bob-authored item
       const claim2 = await sendClaim(ws2, "d2");
       expect(claim2.todoId).toBe("todo-B");
 
@@ -288,11 +288,11 @@ describe("mock-broker", () => {
         "todo-bob": { author: "bob@example.com" },
       });
 
-      // d1 claims — should get alice's item first (author affinity)
+      // d1 claims -- should get alice's item first (author affinity)
       const claim1 = await sendClaim(ws1, "d1");
       expect(claim1.todoId).toBe("todo-alice");
 
-      // d1 claims again — should fall back to bob's item (pool)
+      // d1 claims again -- should fall back to bob's item (pool)
       const claim2 = await sendClaim(ws1, "d1");
       expect(claim2.todoId).toBe("todo-bob");
 
@@ -303,7 +303,7 @@ describe("mock-broker", () => {
       const { port } = startBroker();
       const code = await createCrew(port);
 
-      // No operatorId — defaults to ""
+      // No operatorId -- defaults to ""
       const ws = await connectWs(port, code, "d1", "worker-1");
 
       await sendSync(ws, "d1", ["todo-A", "todo-B"], {
@@ -311,7 +311,7 @@ describe("mock-broker", () => {
         "todo-B": { author: "bob@example.com", priority: 1 },
       });
 
-      // No operatorId means no author affinity — should sort by priority
+      // No operatorId means no author affinity -- should sort by priority
       const claim1 = await sendClaim(ws, "d1");
       expect(claim1.todoId).toBe("todo-B"); // priority 1 < 2
 
@@ -354,7 +354,7 @@ describe("mock-broker", () => {
       const claim1 = await sendClaim(ws, "d1");
       expect(claim1.todoId).toBe("todo-A");
 
-      // Try again — should get null (no work)
+      // Try again -- should get null (no work)
       const claim2 = await sendClaim(ws, "d1");
       expect(claim2.todoId).toBeNull();
 
@@ -514,7 +514,7 @@ describe("mock-broker", () => {
       expect(d2Claim.todoId).toBeTruthy();
       const reclaimedPath = d2Claim.todoId!;
 
-      // Reconnect d1 — should get reconnect_state
+      // Reconnect d1 -- should get reconnect_state
       const ws1b = await connectWs(port, code, "d1", "worker-1");
       const state = await waitForMessage<{
         type: string;
@@ -772,7 +772,7 @@ describe("mock-broker", () => {
       const claim1 = await sendClaim(ws, "d1");
       expect(claim1.todoId).toBe("todo-A");
 
-      // todo-B still blocked — A is claimed but not completed
+      // todo-B still blocked -- A is claimed but not completed
       const claim2 = await sendClaim(ws, "d1");
       expect(claim2.todoId).toBeNull();
 
@@ -818,12 +818,12 @@ describe("mock-broker", () => {
       ws.close();
     });
 
-    it("handles circular dependencies — neither item is claimable", async () => {
+    it("handles circular dependencies -- neither item is claimable", async () => {
       const { port } = startBroker();
       const code = await createCrew(port);
       const ws = await connectWs(port, code, "d1", "worker-1");
 
-      // A depends on B, B depends on A — circular
+      // A depends on B, B depends on A -- circular
       await sendSync(ws, "d1", ["todo-A", "todo-B"], {
         "todo-A": { dependencies: ["todo-B"] },
         "todo-B": { dependencies: ["todo-A"] },
@@ -914,7 +914,7 @@ describe("mock-broker", () => {
 
       await sendSync(ws, "d1", ["todo-A"]);
 
-      // Sync same path again from different daemon — should not overwrite creatorDaemonId
+      // Sync same path again from different daemon -- should not overwrite creatorDaemonId
       const ws2 = await connectWs(port, code, "d2", "worker-2");
       await sendSync(ws2, "d2", ["todo-A"]);
 

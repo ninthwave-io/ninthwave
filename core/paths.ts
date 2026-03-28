@@ -1,10 +1,10 @@
 // Bundle directory resolution for ninthwave resources (skills, agents, docs).
 //
 // Resolution chain:
-// 1. NINTHWAVE_HOME env var — explicit override
-// 2. Binary install prefix — if process.argv[0] is at <prefix>/bin/ninthwave,
+// 1. NINTHWAVE_HOME env var -- explicit override
+// 2. Binary install prefix -- if process.argv[0] is at <prefix>/bin/ninthwave,
 //    check <prefix>/share/ninthwave/
-// 3. Development fallback — walk up from this source file to find repo root
+// 3. Development fallback -- walk up from this source file to find repo root
 //    containing skills/work/SKILL.md
 
 import { existsSync } from "fs";

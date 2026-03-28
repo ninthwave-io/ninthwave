@@ -7,12 +7,12 @@ ninthwave works with GitHub Copilot CLI as a first-class AI tool alongside Claud
 Running `ninthwave setup` (or `nw setup`) automatically configures Copilot CLI support:
 
 1. **Agent files** are symlinked into `.github/agents/` with the `.agent.md` suffix:
-   - `.github/agents/ninthwave-implementer.agent.md` — implementation agent for TODO processing
-   - `.github/agents/ninthwave-reviewer.agent.md` — review agent for PR reviews
+   - `.github/agents/ninthwave-implementer.agent.md` -- implementation agent for TODO processing
+   - `.github/agents/ninthwave-reviewer.agent.md` -- review agent for PR reviews
 
 2. **`.gitignore`** is updated to exclude the `.github/agents/` directory (these are developer-local symlinks, re-created by `nw setup`).
 
-3. **Auto-detection** — `ninthwave init` detects Copilot CLI if `.github/copilot-instructions.md` exists in the project root, and records it in `.ninthwave/config` under `AI_TOOLS`.
+3. **Auto-detection** -- `ninthwave init` detects Copilot CLI if `.github/copilot-instructions.md` exists in the project root, and records it in `.ninthwave/config` under `AI_TOOLS`.
 
 No additional configuration is required. If you have `copilot` in your `PATH`, ninthwave will find and use it.
 
@@ -57,7 +57,7 @@ Copilot CLI receives its initial prompt differently from Claude Code and OpenCod
    ```
 4. The `-i` flag passes the prompt as initial input to Copilot CLI
 
-Both temp files are deleted by the launcher script before the session starts — they don't persist on disk.
+Both temp files are deleted by the launcher script before the session starts -- they don't persist on disk.
 
 ### Session lifecycle
 
@@ -65,7 +65,7 @@ Both temp files are deleted by the launcher script before the session starts —
 |-------|-------------|
 | **Launch** | Launcher script runs inside a cmux/tmux workspace |
 | **Prompt delivery** | Embedded in the launch command via `-i` (no post-launch send) |
-| **Working** | Copilot CLI operates normally — reads/writes files, runs commands |
+| **Working** | Copilot CLI operates normally -- reads/writes files, runs commands |
 | **Idle** | Worker waits for orchestrator messages via `cmux send` |
 | **Cleanup** | `ninthwave clean-single` tears down the workspace |
 
@@ -109,9 +109,9 @@ Both temp files are deleted by the launcher script before the session starts —
 **Symptom:** Worker session launches but doesn't start implementing the TODO.
 
 **Possible causes:**
-- **`/tmp` permissions** — The launcher script and prompt file are written to `/tmp`. On shared systems, verify your user can write to `/tmp`.
-- **Copilot CLI not installed** — The launcher script calls `exec copilot ...`. If the binary isn't available, the session will exit silently.
-- **Multiplexer issues** — Verify cmux or tmux is running: `nw doctor`
+- **`/tmp` permissions** -- The launcher script and prompt file are written to `/tmp`. On shared systems, verify your user can write to `/tmp`.
+- **Copilot CLI not installed** -- The launcher script calls `exec copilot ...`. If the binary isn't available, the session will exit silently.
+- **Multiplexer issues** -- Verify cmux or tmux is running: `nw doctor`
 
 ### Session exits immediately
 
@@ -126,4 +126,4 @@ Both temp files are deleted by the launcher script before the session starts —
 
 **Symptom:** `nw init` doesn't list Copilot under detected AI tools.
 
-**Fix:** `nw init` looks for `.github/copilot-instructions.md` in the project root. Create this file if it doesn't exist — it's Copilot CLI's project instruction file (equivalent to `CLAUDE.md` for Claude Code).
+**Fix:** `nw init` looks for `.github/copilot-instructions.md` in the project root. Create this file if it doesn't exist -- it's Copilot CLI's project instruction file (equivalent to `CLAUDE.md` for Claude Code).

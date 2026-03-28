@@ -15,7 +15,7 @@ The orchestrator follows a clean separation:
 - **Command driver** (`core/commands/orchestrate.ts`): Event loop (poll → transition → execute → sleep), state reconstruction for crash recovery, snapshot building from GitHub/cmux, structured logging, daemon mode.
 - **Supporting modules**: `shell.ts` (process spawning), `git.ts` (git operations), `lock.ts` (mkdir-based file lock).
 
-The dependency injection pattern is well-applied throughout — `OrchestratorDeps`, `OrchestrateLoopDeps`, and injectable function parameters make the system testable without `vi.mock`.
+The dependency injection pattern is well-applied throughout -- `OrchestratorDeps`, `OrchestrateLoopDeps`, and injectable function parameters make the system testable without `vi.mock`.
 
 ---
 
@@ -112,7 +112,7 @@ All states have documented exit transitions. External merge (`prState: "merged"`
 
 **Observation:** When CI recovers (ci-failed → ci-passed), `ciFailCount` is not reset. This means an item has a lifetime budget of `maxCiRetries + 1` total CI failures. If CI fails once early, recovers, then fails again later, the second failure starts from count 1 not 0.
 
-**Risk:** Low — this is conservative behavior. An item that repeatedly fails CI should be flagged.
+**Risk:** Low -- this is conservative behavior. An item that repeatedly fails CI should be flagged.
 
 **Recommendation:** Document this as intentional in the `maxCiRetries` config description. Consider a `ciFailCount` reset on successful merge evaluation as a future enhancement if users report confusion.
 
@@ -134,7 +134,7 @@ All states have documented exit transitions. External merge (`prState: "merged"`
 
 **Observation:** When `handleImplementing` detects a PR, it transitions to `pr-open` then immediately calls `handlePrLifecycle`, which typically advances to `ci-pending` or `ci-passed`. Items rarely remain in `pr-open` for a full poll cycle. The state exists for snapshot correctness (PR detected, no CI yet) but is effectively transitional.
 
-**Risk:** None — this is correct behavior. The state serves as a logical step in the machine.
+**Risk:** None -- this is correct behavior. The state serves as a logical step in the machine.
 
 ---
 
@@ -155,9 +155,9 @@ All states have documented exit transitions. External merge (`prState: "merged"`
 #### F6. Lock `acquireLock` has a TOCTOU race condition (High)
 
 **Observation:** In `acquireLock`, the stale lock recovery sequence is:
-1. `isLockStale(lockPath)` — returns true (process dead)
-2. `removeLockDir(lockPath)` — removes stale lock
-3. `tryMkdir(lockPath)` — tries to acquire
+1. `isLockStale(lockPath)` -- returns true (process dead)
+2. `removeLockDir(lockPath)` -- removes stale lock
+3. `tryMkdir(lockPath)` -- tries to acquire
 
 If two processes both detect staleness in the same window:
 - Process A: detects stale → removes lock → creates lock → writes PID
@@ -178,7 +178,7 @@ While `mkdir` is atomic on POSIX, the issue is that `removeLockDir` in step 2 by
 
 **Observation:** `executeClean` calls `deps.closeWorkspace()` and `deps.cleanSingleWorktree()` but ignores their return values. A clean failure (e.g., worktree locked, workspace already closed) is reported as success.
 
-**Risk:** Low — cleanup is best-effort and non-blocking. The final worktree cleanup sweep in the event loop catches stragglers. However, the always-true result could mask systematic cleanup issues during debugging.
+**Risk:** Low -- cleanup is best-effort and non-blocking. The final worktree cleanup sweep in the event loop catches stragglers. However, the always-true result could mask systematic cleanup issues during debugging.
 
 **Recommendation:** Return `success: false` if both operations fail. Log a warning if cleanup partially fails.
 
@@ -188,9 +188,9 @@ While `mkdir` is atomic on POSIX, the issue is that `removeLockDir` in step 2 by
 
 #### F8. `executeMerge` post-merge main pull has no retry mechanism (Low, Observation)
 
-**Observation:** After a successful merge, `executeMerge` fetches and fast-forwards main. If this fails (network error, conflict), it's caught and swallowed with a comment "main will be pulled on next cycle." However, the main pull only happens during merge execution — there's no per-cycle main refresh.
+**Observation:** After a successful merge, `executeMerge` fetches and fast-forwards main. If this fails (network error, conflict), it's caught and swallowed with a comment "main will be pulled on next cycle." However, the main pull only happens during merge execution -- there's no per-cycle main refresh.
 
-**Risk:** Low — the local main staleness only matters for worktree creation (which uses HEAD) and is inconsequential for polling (which queries GitHub directly via `gh`). The next merge cycle will retry the pull.
+**Risk:** Low -- the local main staleness only matters for worktree creation (which uses HEAD) and is inconsequential for polling (which queries GitHub directly via `gh`). The next merge cycle will retry the pull.
 
 ---
 
@@ -204,7 +204,7 @@ While `mkdir` is atomic on POSIX, the issue is that `removeLockDir` in step 2 by
 
 The second merge attempt is wasted because the conflict was already detected in step 1.
 
-**Risk:** Low — the state machine self-corrects. The wasted `gh pr merge` call costs ~1-2 seconds.
+**Risk:** Low -- the state machine self-corrects. The wasted `gh pr merge` call costs ~1-2 seconds.
 
 **Recommendation:** Consider checking mergeability before executing each merge action. This would require `executeMerge` to consult `checkPrMergeable` before calling `prMerge`. However, this adds complexity for a minor optimization. Documenting the behavior is sufficient.
 
@@ -214,7 +214,7 @@ The second merge attempt is wasted because the conflict was already detected in 
 
 **Observation:** `buildSnapshot` queries GitHub for each item sequentially. The snapshot represents a series of moments, not a single moment. A PR could merge between the first and last item's check, creating an inconsistent snapshot.
 
-**Risk:** Low — state converges on the next poll cycle. The worst case is an unnecessary action (e.g., attempting to merge an already-merged PR), which is handled gracefully.
+**Risk:** Low -- state converges on the next poll cycle. The worst case is an unnecessary action (e.g., attempting to merge an already-merged PR), which is handled gracefully.
 
 ---
 
@@ -224,7 +224,7 @@ The second merge attempt is wasted because the conflict was already detected in 
 
 **Observation:** `reconstructState` rebuilds items from disk/GitHub state but does not recover `ciFailCount`. After a restart, an item that had already exhausted its CI retries gets a fresh budget. The item could cycle through additional CI failures before being marked stuck again.
 
-**Risk:** Medium — in the worst case, a persistently failing item gets `maxCiRetries` additional attempts per restart, wasting CI resources and time.
+**Risk:** Medium -- in the worst case, a persistently failing item gets `maxCiRetries` additional attempts per restart, wasting CI resources and time.
 
 **Recommendation:** Either:
 1. Persist `ciFailCount` in the daemon state file (already serialized via `serializeOrchestratorState`)
@@ -239,9 +239,9 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 #### F12. `reconstructState` recovers workspace refs but not from daemon state file (Low, Observation)
 
-**Observation:** `reconstructState` recovers `workspaceRef` from live cmux workspaces by pattern-matching item IDs in the workspace listing. This works well for live sessions but requires the cmux session to still be running. For daemon mode, the workspace ref is serialized in the state file, but `reconstructState` doesn't read the state file — it rebuilds from scratch.
+**Observation:** `reconstructState` recovers `workspaceRef` from live cmux workspaces by pattern-matching item IDs in the workspace listing. This works well for live sessions but requires the cmux session to still be running. For daemon mode, the workspace ref is serialized in the state file, but `reconstructState` doesn't read the state file -- it rebuilds from scratch.
 
-**Risk:** Low — if the daemon crashes and restarts, workspaces are still alive in cmux. Recovery from live workspaces is the correct approach. The state file is primarily for external consumers (status display).
+**Risk:** Low -- if the daemon crashes and restarts, workspaces are still alive in cmux. Recovery from live workspaces is the correct approach. The state file is primarily for external consumers (status display).
 
 ---
 
@@ -254,7 +254,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 - Failed send when `workspaceRef` is missing (returns error)
 - Failed send when `sendMessage` returns false
 
-**Risk:** Medium — rebase is a critical recovery mechanism. A bug in the handler would cause items to stay in ci-failed state instead of recovering.
+**Risk:** Medium -- rebase is a critical recovery mechanism. A bug in the handler would cause items to stay in ci-failed state instead of recovering.
 
 **TODO:** M-TST-2
 
@@ -264,7 +264,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 **Observation:** When `handleReviewPending` sees `CHANGES_REQUESTED` review decision, it returns no actions (waits). This implicit behavior has no test. Also untested: what happens when CI regresses while in `review-pending` (CI status changes from pass to fail).
 
-**Risk:** Medium — review workflows are important for the `approved` merge strategy. Missing test coverage could allow regressions.
+**Risk:** Medium -- review workflows are important for the `approved` merge strategy. Missing test coverage could allow regressions.
 
 **TODO:** M-TST-3
 
@@ -277,7 +277,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 - PID file contents
 - `releaseLock` cleanup
 
-**Risk:** Medium — the lock is used to prevent concurrent orchestrator instances. A bug in the lock could allow double-execution.
+**Risk:** Medium -- the lock is used to prevent concurrent orchestrator instances. A bug in the lock could allow double-execution.
 
 **TODO:** M-TST-4
 
@@ -287,7 +287,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 **Observation:** The `run()` function has zero test coverage. It's a thin wrapper around `Bun.spawnSync`, but edge cases are untested: missing binary, large stdout truncation, stderr handling, exit code propagation.
 
-**Risk:** Low — the function is simple and well-used indirectly through other tests. Direct tests would catch Bun version regressions.
+**Risk:** Low -- the function is simple and well-used indirectly through other tests. Direct tests would catch Bun version regressions.
 
 **TODO:** L-TST-5
 
@@ -297,7 +297,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 **Observation:** All 17 git functions are tested only indirectly through integration tests. Each function follows the same pattern: call `run("git", [...])`, check exit code, parse output. The error handling paths (non-zero exit codes) are untested directly.
 
-**Risk:** Low — the array-based argument passing in `Bun.spawnSync` prevents shell injection. But error message formatting and edge cases (empty stdout, trimming) could regress.
+**Risk:** Low -- the array-based argument passing in `Bun.spawnSync` prevents shell injection. But error message formatting and edge cases (empty stdout, trimming) could regress.
 
 **TODO:** L-TST-6
 
@@ -307,7 +307,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 **Observation:** When `checkPrStatus` returns status "ready" (CI pass + review approved), `buildSnapshot` sets `ciStatus: "pass"`, `reviewDecision: "APPROVED"`, and `isMergeable: true`. This compound mapping is untested.
 
-**Risk:** Low — the mapping is simple and static. But since "ready" is the only status that sets `reviewDecision`, a regression would silently break the `approved` merge strategy.
+**Risk:** Low -- the mapping is simple and static. But since "ready" is the only status that sets `reviewDecision`, a regression would silently break the `approved` merge strategy.
 
 **TODO:** L-TST-7
 
@@ -317,7 +317,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 **Observation:** The post-merge conflict detection loop in `executeMerge` is gated behind `if (deps.checkPrMergeable)`. When the dep is absent, the loop is skipped. There's no test explicitly verifying this no-op behavior.
 
-**Risk:** Very low — the guard is straightforward.
+**Risk:** Very low -- the guard is straightforward.
 
 ---
 
@@ -327,7 +327,7 @@ Option 1 is simplest and aligns with the existing daemon state persistence.
 
 **Observation:** The main event loop handles: supervisor ticks, analytics collection, analytics commit, webhook notifications, cost capture, daemon state persistence, worktree cleanup sweeps, and the core poll→transition→execute cycle. While well-structured with injected deps, the function does many things.
 
-**Risk:** Low — the code is readable and each concern is clearly delimited by comments. But adding more features to the loop increases cognitive load.
+**Risk:** Low -- the code is readable and each concern is clearly delimited by comments. But adding more features to the loop increases cognitive load.
 
 **Recommendation:** Extract post-completion handling (analytics, commit, webhooks, cleanup) into a `handleRunComplete()` helper. Extract the per-action execution block (cost capture, logging, webhook) into a `handleActionExecution()` helper.
 

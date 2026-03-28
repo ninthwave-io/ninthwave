@@ -48,7 +48,7 @@ export async function checkboxPrompt(
     const pointer = i === cursor ? `${GREEN}>${RESET}` : " ";
     const check = item.checked ? `${GREEN}[x]${RESET}` : "[ ]";
     const desc = item.description
-      ? ` ${DIM}— ${item.description}${RESET}`
+      ? ` ${DIM}-- ${item.description}${RESET}`
       : "";
     return `  ${pointer} ${check} ${BOLD}${item.label}${RESET}${desc}`;
   };

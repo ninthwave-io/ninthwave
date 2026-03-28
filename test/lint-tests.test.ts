@@ -1,6 +1,6 @@
 // Static analysis for dangerous test patterns.
 // Scans all test/*.test.ts files and fails if dangerous patterns are found.
-// This runs as part of the regular test suite — auto-enforced in pre-commit and CI.
+// This runs as part of the regular test suite -- auto-enforced in pre-commit and CI.
 
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "fs";
@@ -82,7 +82,7 @@ function checkNoLeakedServer(
         file: file.name,
         line,
         rule: "no-leaked-server",
-        message: "Server created without .stop() in afterEach/afterAll — will leak and hang the process",
+        message: "Server created without .stop() in afterEach/afterAll -- will leak and hang the process",
       });
     }
   }
@@ -118,7 +118,7 @@ function checkNoUnclearedInterval(
         file: file.name,
         line,
         rule: "no-uncleared-interval",
-        message: "setInterval() without clearInterval() — will keep the process alive forever",
+        message: "setInterval() without clearInterval() -- will keep the process alive forever",
       });
     }
   }
@@ -142,7 +142,7 @@ function checkNoLongTimeout(
           file: file.name,
           line: i + 1,
           rule: "no-long-timeout",
-          message: `setTimeout with ${delay}ms delay (max 30000) — will hang the test process`,
+          message: `setTimeout with ${delay}ms delay (max 30000) -- will hang the test process`,
         });
       }
     }
@@ -181,7 +181,7 @@ function checkNoUnresetGlobals(
         file: file.name,
         line,
         rule: "no-unreset-globals",
-        message: "globalThis override without restore in finally/afterEach — will leak to other tests",
+        message: "globalThis override without restore in finally/afterEach -- will leak to other tests",
       });
     }
   }
@@ -219,7 +219,7 @@ function checkNoUnrestoredProcessExit(
         file: file.name,
         line,
         rule: "no-unrestored-process-exit",
-        message: "process.exit override without restore in finally/afterEach/afterAll — disables test safety guards for all subsequent test files",
+        message: "process.exit override without restore in finally/afterEach/afterAll -- disables test safety guards for all subsequent test files",
       });
     }
   }
@@ -244,7 +244,7 @@ function checkNoUnboundedOrchestrateLoop(
           line: i + 1,
           rule: "no-unbounded-orchestrate-loop",
           message:
-            "orchestrateLoop() without maxIterations — a stuck loop starves macrotask timers " +
+            "orchestrateLoop() without maxIterations -- a stuck loop starves macrotask timers " +
             "(setTimeout/setInterval) so even SIGKILL guards never fire",
         });
       }

@@ -1,4 +1,4 @@
-// Tests for core/crew.ts — CrewBroker interface, WebSocket client,
+// Tests for core/crew.ts -- CrewBroker interface, WebSocket client,
 // daemonId persistence, claim timeout, reconnect reconciliation,
 // and protocol error handling.
 
@@ -199,7 +199,7 @@ describe("WebSocketCrewBroker", () => {
       heartbeatIntervalMs: 60_000, // don't fire during test
     });
 
-    // Connect — server auto-sends sync_ack on sync
+    // Connect -- server auto-sends sync_ack on sync
     // But we need to trigger sync. The connect() resolves when sync_ack is received.
     // Let's make the server auto-reply sync_ack on open
     broker.disconnect();

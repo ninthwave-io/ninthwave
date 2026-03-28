@@ -7,7 +7,7 @@
 
 ## What happened
 
-H-ORC-1, H-ORC-2, and M-ORC-3 were reused TODO IDs — the same IDs had been used in a previous cycle for different work (different titles, different PRs). The orchestrator launched workers for all 3, but the workers detected existing merged PRs on the `ninthwave/H-ORC-*` and `ninthwave/M-ORC-3` branches and immediately exited, marking the items as "merged" within 15-50 seconds.
+H-ORC-1, H-ORC-2, and M-ORC-3 were reused TODO IDs -- the same IDs had been used in a previous cycle for different work (different titles, different PRs). The orchestrator launched workers for all 3, but the workers detected existing merged PRs on the `ninthwave/H-ORC-*` and `ninthwave/M-ORC-3` branches and immediately exited, marking the items as "merged" within 15-50 seconds.
 
 The orchestrator then cleaned up worktrees and marked all 3 as "done". But reconcile correctly identified the title mismatch and refused to remove the TODO files. The actual work was never implemented.
 

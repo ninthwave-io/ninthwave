@@ -1,4 +1,4 @@
-// Tests for core/commands/logs.ts — orchestration log viewer.
+// Tests for core/commands/logs.ts -- orchestration log viewer.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, statSync } from "fs";
@@ -585,7 +585,7 @@ describe("readEntriesWithRotated", () => {
     const logPath = join(dir, "orchestrator.log");
     writeFileSync(logPath, logLine({ event: "current" }) + "\n");
     writeFileSync(`${logPath}.1`, logLine({ event: "rot1" }) + "\n");
-    // Skip .2, write .3 — should not be found
+    // Skip .2, write .3 -- should not be found
     writeFileSync(`${logPath}.3`, logLine({ event: "rot3_orphan" }) + "\n");
 
     const entries = readEntriesWithRotated(logPath, { follow: false, item: null, level: null, lines: 50 });
@@ -600,7 +600,7 @@ describe("readLogs with rotated files", () => {
   it("reads from rotated files when --lines exceeds current file entries", () => {
     const dir = trackTempDir();
     const logPath = join(dir, "orchestrator.log");
-    // 2 entries in current, 3 in .1 — requesting 5 should get all
+    // 2 entries in current, 3 in .1 -- requesting 5 should get all
     writeFileSync(`${logPath}.1`, [
       logLine({ event: "old_1" }),
       logLine({ event: "old_2" }),
@@ -620,7 +620,7 @@ describe("readLogs with rotated files", () => {
   it("shows entries from rotated files when current log is deleted (post-rotation)", () => {
     const dir = trackTempDir();
     const logPath = join(dir, "orchestrator.log");
-    // Only rotated file exists — simulates right after rotation before new writes
+    // Only rotated file exists -- simulates right after rotation before new writes
     writeFileSync(`${logPath}.1`, [
       logLine({ event: "rotated_entry_1" }),
       logLine({ event: "rotated_entry_2" }),

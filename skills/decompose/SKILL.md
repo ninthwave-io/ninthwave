@@ -79,10 +79,10 @@ This skill decomposes a feature spec into work items sized for individual human-
 3. **Check decomposition templates.** Load templates from the `templates/` directory in the ninthwave bundle (resolve via `core/templates.ts`). Match the feature description against available templates using keyword scoring. If a template matches:
    - Present it to the user as a suggested starting structure
    - Show the template's typical breakdown and dependency graph
-   - Explain that the template is advisory — the actual decomposition can deviate based on codebase analysis
+   - Explain that the template is advisory -- the actual decomposition can deviate based on codebase analysis
    - AskUserQuestion: "Use this template as a starting point, modify it, or skip?"
 
-   Templates are **not prescriptive** — they improve consistency for common patterns while preserving flexibility for unique features. If no template matches (or the user skips), proceed with freeform decomposition.
+   Templates are **not prescriptive** -- they improve consistency for common patterns while preserving flexibility for unique features. If no template matches (or the user skips), proceed with freeform decomposition.
 
 4. Present the delta summary to the user.
 
@@ -140,11 +140,11 @@ Each test plan specifies:
 
 **Non-testable items** (docs-only, config changes): Use `**Test plan:**\n- Manual review` instead of omitting the field.
 
-Keep test plans concise — 2-4 bullet points per item.
+Keep test plans concise -- 2-4 bullet points per item.
 
 #### Dependency mapping
 
-Group work items into **batches**. Items within a batch can run in parallel. Batches run sequentially. **Stacking:** items with a single in-flight dependency can launch early — the orchestrator creates their worktree from the dependency's branch and rebases automatically after merge. This means dependency chains execute faster than strict batch ordering suggests, so prefer clear dependency declarations over artificially flattening items into a single batch.
+Group work items into **batches**. Items within a batch can run in parallel. Batches run sequentially. **Stacking:** items with a single in-flight dependency can launch early -- the orchestrator creates their worktree from the dependency's branch and rebases automatically after merge. This means dependency chains execute faster than strict batch ordering suggests, so prefer clear dependency declarations over artificially flattening items into a single batch.
 
 #### ID assignment
 
@@ -196,7 +196,7 @@ Show totals and ask for approval. Options: looks good, adjust, re-decompose.
 **Depends on:** <IDs or None>
 **Domain:** <domain name>
 
-<Description — 2-4 sentences.>
+<Description -- 2-4 sentences.>
 
 **Test plan:**
 - <what tests to write or verify for this specific item>

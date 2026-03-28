@@ -2,7 +2,7 @@
 // Used by the launch code (ready detection, post-send verification).
 //
 // All functions are pure or accept their collaborators via arguments
-// (dependency injection) — no vi.mock needed for testing.
+// (dependency injection) -- no vi.mock needed for testing.
 
 import type { Multiplexer } from "./mux.ts";
 
@@ -10,8 +10,8 @@ import type { Multiplexer } from "./mux.ts";
 
 /** Worker health status derived from screen content inspection. */
 export type WorkerHealthStatus =
-  | "loading"     // Screen is empty or minimal — tool is still booting
-  | "prompt"      // Input prompt is visible — ready to receive input
+  | "loading"     // Screen is empty or minimal -- tool is still booting
+  | "prompt"      // Input prompt is visible -- ready to receive input
   | "processing"  // Worker is actively processing (spinner, tool output, etc.)
   | "stalled"     // Has content but no recognizable activity indicators
   | "error";      // Error indicators detected on screen
@@ -117,7 +117,7 @@ export function getWorkerHealthStatus(
   if (isWorkerProcessing(screenContent)) return "processing";
   if (isInputPromptVisible(screenContent)) return "prompt";
 
-  // Has content but no recognizable state — check if it's still loading
+  // Has content but no recognizable state -- check if it's still loading
   const lines = screenContent
     .split("\n")
     .filter((l) => l.trim().length > 0);
@@ -144,7 +144,7 @@ export function checkWorkerHealth(
 /**
  * Wait for the AI tool's input prompt to appear on screen.
  *
- * More specific than `waitForReady` in mux.ts — looks for actual prompt
+ * More specific than `waitForReady` in mux.ts -- looks for actual prompt
  * indicators (❯, "Enter a prompt", etc.) rather than just stable content.
  * This prevents the race condition where Claude Code's loading screen has
  * stable content but the input handler isn't ready yet.
@@ -164,7 +164,7 @@ export function waitForInputPrompt(
     if (isInputPromptVisible(screen)) {
       return true;
     }
-    // Also accept "processing" — the tool may have auto-started
+    // Also accept "processing" -- the tool may have auto-started
     if (isWorkerProcessing(screen)) {
       return true;
     }
@@ -196,7 +196,7 @@ export function verifySendProcessing(
     if (status === "processing") {
       return true;
     }
-    // If we see an error, bail early — no point retrying
+    // If we see an error, bail early -- no point retrying
     if (status === "error") {
       return false;
     }
@@ -259,7 +259,7 @@ export function sendWithReadyWait(
       return true;
     }
 
-    // If prompt was never ready, don't retry — the tool likely isn't running
+    // If prompt was never ready, don't retry -- the tool likely isn't running
     if (!promptReady && attempt === 0) {
       return false;
     }

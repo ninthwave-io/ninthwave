@@ -1,9 +1,9 @@
-// `nw crew` — interactive crew management command.
+// `nw crew` -- interactive crew management command.
 //
 // Three entry points:
-// 1. Interactive mode (`nw crew`) — prompt with join (default) and create options
-// 2. Direct join shorthand (`nw crew abc-xyz`) — join immediately
-// 3. Explicit subcommands (`nw crew create`, `nw crew join abc-xyz`) — for scripting/CI
+// 1. Interactive mode (`nw crew`) -- prompt with join (default) and create options
+// 2. Direct join shorthand (`nw crew abc-xyz`) -- join immediately
+// 3. Explicit subcommands (`nw crew create`, `nw crew join abc-xyz`) -- for scripting/CI
 //
 // Non-TTY environments get usage help instead of an interactive prompt.
 
@@ -168,7 +168,7 @@ export async function cmdCrew(
     return;
   }
 
-  // No args — need interactive mode
+  // No args -- need interactive mode
   if (!isTTY) {
     printCrewUsage();
     return;

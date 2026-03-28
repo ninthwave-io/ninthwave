@@ -1,4 +1,4 @@
-// `ninthwave doctor` — diagnostic command that verifies prerequisites and configuration.
+// `ninthwave doctor` -- diagnostic command that verifies prerequisites and configuration.
 //
 // Runs a series of checks categorized as Required, Recommended, or Optional.
 // Exit code 0 if all required checks pass, 1 if any required check fails.
@@ -193,7 +193,7 @@ function statusLabel(status: CheckResult["status"]): string {
 
 /**
  * Run all doctor checks and return aggregate results.
- * Does not print anything — callers handle output.
+ * Does not print anything -- callers handle output.
  */
 export function runDoctor(
   projectRoot: string,

@@ -403,7 +403,7 @@ describe("cmdClean", () => {
 
     captureOutput(() => cmdClean([], worktreeDir, repo, mockMux));
 
-    // No workspaces should be closed — all items are still active
+    // No workspaces should be closed -- all items are still active
     expect(mockMux.closeWorkspace).not.toHaveBeenCalled();
     // No worktrees should be removed
     expect(git.removeWorktree as Mock).not.toHaveBeenCalled();
@@ -614,7 +614,7 @@ describe("cmdClean", () => {
       ].join("\n"),
     );
 
-    // Target only X-CR-1 — should clean regardless of merge status
+    // Target only X-CR-1 -- should clean regardless of merge status
     (git.isBranchMerged as Mock).mockReturnValue(false);
 
     const output = captureOutput(() =>

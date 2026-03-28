@@ -140,7 +140,7 @@ export function deleteRemoteBranch(repoRoot: string, branch: string): void {
   if (result.exitCode === 0) return;
 
   // GitHub auto-delete head branches: branch is already gone.
-  // Check both stderr and stdout — some git versions or SSH transports
+  // Check both stderr and stdout -- some git versions or SSH transports
   // may split output across streams.
   const output = `${result.stderr}\n${result.stdout}`;
   if (REMOTE_REF_GONE_RE.test(output)) return;
@@ -279,7 +279,7 @@ export function daemonRebase(repoRoot: string, branch: string): boolean {
   const rebaseResult = run("git", ["-C", repoRoot, "rebase", "origin/main"]);
 
   if (rebaseResult.exitCode !== 0) {
-    // Rebase failed — abort and fall back to worker
+    // Rebase failed -- abort and fall back to worker
     run("git", ["-C", repoRoot, "rebase", "--abort"]);
     return false;
   }
@@ -315,7 +315,7 @@ export function rebaseOnto(
   ]);
 
   if (result.exitCode !== 0) {
-    // Rebase failed (likely conflicts) — abort cleanly
+    // Rebase failed (likely conflicts) -- abort cleanly
     run("git", ["-C", worktreePath, "rebase", "--abort"]);
     return false;
   }

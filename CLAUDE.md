@@ -2,7 +2,7 @@
 
 Parallel AI coding orchestration. TypeScript + Bun CLI.
 
-**Required reading:** [ETHOS.md](ETHOS.md) — core principles and hard boundaries.
+**Required reading:** [ETHOS.md](ETHOS.md) -- core principles and hard boundaries.
 
 ## Development
 
@@ -11,33 +11,33 @@ bun test              # run all tests
 bun run core/cli.ts   # run CLI directly
 ```
 
-No build step — Bun executes TypeScript directly. Changes take effect immediately.
+No build step -- Bun executes TypeScript directly. Changes take effect immediately.
 
 ## Architecture
 
-- `core/cli.ts` — CLI entry point and command dispatcher
-- `core/commands/` — one file per command (list, launch, clean, watch, init, etc.)
-- `core/commands/orchestrate.ts` — `nw watch` daemon event loop with TUI mode (interactive) and JSON mode (`--json` for piping/CI)
-- `core/parser.ts` — reads `.ninthwave/work/` directory and domain normalization
-- `core/status-render.ts` — shared status table rendering for `ninthwave status --watch` and the daemon TUI
-- `skills/` — SKILL.md files for AI tool integration (/work, /decompose, etc.)
-- `agents/implementer.md` — implementation agent prompt (copied to all tool directories by init)
-- `core/commands/init.ts` — project setup command (seeds config, symlinks, agents)
+- `core/cli.ts` -- CLI entry point and command dispatcher
+- `core/commands/` -- one file per command (list, launch, clean, watch, init, etc.)
+- `core/commands/orchestrate.ts` -- `nw watch` daemon event loop with TUI mode (interactive) and JSON mode (`--json` for piping/CI)
+- `core/parser.ts` -- reads `.ninthwave/work/` directory and domain normalization
+- `core/status-render.ts` -- shared status table rendering for `ninthwave status --watch` and the daemon TUI
+- `skills/` -- SKILL.md files for AI tool integration (/work, /decompose, etc.)
+- `agents/implementer.md` -- implementation agent prompt (copied to all tool directories by init)
+- `core/commands/init.ts` -- project setup command (seeds config, symlinks, agents)
 
 ## Conventions
 
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - Tests live in `test/` using bun's native test runner (vitest-compatible API via `import { describe, it, expect, vi } from "vitest"`)
-- **Mock isolation:** `bun test` does not isolate `vi.mock` between test files — mocks leak across files and break unrelated tests. Prefer dependency injection (pass collaborators as function arguments) over `vi.mock`. Only use `vi.mock` when the mocked module is not imported by any other test file. When in doubt, inject.
+- **Mock isolation:** `bun test` does not isolate `vi.mock` between test files -- mocks leak across files and break unrelated tests. Prefer dependency injection (pass collaborators as function arguments) over `vi.mock`. Only use `vi.mock` when the mocked module is not imported by any other test file. When in doubt, inject.
 - **Always run `bun test test/`** (scoped to test directory) to avoid picking up tests from `.worktrees/` during orchestration
-- Convention over configuration — sensible defaults, minimal config files
+- Convention over configuration -- sensible defaults, minimal config files
 - **VISION.md is forward-looking only.** Do not add completion markers (`*(complete)*`, strikethrough `~~done~~`, `(Shipped.)`, `Decomposed →`) to VISION.md. Completed work belongs in CHANGELOG.md. Vision workers should remove or collapse shipped sections, not annotate them.
 
 ## Test Safety
 
 - Tests have three layers of timeout protection: 5s per-test (bun default), 90s global process timeout (`test/setup-global.ts` via preload), and 120s shell-level timeout (pre-commit + CI).
 - `--smol` flag is used on all test runs for tighter GC. `--bail` fails fast on first failure.
-- `test/lint-tests.test.ts` scans all test files for dangerous patterns. It runs as part of the regular test suite — auto-enforced in pre-commit and CI.
+- `test/lint-tests.test.ts` scans all test files for dangerous patterns. It runs as part of the regular test suite -- auto-enforced in pre-commit and CI.
 - **Lint rules:** `no-leaked-server` (Bun.serve without cleanup), `no-uncleared-interval` (setInterval without clear), `no-long-timeout` (setTimeout > 30s), `no-unreset-globals` (globalThis override without restore).
 - To suppress a lint rule: add `// lint-ignore: <rule-id>` on or above the flagged line.
 

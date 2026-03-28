@@ -1,4 +1,4 @@
-// Tests for core/preflight.ts — pre-flight environment validation.
+// Tests for core/preflight.ts -- pre-flight environment validation.
 
 import { describe, it, expect } from "vitest";
 import type { RunResult } from "../core/types.ts";
