@@ -107,7 +107,7 @@ What ninthwave will not become:
 
 6. **Not a monolithic agent.** Many small workers plus a deterministic orchestrator is the architecture. Decomposition and parallel execution is the point.
 
-7. **Not a monitoring system.** ninthwave doesn't collect metrics or evaluate production health. Work items come from `.ninthwave/work/` files or the `create-todo` GitHub Action.
+7. **Not a monitoring system.** ninthwave doesn't collect metrics or evaluate production health. Post-merge CI verification is orchestration — completing the change lifecycle on GitHub — not monitoring.
 
 ## Feature-Completeness
 
@@ -119,7 +119,7 @@ ninthwave is feature-complete when:
 - Works with 2+ terminal multiplexers (currently: cmux, tmux, zellij).
 - Connects to 2+ task backends (previously shipped, removed in 0.2.0 — may return as plugins).
 - Connects to 2+ observability/alerting backends (previously shipped, removed in 0.2.0 — may return as plugins).
-- GitHub Action bridges CI/CD failures into todo files.
+- Post-merge CI verification completes the change lifecycle automatically.
 - Every decomposed work item has a test plan with tracked outcomes.
 - Workers run sandboxed by default (previously shipped, removed in 0.2.0 — may return as a separate package).
 - Remote session links posted on PRs with auth (foundation shipped, full implementation deferred).
