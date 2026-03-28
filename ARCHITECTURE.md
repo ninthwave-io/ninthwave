@@ -148,6 +148,8 @@ Concrete implementation: `CmuxAdapter`. Auto-detection via `getMux()` checks `CM
 
 ### Adding a New Multiplexer Adapter
 
+> **Note:** cmux is the only shipped adapter. tmux and zellij adapters were removed in v0.2.0 due to reliability issues (message delivery, session identification). The Multiplexer interface remains extensible for community contributions.
+
 1. Add your type to `MuxType` in `core/mux.ts`:
    ```typescript
    export type MuxType = "cmux" | "mymux";

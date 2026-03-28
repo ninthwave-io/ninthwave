@@ -106,7 +106,7 @@ ninthwave is feature-complete when:
 - A developer goes from spec to merged, reviewed PRs in a single command cycle.
 - The pipeline handles all common failure modes automatically: CI failures, merge conflicts, review feedback, worker crashes, dependency ordering.
 - Works with 3+ AI coding tools (currently: Claude Code, OpenCode, Copilot CLI).
-- Works with 2+ terminal multiplexers (currently: cmux, tmux, zellij).
+- Extensible multiplexer support (ships with cmux, community can extend via Multiplexer interface).
 - Connects to 2+ task backends (previously shipped, removed in 0.2.0 — may return as plugins).
 - Connects to 2+ observability/alerting backends (previously shipped, removed in 0.2.0 — may return as plugins).
 - Post-merge CI verification completes the change lifecycle automatically.
