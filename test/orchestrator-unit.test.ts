@@ -740,6 +740,30 @@ describe("process liveness timeout suppression", () => {
     expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
+  it("lastAliveAt prevents timeout when worker was recently alive but has a single dead blip", () => {
+    const orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000, maxRetries: 0 });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.setState("H-1-1", "implementing");
+
+    // Worker is alive for the first poll (sets lastAliveAt)
+    const t0 = new Date(Date.now() + 500);
+    orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", workerAlive: true, lastCommitTime: null }]),
+      t0,
+    );
+    expect(orch.getItem("H-1-1")!.state).toBe("implementing");
+
+    // Time advances past launch timeout since transition, but only 600ms since last alive
+    const t1 = new Date(t0.getTime() + 600);
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", workerAlive: false, lastCommitTime: null }]),
+      t1,
+    );
+
+    // Should NOT be stuck — timeout measures from lastAliveAt, not lastTransition
+    expect(orch.getItem("H-1-1")!.state).toBe("implementing");
+  });
+
   it("fresh heartbeat still takes priority over process liveness signal", () => {
     const orch = new Orchestrator({ reviewEnabled: false, launchTimeoutMs: 1000, activityTimeoutMs: 5000 });
     orch.addItem(makeWorkItem("H-1-1"));

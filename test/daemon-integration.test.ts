@@ -298,7 +298,9 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     expect(actions.some((a) => a.type === "retry")).toBe(true);
     expect(actions.some((a) => a.type === "launch")).toBe(true);
 
-    // Worker dies again — notAliveCount carries over, triggers on next false
+    // Worker dies again — notAliveCount resets on retry, needs 3 consecutive checks
+    orch.processTransitions(snapshotWith([{ id: "STUCK-1", workerAlive: false }]));
+    orch.processTransitions(snapshotWith([{ id: "STUCK-1", workerAlive: false }]));
     actions = orch.processTransitions(
       snapshotWith([{ id: "STUCK-1", workerAlive: false }]),
     );

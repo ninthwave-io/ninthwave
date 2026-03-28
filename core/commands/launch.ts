@@ -503,6 +503,13 @@ export function launchSingleItem(
           `Open PR #${openPrs[0]!.number} found for ${branchName}. Launching worker to fix CI.`,
         );
         reuseExistingBranch = true;
+      } else if (existsSync(worktreePath)) {
+        // Worktree exists with branch but no PR — retry scenario.
+        // Reuse the worktree to preserve uncommitted edits and local commits.
+        info(
+          `Existing worktree found for ${branchName} (no open PR). Reusing for retry.`,
+        );
+        reuseExistingBranch = true;
       } else {
         try {
           deleteBranch(targetRepo, branchName);
@@ -536,7 +543,12 @@ export function launchSingleItem(
       }
     }
 
-    if (reuseExistingBranch) {
+    if (reuseExistingBranch && existsSync(worktreePath)) {
+      // Worktree already exists on disk — skip attach/create, just launch into it
+      info(
+        `Reusing existing worktree for ${item.id} in ${basename(targetRepo)}`,
+      );
+    } else if (reuseExistingBranch) {
       info(
         `Attaching worktree for ${item.id} to existing branch ${branchName} in ${basename(targetRepo)}`,
       );

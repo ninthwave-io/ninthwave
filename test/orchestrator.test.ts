@@ -1432,7 +1432,7 @@ describe("Orchestrator", () => {
 
     // ── retry ──────────────────────────────────────────────────
 
-    it("retry: closes workspace and cleans worktree for fresh relaunch", () => {
+    it("retry: closes workspace but preserves worktree for continuation", () => {
       const deps = mockDeps();
       orch.addItem(makeWorkItem("H-1-1"));
       orch.setState("H-1-1", "ready");
@@ -1447,11 +1447,8 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
-        "H-1-1",
-        defaultCtx.worktreeDir,
-        defaultCtx.projectRoot,
-      );
+      // Worktree is preserved so the retried worker picks up existing edits
+      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
       // workspaceRef should be cleared for the fresh launch
       expect(orch.getItem("H-1-1")!.workspaceRef).toBeUndefined();
     });
@@ -1470,11 +1467,8 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       expect(deps.closeWorkspace).not.toHaveBeenCalled();
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
-        "H-1-1",
-        defaultCtx.worktreeDir,
-        defaultCtx.projectRoot,
-      );
+      // Worktree is preserved for retry continuation
+      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
     });
 
     // ── mark-done removed (workers remove their own work item file in PR) ──
@@ -3373,19 +3367,15 @@ describe("Orchestrator", () => {
         snapshotWith([{ id: "R-1-1", workerAlive: false }]),
       );
 
-      // Execute retry action — cleans old worktree
+      // Execute retry action — closes workspace but preserves worktree
       const retryAction = actions.find((a) => a.type === "retry")!;
       const retryResult = orch.executeAction(retryAction, defaultCtx, deps);
       expect(retryResult.success).toBe(true);
       expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
-        "R-1-1",
-        defaultCtx.worktreeDir,
-        defaultCtx.projectRoot,
-      );
+      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
       expect(orch.getItem("R-1-1")!.workspaceRef).toBeUndefined();
 
-      // Execute launch action — creates fresh worktree
+      // Execute launch action — reuses existing worktree
       const launchAction = actions.find((a) => a.type === "launch")!;
       const launchResult = orch.executeAction(launchAction, defaultCtx, deps);
       expect(launchResult.success).toBe(true);
@@ -3449,7 +3439,9 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-1-1")!.state).toBe("launching");
       expect(actions.some((a) => a.type === "retry")).toBe(true);
 
-      // Second crash — notAliveCount carries over (already ≥ 3), triggers on next false
+      // Second crash — notAliveCount resets on retry, needs 3 consecutive checks again
+      orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
+      orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       actions = orch.processTransitions(
         snapshotWith([{ id: "R-1-1", workerAlive: false }]),
       );
@@ -3457,7 +3449,9 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-1-1")!.state).toBe("launching");
       expect(actions.some((a) => a.type === "retry")).toBe(true);
 
-      // Third crash → permanently stuck (retryCount: 2, maxRetries: 2)
+      // Third crash — notAliveCount resets again, 3 more checks → permanently stuck
+      orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
+      orch.processTransitions(snapshotWith([{ id: "R-1-1", workerAlive: false }]));
       actions = orch.processTransitions(
         snapshotWith([{ id: "R-1-1", workerAlive: false }]),
       );
@@ -5039,7 +5033,7 @@ describe("Orchestrator", () => {
       );
     });
 
-    it("executeRetry cleans target repo worktree for cross-repo items", () => {
+    it("executeRetry preserves worktree for cross-repo items", () => {
       const deps = mockDeps();
       orch.addItem(makeWorkItem("X-1-5"));
       orch.setState("X-1-5", "implementing");
@@ -5053,11 +5047,9 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
-        "X-1-5",
-        "/path/to/target-repo/.worktrees",
-        "/path/to/target-repo",
-      );
+      // Worktree preserved for retry continuation — no cleanup
+      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:5");
     });
 
     it("post-merge sibling rebase uses cross-repo worktree path for same-repo siblings", () => {

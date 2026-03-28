@@ -94,6 +94,8 @@ export interface OrchestratorItem {
   stderrTail?: string;
   /** Number of consecutive polls where isWorkerAlive returned false. Used to debounce stuck detection — a single flaky listing shouldn't kill a healthy worker. */
   notAliveCount?: number;
+  /** ISO timestamp of the last poll cycle where workerAlive was true. Used as timeout baseline — timeouts measure from last-known-alive, not from state transition. */
+  lastAliveAt?: string;
   /** Number of consecutive merge failures for this item. Resets on successful merge. */
   mergeFailCount?: number;
   /** Whether a CI failure notification has already been sent for the current failure. Cleared on recovery (ci-pending/ci-passed) or when a new commit is pushed. */
@@ -852,6 +854,7 @@ export class Orchestrator {
       }
     } else if (snap && snap.workerAlive === true) {
       item.notAliveCount = 0;
+      item.lastAliveAt = now.toISOString();
     }
 
     // ── Heartbeat-based health detection ──
@@ -877,10 +880,19 @@ export class Orchestrator {
     const workerAlive = snap?.workerAlive === true;
 
     // Commit-based timeout: final backstop for workers with no/stale heartbeat
+    //
+    // Timeout baseline: use the most recent positive signal (lastAliveAt, commitTime,
+    // or lastTransition). This prevents a single workerAlive blip from killing a
+    // worker that was confirmed alive seconds earlier.
     const commitTime = snap?.lastCommitTime ?? item.lastCommitTime;
+    const lastPositiveSignal = item.lastAliveAt
+      ? new Date(item.lastAliveAt).getTime()
+      : new Date(item.lastTransition).getTime();
+
     if (!commitTime) {
       // No commits yet — check launch timeout or activity timeout based on liveness
       const sinceTransition = nowMs - new Date(item.lastTransition).getTime();
+      const sinceLastAlive = nowMs - lastPositiveSignal;
       if (workerAlive) {
         // Process alive: suppress launch timeout, use activity timeout as hard cap
         if (sinceTransition > this.config.activityTimeoutMs) {
@@ -894,7 +906,7 @@ export class Orchestrator {
             activityTimeoutMs: this.config.activityTimeoutMs,
           });
         }
-      } else if (sinceTransition > this.config.launchTimeoutMs) {
+      } else if (sinceLastAlive > this.config.launchTimeoutMs) {
         return this.stuckOrRetry(item, "worker-stalled: no commits after launch timeout");
       }
     } else {
@@ -917,6 +929,9 @@ export class Orchestrator {
   private stuckOrRetry(item: OrchestratorItem, reason?: string): Action[] {
     if (item.retryCount < this.config.maxRetries) {
       item.retryCount++;
+      // Reset liveness tracking for the new attempt
+      item.lastAliveAt = undefined;
+      item.notAliveCount = 0;
       this.transition(item, "ready");
       return [{ type: "retry", itemId: item.id }];
     }
@@ -2168,13 +2183,9 @@ export class Orchestrator {
       item.workspaceRef = undefined;
     }
 
-    // Clean the old worktree to prepare for a fresh launch
-    const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
-    const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
-    const repoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
-    const worktreeDir = repoRoot !== ctx.projectRoot ? join(repoRoot, ".worktrees") : ctx.worktreeDir;
-    deps.cleanSingleWorktree(item.id, worktreeDir, repoRoot);
-
+    // Preserve the worktree and branch — the retried worker will launch
+    // into the existing worktree and pick up uncommitted edits + pushed
+    // commits from the previous attempt.
     return { success: true };
   }
 
