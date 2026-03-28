@@ -74,6 +74,8 @@ export interface StatusItem {
   stderrTail?: string;
   /** Daemon name that owns this item in crew mode. "local" when not in crew mode. */
   daemonName?: string;
+  /** Absolute path to preserved worktree directory (set for stuck items). */
+  worktreePath?: string;
 }
 
 // ─── Dependency tree types ────────────────────────────────────────────────────
@@ -350,6 +352,11 @@ export function formatTelemetrySuffix(item: StatusItem): string {
       const trimmed = firstLine.length > 60 ? firstLine.slice(0, 57) + "..." : firstLine;
       parts.push(`stderr: ${trimmed}`);
     }
+  }
+
+  // Show preserved worktree path for stuck items so users know where to find partial work
+  if (item.state === "stuck" && item.worktreePath) {
+    parts.push(`worktree: ${item.worktreePath}`);
   }
 
   return parts.length > 0 ? ` ${DIM}(${parts.join(", ")})${RESET}` : "";
@@ -928,6 +935,7 @@ export function daemonStateToStatusItems(state: DaemonState): StatusItem[] {
     endedAt: item.endedAt,
     exitCode: item.exitCode,
     stderrTail: item.stderrTail,
+    worktreePath: item.worktreePath,
   }));
 }
 

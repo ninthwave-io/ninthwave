@@ -214,7 +214,7 @@ describe("Orchestrator", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean" && a.itemId === "H-1-1")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "H-1-1")).toBe(true);
   });
 
   // ── 5. Implementing → PR open ─────────────────────────────────
@@ -279,7 +279,7 @@ describe("Orchestrator", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean" && a.itemId === "H-1-1")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "H-1-1")).toBe(true);
   });
 
   // ── 6. CI pass → merge action (auto strategy) ─────────────────
@@ -475,7 +475,7 @@ describe("Orchestrator", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean" && a.itemId === "H-1-1")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "H-1-1")).toBe(true);
   });
 
   // ── 9. PR merged → clean action ───────────────────────────────
@@ -1805,7 +1805,7 @@ describe("Orchestrator", () => {
           snapshotWith([{ id: "X-1-1", workerAlive: false }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
-        expect(actions.some((a) => a.type === "clean" && a.itemId === "X-1-1")).toBe(true);
+        expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "X-1-1")).toBe(true);
       });
 
       it("stays launching when no snapshot for item", () => {
@@ -1863,7 +1863,7 @@ describe("Orchestrator", () => {
           snapshotWith([{ id: "X-1-1", workerAlive: false }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
-        expect(actions.some((a) => a.type === "clean" && a.itemId === "X-1-1")).toBe(true);
+        expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "X-1-1")).toBe(true);
       });
 
       it("stays implementing when worker alive but no PR yet", () => {
@@ -2247,7 +2247,7 @@ describe("Orchestrator", () => {
           snapshotWith([{ id: "X-1-1", ciStatus: "fail", prState: "open" }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
-        expect(actions.some((a) => a.type === "clean" && a.itemId === "X-1-1")).toBe(true);
+        expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "X-1-1")).toBe(true);
       });
 
       it("→ merged when PR externally merged (takes priority)", () => {
@@ -3155,7 +3155,7 @@ describe("Orchestrator", () => {
       );
 
       expect(orch2.getItem("A-1-1")!.state).toBe("stuck");
-      expect(actions.some((a) => a.type === "clean" && a.itemId === "A-1-1")).toBe(true);
+      expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "A-1-1")).toBe(true);
     });
 
     it("reconstructed state preserves workspaceRef and prNumber", () => {
@@ -3407,7 +3407,7 @@ describe("Orchestrator", () => {
 
       expect(orch.getItem("R-1-1")!.state).toBe("stuck");
       expect(actions.filter((a) => a.type === "retry")).toHaveLength(0);
-      expect(actions.some((a) => a.type === "clean" && a.itemId === "R-1-1")).toBe(true);
+      expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "R-1-1")).toBe(true);
     });
 
     it("retryCount is tracked in item for analytics", () => {
@@ -3464,7 +3464,7 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-1-1")!.retryCount).toBe(2);
       expect(orch.getItem("R-1-1")!.state).toBe("stuck");
       expect(actions.some((a) => a.type === "retry")).toBe(false);
-      expect(actions.some((a) => a.type === "clean" && a.itemId === "R-1-1")).toBe(true);
+      expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "R-1-1")).toBe(true);
     });
 
     it("defaults maxRetries to 1", () => {
@@ -3489,7 +3489,7 @@ describe("Orchestrator", () => {
       // CI exhaustion goes to stuck, not retried via worker retry
       expect(orch.getItem("R-1-1")!.state).toBe("stuck");
       expect(orch.getItem("R-1-1")!.retryCount).toBe(0);
-      expect(actions.some((a) => a.type === "clean" && a.itemId === "R-1-1")).toBe(true);
+      expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "R-1-1")).toBe(true);
     });
 
     it("retry from launching state re-launches in same cycle", () => {
@@ -3532,7 +3532,7 @@ describe("Orchestrator", () => {
       );
 
       expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-      expect(actions).toEqual([{ type: "clean", itemId: "H-1-1" }]);
+      expect(actions).toEqual([{ type: "workspace-close", itemId: "H-1-1" }]);
     });
 
     it("transitions implementing → stuck when stale commit beyond activity timeout", () => {
@@ -3550,7 +3550,7 @@ describe("Orchestrator", () => {
       );
 
       expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-      expect(actions).toEqual([{ type: "clean", itemId: "H-1-1" }]);
+      expect(actions).toEqual([{ type: "workspace-close", itemId: "H-1-1" }]);
     });
 
     it("keeps implementing when worker has recent commits", () => {
@@ -5887,6 +5887,111 @@ describe("Orchestrator", () => {
       expect(setCommitStatus).toHaveBeenCalledWith(
         "/tmp/other-repo", 44, "success", "ninthwave/review", "Review passed",
       );
+    });
+  });
+
+  // ── Stuck worktree preservation (H-WR-2) ──────────────────────────
+
+  describe("stuck worktree preservation", () => {
+    it("stuckOrRetry emits workspace-close (not clean) when retries exhausted", () => {
+      orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
+      orch.addItem(makeWorkItem("WP-1-1"));
+      orch.setState("WP-1-1", "implementing");
+
+      // Debounce: 3 consecutive not-alive checks
+      orch.processTransitions(snapshotWith([{ id: "WP-1-1", workerAlive: false }]));
+      orch.processTransitions(snapshotWith([{ id: "WP-1-1", workerAlive: false }]));
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "WP-1-1", workerAlive: false }]),
+      );
+
+      expect(orch.getItem("WP-1-1")!.state).toBe("stuck");
+      // Should emit workspace-close (preserves worktree) not clean (removes worktree)
+      expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "WP-1-1")).toBe(true);
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "WP-1-1")).toBe(false);
+    });
+
+    it("executeWorkspaceClose captures screen output and closes workspace without removing worktree", () => {
+      const deps = mockDeps({
+        readScreen: vi.fn(() => "Error: Worker crashed"),
+        warn: vi.fn(),
+      });
+      orch = new Orchestrator({ reviewEnabled: false });
+      orch.addItem(makeWorkItem("WP-1-2"));
+      orch.setState("WP-1-2", "stuck");
+      orch.getItem("WP-1-2")!.workspaceRef = "workspace:5";
+
+      const result = orch.executeAction(
+        { type: "workspace-close", itemId: "WP-1-2" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      // Screen should be captured
+      expect(deps.readScreen).toHaveBeenCalledWith("workspace:5", 50);
+      expect(orch.getItem("WP-1-2")!.lastScreenOutput).toBe("Error: Worker crashed");
+      // Workspace should be closed
+      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:5");
+      // Worktree should NOT be cleaned
+      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+    });
+
+    it("done items still get full cleanup (clean action removes worktree)", () => {
+      const deps = mockDeps();
+      orch = new Orchestrator({ reviewEnabled: false });
+      orch.addItem(makeWorkItem("WP-1-3"));
+      orch.setState("WP-1-3", "done");
+      orch.getItem("WP-1-3")!.workspaceRef = "workspace:6";
+
+      const result = orch.executeAction(
+        { type: "clean", itemId: "WP-1-3" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(true);
+      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:6");
+      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
+        "WP-1-3",
+        defaultCtx.worktreeDir,
+        defaultCtx.projectRoot,
+      );
+    });
+
+    it("CI exhaustion emits workspace-close (not clean) when stuck", () => {
+      orch = new Orchestrator({ reviewEnabled: false, maxCiRetries: 0 });
+      orch.addItem(makeWorkItem("WP-1-4"));
+      orch.setState("WP-1-4", "ci-failed");
+      orch.getItem("WP-1-4")!.ciFailCount = 1;
+
+      const actions = orch.processTransitions(
+        snapshotWith([{ id: "WP-1-4", ciStatus: "fail", prState: "open" }]),
+      );
+
+      expect(orch.getItem("WP-1-4")!.state).toBe("stuck");
+      expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "WP-1-4")).toBe(true);
+      expect(actions.some((a) => a.type === "clean" && a.itemId === "WP-1-4")).toBe(false);
+    });
+
+    it("launch stores worktreePath on success", () => {
+      const deps = mockDeps({
+        launchSingleItem: vi.fn(() => ({
+          worktreePath: "/tmp/test/.worktrees/ninthwave-WP-1-5",
+          workspaceRef: "workspace:7",
+        })),
+      });
+      orch = new Orchestrator({ reviewEnabled: false });
+      orch.addItem(makeWorkItem("WP-1-5"));
+      orch.setState("WP-1-5", "launching");
+
+      orch.executeAction(
+        { type: "launch", itemId: "WP-1-5" },
+        defaultCtx,
+        deps,
+      );
+
+      expect(orch.getItem("WP-1-5")!.worktreePath).toBe("/tmp/test/.worktrees/ninthwave-WP-1-5");
     });
   });
 

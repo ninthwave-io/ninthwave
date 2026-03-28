@@ -304,7 +304,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     );
     expect(orch.getItem("STUCK-1")!.state).toBe("stuck");
     expect(orch.getItem("STUCK-1")!.failureReason).toContain("worker-crashed");
-    expect(actions.some((a) => a.type === "clean" && a.itemId === "STUCK-1")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "STUCK-1")).toBe(true);
   });
 
   it("worker crash during implementing without PR triggers retry", () => {
@@ -382,10 +382,10 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     );
     expect(orch.getItem("STUCK-3")!.state).toBe("stuck");
     expect(orch.getItem("STUCK-3")!.failureReason).toContain("max CI retries");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
-  it("executeClean captures screen output for stuck items", () => {
+  it("executeWorkspaceClose captures screen output for stuck items", () => {
     const orch = new Orchestrator({ reviewEnabled: false, maxRetries: 0 });
     const warnFn = vi.fn();
     const deps = mockDeps({
@@ -398,13 +398,15 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     orch.getItem("STUCK-4")!.workspaceRef = "workspace:4";
 
     const result = orch.executeAction(
-      { type: "clean", itemId: "STUCK-4" },
+      { type: "workspace-close", itemId: "STUCK-4" },
       defaultCtx,
       deps,
     );
     expect(result.success).toBe(true);
     expect(orch.getItem("STUCK-4")!.lastScreenOutput).toBe("Error: OOM killed");
     expect(warnFn).toHaveBeenCalledWith(expect.stringContaining("STUCK-4"));
+    // Worktree should NOT be cleaned — workspace-close preserves it
+    expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
   });
 });
 

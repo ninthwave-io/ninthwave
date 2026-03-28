@@ -106,6 +106,8 @@ export interface OrchestratorItem {
   repairAttemptCount?: number;
   /** Set when a CI failure notification failed because no worker was running. Signals executeLaunch to force-launch a worker even when an existing PR is found. Cleared after launch. */
   needsCiFix?: boolean;
+  /** Absolute path to the worktree directory. Preserved for stuck items so users can inspect partial work. */
+  worktreePath?: string;
   /** SHA of the merge commit on main after PR is merged. Used to poll CI on main. */
   mergeCommitSha?: string;
   /** Number of times CI verification on main has failed for this item. */
@@ -197,6 +199,7 @@ export type ActionType =
   | "notify-ci-failure"
   | "notify-review"
   | "clean"
+  | "workspace-close"
   | "rebase"
   | "daemon-rebase"
   | "launch-repair"
@@ -919,7 +922,7 @@ export class Orchestrator {
     }
     this.transition(item, "stuck");
     item.failureReason = reason;
-    return [{ type: "clean", itemId: item.id }];
+    return [{ type: "workspace-close", itemId: item.id }];
   }
 
   /**
@@ -952,7 +955,7 @@ export class Orchestrator {
       if (item.ciFailCount > this.config.maxCiRetries) {
         this.transition(item, "stuck");
         item.failureReason = `ci-failed: exceeded max CI retries (${this.config.maxCiRetries})`;
-        return [{ type: "clean", itemId: item.id }];
+        return [{ type: "workspace-close", itemId: item.id }];
       }
       // If CI recovered, transition and continue processing
       if (ciStatus === "pass") {
@@ -1471,6 +1474,8 @@ export class Orchestrator {
         return this.executeNotifyReview(item, action, deps);
       case "clean":
         return this.executeClean(item, ctx, deps);
+      case "workspace-close":
+        return this.executeWorkspaceClose(item, deps);
       case "rebase":
         return this.executeRebase(item, action, deps);
       case "daemon-rebase":
@@ -1601,6 +1606,7 @@ export class Orchestrator {
       }
 
       item.workspaceRef = result.workspaceRef;
+      item.worktreePath = result.worktreePath;
       return { success: true };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1960,6 +1966,37 @@ export class Orchestrator {
       if (workspaceClosed === false) failures.push("workspace close");
       if (!worktreeCleaned) failures.push("worktree cleanup");
       return { success: false, error: `Clean failed for ${item.id}: ${failures.join(" and ")} failed` };
+    }
+
+    return { success: true };
+  }
+
+  /**
+   * Close the workspace for a stuck item without removing the worktree.
+   * Captures screen output for diagnostics, then kills the session.
+   * The worktree is preserved so the user can inspect partial work.
+   */
+  private executeWorkspaceClose(
+    item: OrchestratorItem,
+    deps: OrchestratorDeps,
+  ): ActionResult {
+    // Read screen before closing — capture error output for stuck diagnostics
+    if (item.workspaceRef && deps.readScreen) {
+      try {
+        const screen = deps.readScreen(item.workspaceRef, 50);
+        if (screen) {
+          item.lastScreenOutput = screen;
+          deps.warn?.(`[${item.id}] Permanently stuck. Screen output:\n${screen}`);
+        }
+      } catch { /* best-effort */ }
+    }
+
+    // Close workspace but do NOT remove worktree — preserve for manual inspection
+    if (item.workspaceRef) {
+      const closed = deps.closeWorkspace(item.workspaceRef);
+      if (!closed) {
+        return { success: false, error: `Failed to close workspace for ${item.id}` };
+      }
     }
 
     return { success: true };

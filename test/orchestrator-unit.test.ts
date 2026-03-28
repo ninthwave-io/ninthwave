@@ -539,7 +539,7 @@ describe("handleImplementing", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
   it("emits sync-stack-comments when stacked PR opens", () => {
@@ -608,7 +608,7 @@ describe("heartbeat-based health detection", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
   it("worker with no heartbeat file falls back to commit-based timeout detection (process dead)", () => {
@@ -625,7 +625,7 @@ describe("heartbeat-based health detection", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
   it("worker with no heartbeat file and recent commits stays implementing", () => {
@@ -715,7 +715,7 @@ describe("process liveness timeout suppression", () => {
 
     // Activity timeout is the hard cap even when process is alive
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
   it("worker with stale heartbeat and workerAlive=false is marked stuck at launchTimeoutMs", () => {
@@ -737,7 +737,7 @@ describe("process liveness timeout suppression", () => {
 
     // workerAlive=false: launch timeout applies (existing behavior)
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
   it("fresh heartbeat still takes priority over process liveness signal", () => {
@@ -935,7 +935,7 @@ describe("handleCiPassed", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
-    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
   });
 
   it("recovers from ci-failed to ci-pending when CI goes back to pending", () => {
