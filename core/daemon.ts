@@ -8,6 +8,8 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  renameSync,
+  statSync,
 } from "fs";
 import { dirname, join } from "path";
 import type { OrchestratorItem } from "./orchestrator.ts";
@@ -437,6 +439,82 @@ export function serializeOrchestratorState(
       ...(item.repairWorkspaceRef ? { repairWorkspaceRef: item.repairWorkspaceRef } : {}),
     })),
   };
+}
+
+// ── Log rotation ────────────────────────────────────────────────────
+
+/** Injectable I/O for log rotation (separate from DaemonIO to avoid breaking existing callers). */
+export interface LogRotateIO {
+  existsSync: typeof existsSync;
+  statSync: typeof statSync;
+  renameSync: typeof renameSync;
+  unlinkSync: typeof unlinkSync;
+}
+
+const defaultLogRotateIO: LogRotateIO = {
+  existsSync,
+  statSync,
+  renameSync,
+  unlinkSync,
+};
+
+/**
+ * Rotate a log file if it exceeds `maxBytes`.
+ *
+ * Shifts existing rotations: `.{maxFiles}` is deleted, `.{n}` → `.{n+1}` for
+ * n = maxFiles-1 down to 1, base → `.1`. At most `maxFiles` rotated files are kept.
+ *
+ * Call at daemon startup before any log writes to bound total log storage.
+ */
+export function rotateLogs(
+  logPath: string,
+  maxBytes: number = 5 * 1024 * 1024,
+  maxFiles: number = 3,
+  io: LogRotateIO = defaultLogRotateIO,
+): boolean {
+  // Nothing to rotate if the log doesn't exist
+  if (!io.existsSync(logPath)) return false;
+
+  let size: number;
+  try {
+    size = io.statSync(logPath).size;
+  } catch {
+    return false;
+  }
+
+  if (size < maxBytes) return false;
+
+  // Shift existing rotations: delete .{maxFiles}, rename .{n} → .{n+1}
+  const maxRotation = `${logPath}.${maxFiles}`;
+  if (io.existsSync(maxRotation)) {
+    try {
+      io.unlinkSync(maxRotation);
+    } catch {
+      // best-effort
+    }
+  }
+
+  for (let n = maxFiles - 1; n >= 1; n--) {
+    const from = `${logPath}.${n}`;
+    const to = `${logPath}.${n + 1}`;
+    if (io.existsSync(from)) {
+      try {
+        io.renameSync(from, to);
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
+  // Rename base → .1
+  try {
+    io.renameSync(logPath, `${logPath}.1`);
+  } catch {
+    // best-effort — if rename fails, log will just keep growing
+    return false;
+  }
+
+  return true;
 }
 
 // ── Runtime state migration ─────────────────────────────────────────

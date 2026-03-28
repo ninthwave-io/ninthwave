@@ -289,7 +289,49 @@ export function resolveLogPath(projectRoot: string): string {
 }
 
 /**
+ * Collect entries from the current log file and rotated files (.1, .2, .3, ...).
+ * Reads rotated files from oldest to newest so entries stay in chronological order.
+ * Only reads as many rotated files as needed to satisfy `options.lines`.
+ */
+export function readEntriesWithRotated(
+  logPath: string,
+  options: LogsOptions,
+  io: LogsIO = defaultIO,
+): LogEntry[] {
+  // Gather all available log files: current + rotated (.1, .2, .3, ...)
+  const files: string[] = [];
+  if (io.existsSync(logPath)) files.push(logPath);
+
+  // Discover rotated files
+  for (let n = 1; ; n++) {
+    const rotated = `${logPath}.${n}`;
+    if (!io.existsSync(rotated)) break;
+    files.push(rotated);
+  }
+
+  if (files.length === 0) return [];
+
+  // Read from newest rotated → current (reversed to build from oldest first)
+  // files[0] = current, files[1] = .1 (most recent rotation), files[2] = .2, etc.
+  // We want chronological order: oldest first, so reverse the list
+  const orderedFiles = files.slice().reverse();
+
+  let entries: LogEntry[] = [];
+  for (const file of orderedFiles) {
+    const content = io.readFileSync(file, "utf-8");
+    const fileEntries = parseLogLines(content);
+    entries = entries.concat(fileEntries);
+  }
+
+  if (options.item) entries = filterByItem(entries, options.item);
+  if (options.level) entries = filterByLevel(entries, options.level);
+
+  return entries;
+}
+
+/**
  * Read and display log entries (non-follow mode).
+ * Searches rotated files when --lines requests more entries than the current file contains.
  * Returns the formatted output lines for testing.
  */
 export function readLogs(
@@ -298,14 +340,14 @@ export function readLogs(
   io: LogsIO = defaultIO,
 ): string[] {
   if (!io.existsSync(logPath)) {
-    return ["No orchestration logs found. Run `nw watch` to generate logs."];
+    // Check if any rotated files exist
+    const hasRotated = io.existsSync(`${logPath}.1`);
+    if (!hasRotated) {
+      return ["No orchestration logs found. Run `nw watch` to generate logs."];
+    }
   }
 
-  const content = io.readFileSync(logPath, "utf-8");
-  let entries = parseLogLines(content);
-
-  if (options.item) entries = filterByItem(entries, options.item);
-  if (options.level) entries = filterByLevel(entries, options.level);
+  const entries = readEntriesWithRotated(logPath, options, io);
 
   // Take last N entries
   const tail = entries.slice(-options.lines);

@@ -21,8 +21,10 @@ import {
   logFilePath,
   userStateDir,
   migrateRuntimeState,
+  rotateLogs,
   type DaemonIO,
   type DaemonState,
+  type LogRotateIO,
   type ProcessExistsCheck,
 } from "../core/daemon.ts";
 import type { OrchestratorItem } from "../core/orchestrator.ts";
@@ -809,5 +811,149 @@ describe("migrateRuntimeState", () => {
     expect(existsSync(join(oldDir, "domains.conf"))).toBe(true);
     // Runtime file should be migrated
     expect(existsSync(join(oldDir, "orchestrator.pid"))).toBe(false);
+  });
+});
+
+// ── rotateLogs ──────────────────────────────────────────────────────
+
+describe("rotateLogs", () => {
+  let tempDir: string;
+  const origHome = process.env.HOME;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "nw-rotate-test-"));
+    process.env.HOME = join(tempDir, "home");
+    mkdirSync(join(tempDir, "home"), { recursive: true });
+  });
+
+  afterEach(() => {
+    process.env.HOME = origHome;
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch { /* cleanup best-effort */ }
+  });
+
+  it("returns false and does nothing when log file does not exist", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    const result = rotateLogs(logPath, 100, 3);
+    expect(result).toBe(false);
+    expect(existsSync(logPath)).toBe(false);
+  });
+
+  it("returns false when file size is below maxBytes threshold", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    writeFileSync(logPath, "small content");
+    const result = rotateLogs(logPath, 1024 * 1024, 3); // 1MB threshold
+    expect(result).toBe(false);
+    // File should still be in place
+    expect(existsSync(logPath)).toBe(true);
+    expect(readFileSync(logPath, "utf-8")).toBe("small content");
+  });
+
+  it("rotates when file exceeds maxBytes — renames base to .1", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    const bigContent = "x".repeat(200);
+    writeFileSync(logPath, bigContent);
+
+    const result = rotateLogs(logPath, 100, 3); // 100 byte threshold
+    expect(result).toBe(true);
+    // Base file should be gone (renamed to .1)
+    expect(existsSync(logPath)).toBe(false);
+    // .1 should contain the old content
+    expect(existsSync(`${logPath}.1`)).toBe(true);
+    expect(readFileSync(`${logPath}.1`, "utf-8")).toBe(bigContent);
+  });
+
+  it("shifts existing .1 to .2 when rotating", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    writeFileSync(logPath, "x".repeat(200));
+    writeFileSync(`${logPath}.1`, "old-rotation-1");
+
+    rotateLogs(logPath, 100, 3);
+
+    expect(existsSync(logPath)).toBe(false);
+    expect(readFileSync(`${logPath}.1`, "utf-8")).toBe("x".repeat(200));
+    expect(readFileSync(`${logPath}.2`, "utf-8")).toBe("old-rotation-1");
+  });
+
+  it("shifts .1→.2 and .2→.3 when rotating", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    writeFileSync(logPath, "x".repeat(200));
+    writeFileSync(`${logPath}.1`, "rotation-1");
+    writeFileSync(`${logPath}.2`, "rotation-2");
+
+    rotateLogs(logPath, 100, 3);
+
+    expect(existsSync(logPath)).toBe(false);
+    expect(readFileSync(`${logPath}.1`, "utf-8")).toBe("x".repeat(200));
+    expect(readFileSync(`${logPath}.2`, "utf-8")).toBe("rotation-1");
+    expect(readFileSync(`${logPath}.3`, "utf-8")).toBe("rotation-2");
+  });
+
+  it("deletes oldest rotation (.3) when at maxFiles limit", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    writeFileSync(logPath, "x".repeat(200));
+    writeFileSync(`${logPath}.1`, "rotation-1");
+    writeFileSync(`${logPath}.2`, "rotation-2");
+    writeFileSync(`${logPath}.3`, "rotation-3-should-be-deleted");
+
+    rotateLogs(logPath, 100, 3);
+
+    expect(existsSync(logPath)).toBe(false);
+    expect(readFileSync(`${logPath}.1`, "utf-8")).toBe("x".repeat(200));
+    expect(readFileSync(`${logPath}.2`, "utf-8")).toBe("rotation-1");
+    expect(readFileSync(`${logPath}.3`, "utf-8")).toBe("rotation-2");
+    // Only 3 rotated files kept — no .4
+    expect(existsSync(`${logPath}.4`)).toBe(false);
+  });
+
+  it("keeps at most maxFiles rotated files", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    writeFileSync(logPath, "x".repeat(200));
+    writeFileSync(`${logPath}.1`, "r1");
+    writeFileSync(`${logPath}.2`, "r2");
+    writeFileSync(`${logPath}.3`, "r3");
+
+    rotateLogs(logPath, 100, 3);
+
+    // Count rotated files
+    const rotated = [1, 2, 3, 4].filter(n => existsSync(`${logPath}.${n}`));
+    expect(rotated).toHaveLength(3);
+    expect(rotated).toEqual([1, 2, 3]);
+  });
+
+  it("works with maxFiles=1 (only one backup)", () => {
+    const logPath = join(tempDir, "orchestrator.log");
+    writeFileSync(logPath, "x".repeat(200));
+    writeFileSync(`${logPath}.1`, "old-backup");
+
+    rotateLogs(logPath, 100, 1);
+
+    expect(existsSync(logPath)).toBe(false);
+    expect(readFileSync(`${logPath}.1`, "utf-8")).toBe("x".repeat(200));
+    expect(existsSync(`${logPath}.2`)).toBe(false);
+  });
+
+  it("uses injectable IO for testability", () => {
+    const files = new Map<string, string>();
+    files.set("/log", "x".repeat(200));
+
+    const io: LogRotateIO = {
+      existsSync: (p: string) => files.has(p as string),
+      statSync: (p: string) => ({ size: files.get(p as string)?.length ?? 0 }) as any,
+      renameSync: (from: string, to: string) => {
+        const content = files.get(from as string);
+        if (content !== undefined) {
+          files.set(to as string, content);
+          files.delete(from as string);
+        }
+      },
+      unlinkSync: (p: string) => { files.delete(p as string); },
+    };
+
+    const result = rotateLogs("/log", 100, 3, io);
+    expect(result).toBe(true);
+    expect(files.has("/log")).toBe(false);
+    expect(files.get("/log.1")).toBe("x".repeat(200));
   });
 });
