@@ -32,10 +32,14 @@ Each TODO item moves through a state machine defined in [`core/orchestrator.ts`]
 | `ci-pending` | PR created; CI checks running (or awaiting CI start) |
 | `ci-passed` | CI green; ready to merge (or review) |
 | `ci-failed` | CI red; worker being notified |
+| `repairing` | CI-fix worker active (direct repair mode) |
 | `review-pending` | Awaiting review worker launch |
-| `reviewing` | Review worker active |
+| `reviewing` | Review worker active (tracked via separate `reviewWipLimit`) |
 | `merging` | Merge in progress |
 | `merged` | PR merged |
+| `verifying` | Post-merge verification running |
+| `verify-failed` | Post-merge verification failed; repairer being launched |
+| `repairing-main` | Repairer worker fixing a broken main branch |
 | `done` | Cleanup complete |
 | `stuck` | Max retries exhausted or unrecoverable failure |
 
@@ -69,11 +73,11 @@ stateDiagram-v2
 
 ### WIP Limit
 
-States that count toward the WIP limit (see `OrchestratorConfig.wipLimit`): `launching`, `implementing`, `ci-pending`, `ci-passed`, `ci-failed`, `review-pending`. Review workers have a separate limit (`reviewWipLimit`).
+States that count toward the WIP limit (see `OrchestratorConfig.wipLimit`): `bootstrapping`, `launching`, `implementing`, `ci-pending`, `ci-passed`, `ci-failed`, `repairing`, `review-pending`, `merging`. Review workers (`reviewing`) have a separate limit (`reviewWipLimit`).
 
 ### Stacked Launches
 
-When `enableStacking=true`, an item whose only in-flight dependency is in a "stackable" state (`implementing`, `ci-pending`, `ci-passed`, `ci-failed`) can launch early against the dep's branch rather than waiting for the dep to fully merge. See `STACKABLE_STATES` in `core/orchestrator.ts`.
+When `enableStacking=true`, an item whose only in-flight dependency is in a "stackable" state (`ci-passed`, `review-pending`, `merging`) can launch early against the dep's branch rather than waiting for the dep to fully merge. See `STACKABLE_STATES` in `core/orchestrator.ts`.
 
 ---
 
