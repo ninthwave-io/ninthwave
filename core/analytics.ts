@@ -3,6 +3,8 @@
 // cost/token tracking, and tool info as structured log events.
 
 import type { OrchestratorItem, OrchestratorConfig } from "./orchestrator.ts";
+import { run } from "./shell.ts";
+import type { RunResult } from "./types.ts";
 
 // ── Metrics schema ────────────────────────────────────────────────────
 
@@ -318,40 +320,51 @@ export function collectRunMetrics(
   };
 }
 
+/** Shell runner signature -- injectable for testing. */
+export type ShellRunner = (cmd: string, args: string[]) => RunResult;
+
 /**
- * Auto-commit friction entries after an orchestration run.
- * Only stages files under the friction path -- never commits unrelated changes.
+ * Stage and commit files under a given sub-path of the repo.
+ * Handles both analytics and friction paths (and any other `.ninthwave/` subdirectory).
  *
- * Safety: if non-friction files are already staged in the index, skips the
- * commit and returns `dirty_index` to avoid accidentally including them.
+ * Only stages files under `relPath` -- never commits unrelated changes.
+ *
+ * Safety: if non-relPath files are already staged in the index, unstages the
+ * files we just added and returns false to avoid accidentally including them.
  *
  * @param projectRoot - The git repo root
- * @param frictionRelPath - Relative path to friction dir (e.g., ".ninthwave/friction")
- * @param deps - Injectable git operations
+ * @param relPath - Relative path to stage (e.g., ".ninthwave/friction")
+ * @param commitMessage - Commit message to use
+ * @param runner - Injectable shell runner (defaults to the real shell)
+ * @returns true when a commit was created, false otherwise
  */
-export function commitFrictionFiles(
+export function commitPathFiles(
   projectRoot: string,
-  frictionRelPath: string,
-  deps: AnalyticsCommitDeps,
-): CommitAnalyticsResult {
-  // 1. Check if friction files have any changes
-  if (!deps.hasChanges(projectRoot, frictionRelPath)) {
-    return { committed: false, reason: "no_changes" };
+  relPath: string,
+  commitMessage: string,
+  runner: ShellRunner = (cmd, args) => run(cmd, args),
+): boolean {
+  // 1. Check if relPath has any changes (staged, unstaged, or untracked)
+  const status = runner("git", ["-C", projectRoot, "status", "--porcelain", "--", relPath]);
+  if (status.exitCode !== 0 || !status.stdout.trim()) {
+    return false; // no changes
   }
 
-  // 2. Stage friction files only
-  deps.gitAdd(projectRoot, [frictionRelPath]);
+  // 2. Stage files under relPath
+  runner("git", ["-C", projectRoot, "add", "--", relPath]);
 
-  // 3. Safety check: ensure only friction files are staged
-  const staged = deps.getStagedFiles(projectRoot);
-  const nonFriction = staged.filter((f) => !f.startsWith(frictionRelPath));
-  if (nonFriction.length > 0) {
-    // Unstage friction files we just added to avoid leaving them staged
-    deps.gitReset(projectRoot, [frictionRelPath]);
-    return { committed: false, reason: "dirty_index" };
+  // 3. Safety check: ensure only relPath files are staged
+  const staged = runner("git", ["-C", projectRoot, "diff", "--name-only", "--cached"]);
+  const stagedFiles = staged.stdout.split("\n").filter(Boolean);
+  const nonRelPath = stagedFiles.filter((f) => !f.startsWith(relPath));
+
+  if (nonRelPath.length > 0) {
+    // Unstage the files we just added to avoid leaving them staged
+    runner("git", ["-C", projectRoot, "restore", "--staged", "--", relPath]);
+    return false; // dirty index
   }
 
   // 4. Commit
-  deps.gitCommit(projectRoot, "chore: commit friction entries");
-  return { committed: true, reason: "committed" };
+  runner("git", ["-C", projectRoot, "commit", "-m", commitMessage]);
+  return true;
 }
