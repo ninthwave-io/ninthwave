@@ -21,6 +21,7 @@ import {
   formatSummary,
   formatStatusTable,
   formatCrewStatusPanel,
+  formatCrewInline,
   computeBlockedBy,
   sortByBlockedThenId,
   computeSessionMetrics,
@@ -2383,8 +2384,8 @@ describe("small terminal fallback", () => {
 // ── Crew mode TUI tests ──────────────────────────────────────────────
 
 describe("crew mode TUI rendering", () => {
-  it("formatCrewStatusPanel shows connected crew status", () => {
-    const output = formatCrewStatusPanel({
+  it("formatCrewInline shows crew code and online count", () => {
+    const output = formatCrewInline({
       crewCode: "A7K-M2P",
       daemonCount: 2,
       availableCount: 3,
@@ -2392,15 +2393,22 @@ describe("crew mode TUI rendering", () => {
       completedCount: 2,
       connected: true,
     });
-    const text = stripAnsi(output);
-    expect(text).toContain("Crew A7K-M2P");
-    expect(text).toContain("2 daemons");
-    expect(text).toContain("3 avail");
-    expect(text).toContain("5 claimed");
-    expect(text).toContain("2 done");
+    expect(output).toBe("Crew A7K-M2P  2 online");
   });
 
-  it("formatCrewStatusPanel centers content within terminal width", () => {
+  it("formatCrewInline shows OFFLINE when disconnected", () => {
+    const output = formatCrewInline({
+      crewCode: "A7K-M2P",
+      daemonCount: 0,
+      availableCount: 0,
+      claimedCount: 0,
+      completedCount: 0,
+      connected: false,
+    });
+    expect(output).toBe("Crew A7K-M2P  OFFLINE");
+  });
+
+  it("formatCrewStatusPanel still renders full-width bar (backward compat)", () => {
     const output = formatCrewStatusPanel({
       crewCode: "ABC",
       daemonCount: 2,
@@ -2411,29 +2419,25 @@ describe("crew mode TUI rendering", () => {
     }, 80);
     const text = stripAnsi(output);
     expect(text.length).toBe(80);
-    // Content should have leading padding (centered, not left-aligned)
-    expect(text.startsWith(" ")).toBe(true);
-    const trimmed = text.trim();
-    const leading = text.indexOf(trimmed);
-    const trailing = text.length - leading - trimmed.length;
-    expect(Math.abs(leading - trailing)).toBeLessThanOrEqual(1);
+    expect(text).toContain("Crew ABC");
   });
 
-  it("formatCrewStatusPanel shows OFFLINE when disconnected", () => {
-    const output = formatCrewStatusPanel({
-      crewCode: "A7K-M2P",
-      daemonCount: 0,
+  it("formatTitleMetrics renders inline crew status after Ninthwave", () => {
+    const items: StatusItem[] = [makeStatusItem()];
+    const output = formatTitleMetrics(items, 100, new Date().toISOString(), {
+      crewCode: "X1Y-Z2W",
+      daemonCount: 1,
       availableCount: 0,
-      claimedCount: 0,
+      claimedCount: 1,
       completedCount: 0,
-      connected: false,
+      connected: true,
     });
     const text = stripAnsi(output);
-    expect(text).toContain("OFFLINE");
-    expect(text).toContain("reconnecting");
+    expect(text).toContain("Ninthwave");
+    expect(text).toContain("Crew X1Y-Z2W  1 online");
   });
 
-  it("formatStatusTable includes crew status bar when crewStatus is set", () => {
+  it("formatStatusTable includes inline crew status on title line", () => {
     const items: StatusItem[] = [
       { ...makeStatusItem(), remote: false },
     ];
@@ -2448,7 +2452,7 @@ describe("crew mode TUI rendering", () => {
       },
     });
     const text = stripAnsi(output);
-    expect(text).toContain("Crew X1Y-Z2W");
+    expect(text).toContain("Crew X1Y-Z2W  1 online");
     // No DAEMON column in new design
     expect(text).not.toContain("DAEMON");
   });
@@ -2473,9 +2477,9 @@ describe("crew mode TUI rendering", () => {
     expect(text).toContain("\u25CF");
   });
 
-  it("buildStatusLayout includes crew status in header", () => {
+  it("buildStatusLayout includes inline crew status in header (no extra line)", () => {
     const items: StatusItem[] = [makeStatusItem()];
-    const layout = buildStatusLayout(items, 100, undefined, false, {
+    const withCrew = buildStatusLayout(items, 100, undefined, false, {
       crewStatus: {
         crewCode: "ABC-DEF",
         daemonCount: 2,
@@ -2485,8 +2489,11 @@ describe("crew mode TUI rendering", () => {
         connected: true,
       },
     });
-    const headerText = stripAnsi(layout.headerLines.join("\n"));
-    expect(headerText).toContain("Crew ABC-DEF");
+    const withoutCrew = buildStatusLayout(items, 100);
+    const headerText = stripAnsi(withCrew.headerLines.join("\n"));
+    expect(headerText).toContain("Crew ABC-DEF  2 online");
+    // Inline crew status should NOT add an extra header line
+    expect(withCrew.headerLines.length).toBe(withoutCrew.headerLines.length);
     // DAEMON column removed in favor of remote dot indicator
     expect(headerText).not.toContain("DAEMON");
   });

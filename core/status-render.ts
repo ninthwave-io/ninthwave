@@ -815,7 +815,14 @@ export function formatStatusTable(
 ): string {
   const lines: string[] = [];
 
-  lines.push(`${BOLD}Ninthwave${RESET}`);
+  const opts = viewOptions ?? {};
+
+  // Title line with optional inline crew info
+  let titleLine = `${BOLD}Ninthwave${RESET}`;
+  if (opts.crewStatus) {
+    titleLine += `  ${CYAN}${formatCrewInline(opts.crewStatus)}${RESET}`;
+  }
+  lines.push(titleLine);
   lines.push("");
 
   if (items.length === 0) {
@@ -827,14 +834,8 @@ export function formatStatusTable(
     return lines.join("\n");
   }
 
-  const opts = viewOptions ?? {};
   const repoUrl = opts.repoUrl;
   const crewActive = opts.crewStatus != null;
-
-  // Crew status bar (above title line)
-  if (opts.crewStatus) {
-    lines.push(formatCrewStatusPanel(opts.crewStatus, termWidth));
-  }
 
   // Check if any items have dependency relationships
   const hasDeps = !flat && items.some((i) => (i.dependencies ?? []).length > 0);
@@ -1159,18 +1160,35 @@ export function formatUnifiedProgress(
   return `  ${leftSide}  ${totalText}`;
 }
 
+/** Format inline crew status string (plain text, no ANSI). */
+export function formatCrewInline(status: CrewStatusInfo): string {
+  if (!status.connected) return `Crew ${status.crewCode}  OFFLINE`;
+  return `Crew ${status.crewCode}  ${status.daemonCount} online`;
+}
+
 /**
- * Format the title line with right-aligned Lead/Thru/Session metrics (dimmed).
+ * Format the title line with optional inline crew status and right-aligned metrics (dimmed).
  * Falls back to plain title when no metrics available or terminal is too narrow (< 60 chars).
- * E.g., "ninthwave                    Lead: 7m  Thru: 20.9/hr  Session: 12m"
+ * E.g., "Ninthwave  M1X-87C: 2d 3a 0c 0done              Thru: 0.0/hr  Session: 12m"
  */
 export function formatTitleMetrics(
   items: StatusItem[],
   termWidth: number = 80,
   sessionStartedAt?: string,
+  crewStatus?: CrewStatusInfo,
 ): string {
   const title = `${BOLD}Ninthwave${RESET}`;
   const titlePlain = "Ninthwave";
+
+  // Build inline crew info (cyan to match remote item dot)
+  let crewStr = "";
+  let crewPlain = "";
+  if (crewStatus) {
+    crewPlain = `  ${formatCrewInline(crewStatus)}`;
+    crewStr = `  ${CYAN}${formatCrewInline(crewStatus)}${RESET}`;
+  }
+
+  const leftPlain = titlePlain + crewPlain;
 
   // Compute metrics
   const metrics = computeSessionMetrics(items, sessionStartedAt);
@@ -1185,23 +1203,23 @@ export function formatTitleMetrics(
     metricParts.push(`Session: ${formatAge(metrics.sessionDurationMs)}`);
   }
 
-  // No metrics or terminal too narrow -- plain title
+  // No metrics or terminal too narrow -- title + crew only
   if (metricParts.length === 0 || termWidth < 60) {
-    return title;
+    return `${title}${crewStr}`;
   }
 
   const metricsStr = metricParts.join("  ");
-  // Need: titlePlain.length + at least 4 spaces gap + metricsStr.length
-  const minWidth = titlePlain.length + 4 + metricsStr.length;
+  // Need: leftPlain.length + at least 4 spaces gap + metricsStr.length
+  const minWidth = leftPlain.length + 4 + metricsStr.length;
 
   if (termWidth >= minWidth) {
     // Subtract 1 to leave a safety margin -- some terminals clip the last
     // character when the line fills exactly termWidth (deferred-wrap behaviour).
-    const gap = termWidth - titlePlain.length - metricsStr.length - 1;
-    return `${title}${" ".repeat(gap)}${DIM}${metricsStr}${RESET}`;
+    const gap = termWidth - leftPlain.length - metricsStr.length - 1;
+    return `${title}${crewStr}${" ".repeat(gap)}${DIM}${metricsStr}${RESET}`;
   }
-  // Not enough room -- plain title
-  return title;
+  // Not enough room for metrics -- title + crew only
+  return `${title}${crewStr}`;
 }
 
 /**
@@ -1255,11 +1273,8 @@ export function buildStatusLayout(
     return blockerIcon(blockers.length) + " ";
   }
 
-  // Header: crew bar (above title), then title (with right-aligned metrics)
-  if (opts.crewStatus) {
-    headerLines.push(formatCrewStatusPanel(opts.crewStatus, termWidth));
-  }
-  headerLines.push(formatTitleMetrics(items, termWidth, opts.sessionStartedAt));
+  // Header: title with inline crew status + right-aligned metrics
+  headerLines.push(formatTitleMetrics(items, termWidth, opts.sessionStartedAt, opts.crewStatus));
   headerLines.push("");
   const depPad = hasDeps ? "  " : "";
   headerLines.push(`  ${DIM}  ${pad("ID", 12)}${pad("STATE", stateColWidth)} ${pad("DURATION", 8)} ${depPad}TITLE${RESET}`);

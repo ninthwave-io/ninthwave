@@ -1400,6 +1400,25 @@ export async function orchestrateLoop(
     // Crew mode: claim/filter launch actions through the broker
     if (deps.crewBroker) {
       const launchActions = actions.filter((a) => a.type === "launch");
+
+      // Diagnostic: log when broker is connected but no items ready to launch
+      if (launchActions.length === 0) {
+        const queuedCount = orch.getAllItems().filter(i => i.state === "queued").length;
+        const readyCount = orch.getAllItems().filter(i => i.state === "ready").length;
+        if (queuedCount > 0 || readyCount > 0) {
+          log({
+            ts: new Date().toISOString(),
+            level: "debug",
+            event: "crew_no_launches",
+            readyIds: snapshot.readyIds,
+            queuedCount,
+            readyCount,
+            wipSlots: orch.wipSlots,
+            connected: deps.crewBroker.isConnected(),
+          });
+        }
+      }
+
       if (launchActions.length > 0) {
         if (!deps.crewBroker.isConnected()) {
           // Block ALL launches when disconnected -- prevents stall detection
@@ -1419,11 +1438,14 @@ export async function orchestrateLoop(
           // Claim once per available launch slot, then replace the
           // processTransitions launch actions with broker-assigned items.
           const claimedIds = new Set<string>();
+          let nullCount = 0;
+          let errorCount = 0;
           for (const _action of launchActions) {
             try {
               const claimed = await deps.crewBroker.claim();
               if (claimed) claimedIds.add(claimed);
-            } catch { /* claim failure = not assigned */ }
+              else nullCount++;
+            } catch { errorCount++; }
           }
 
           // Put all original launch actions back to ready
@@ -1451,6 +1473,8 @@ export async function orchestrateLoop(
               requestedCount: launchActions.length,
               claimedCount: claimedIds.size,
               claimedIds: Array.from(claimedIds),
+              nullCount,
+              errorCount,
             });
           }
         }
