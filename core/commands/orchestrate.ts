@@ -1158,6 +1158,7 @@ export async function orchestrateLoop(
   let __lastActions: import("../orchestrator.ts").Action[] = [];
   let __lastTransitionIter = 0;
   let lastScheduleCheckMs = 0; // Force first check immediately
+  let lastMainRefreshMs = 0; // Force first refresh immediately
   while (true) {
     __iterations++;
     if (config.maxIterations != null && __iterations > config.maxIterations) {
@@ -1355,6 +1356,25 @@ export async function orchestrateLoop(
             error: msg,
           });
         }
+      }
+    }
+
+    // ── Periodic main branch refresh ──────────────────────────────
+    // Keeps origin/main fresh and fast-forwards local main when clean.
+    // ff-only is atomic: succeeds or changes nothing (never leaves partial state).
+    const MAIN_REFRESH_INTERVAL_MS = 60_000;
+    const nowRefreshMs = Date.now();
+    if (nowRefreshMs - lastMainRefreshMs >= MAIN_REFRESH_INTERVAL_MS) {
+      lastMainRefreshMs = nowRefreshMs;
+      const reposToRefresh = new Set<string>([ctx.projectRoot]);
+      for (const item of orch.getAllItems()) {
+        if (item.resolvedRepoRoot && item.state !== "done" && item.state !== "stuck") {
+          reposToRefresh.add(item.resolvedRepoRoot);
+        }
+      }
+      for (const repoRoot of reposToRefresh) {
+        try { deps.actionDeps.fetchOrigin(repoRoot, "main"); } catch { /* non-fatal */ }
+        try { deps.actionDeps.ffMerge(repoRoot, "main"); } catch { /* non-fatal -- dirty tree or diverged */ }
       }
     }
 
@@ -2210,6 +2230,7 @@ export async function cmdOrchestrate(
     externalReviewDeps,
     ...(watchMode ? { scanWorkItems: () => {
       try { fetchOrigin(projectRoot, "main"); } catch { /* non-fatal */ }
+      try { ffMerge(projectRoot, "main"); } catch { /* non-fatal -- dirty tree or diverged */ }
       return parseWorkItems(workDir, worktreeDir, projectRoot);
     } } : {}),
     ...(crewBroker ? { crewBroker } : {}),
