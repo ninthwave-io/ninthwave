@@ -1,3 +1,6 @@
+<p align="center">
+  <a href="https://ninthwave.sh"><img src="docs/assets/brand/logo.svg" alt="Ninthwave logo" width="100" /></a>
+</p>
 <h1 align="center">Ninthwave</h1>
 
 <p align="center">
