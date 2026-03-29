@@ -5,7 +5,7 @@ import { setupTempRepo, cleanupTempRepos } from "./helpers.ts";
 
 // Mock gh module (no dedicated test file)
 vi.mock("../core/gh.ts", () => ({
-  prChecks: vi.fn(() => []),
+  prChecks: vi.fn(() => ({ ok: true, data: [] })),
 }));
 
 // Import mocked module for assertions
@@ -56,10 +56,10 @@ describe("cmdCiFailures", () => {
   it("reports no failing checks when all pass", () => {
     const repo = setupTempRepo();
 
-    (gh.prChecks as Mock).mockReturnValue([
+    (gh.prChecks as Mock).mockReturnValue({ ok: true, data: [
       { state: "SUCCESS", name: "build", url: "https://example.com/1" },
       { state: "SUCCESS", name: "lint", url: "https://example.com/2" },
-    ]);
+    ] });
 
     const output = captureOutput(() =>
       cmdCiFailures(["42"], repo),
@@ -71,11 +71,11 @@ describe("cmdCiFailures", () => {
   it("lists failing checks with name and URL", () => {
     const repo = setupTempRepo();
 
-    (gh.prChecks as Mock).mockReturnValue([
+    (gh.prChecks as Mock).mockReturnValue({ ok: true, data: [
       { state: "FAILURE", name: "test-suite", url: "https://ci.example.com/run/1" },
       { state: "SUCCESS", name: "lint", url: "https://ci.example.com/run/2" },
       { state: "FAILURE", name: "type-check", url: "https://ci.example.com/run/3" },
-    ]);
+    ] });
 
     const output = captureOutput(() =>
       cmdCiFailures(["99"], repo),
@@ -92,7 +92,7 @@ describe("cmdCiFailures", () => {
   it("handles empty checks list", () => {
     const repo = setupTempRepo();
 
-    (gh.prChecks as Mock).mockReturnValue([]);
+    (gh.prChecks as Mock).mockReturnValue({ ok: true, data: [] });
 
     const output = captureOutput(() =>
       cmdCiFailures(["10"], repo),
