@@ -2427,12 +2427,22 @@ export class Orchestrator {
 
     const v = action.verdict;
     const verdictLabel = v.verdict === "approve" ? "Approved" : "Changes Requested";
-    const statsLine = `${v.blockerCount} blockers, ${v.nitCount} nits, ${v.preExistingCount} pre-existing`;
+    const reviewerUrl = ctx.hubRepoNwo
+      ? `https://github.com/${ctx.hubRepoNwo}/blob/main/agents/reviewer.md`
+      : "agents/reviewer.md";
 
     const body = [
-      `**[Reviewer](agents/reviewer.md)** Reviewed PR #${prNum}`,
+      `**[Reviewer](${reviewerUrl})** Verdict: ${verdictLabel}`,
       "",
-      `**Verdict:** ${verdictLabel} -- ${statsLine}`,
+      "| Metric | Score |",
+      "| --- | --- |",
+      `| Architecture | ${v.architectureScore}/10 |`,
+      `| Code Quality | ${v.codeQualityScore}/10 |`,
+      `| Performance | ${v.performanceScore}/10 |`,
+      `| Test Coverage | ${v.testCoverageScore}/10 |`,
+      `| Unresolved Decisions | ${v.unresolvedDecisions} |`,
+      `| Critical Gaps | ${v.criticalGaps} |`,
+      `| Confidence | ${v.confidence}/10 |`,
       "",
       "<details><summary>Review details</summary>",
       "",

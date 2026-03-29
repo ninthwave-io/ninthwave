@@ -178,9 +178,32 @@ Two outputs for two different consumers:
 1. **Verdict file** -- detailed findings for the orchestrator and implementer worker
 2. **GitHub review** -- inline comments on specific lines for the human PR author
 
+### Scoring Dimensions
+
+Every verdict includes 7 numeric scores. The orchestrator renders these as a scorecard table in the PR comment. Score honestly -- inflated scores reduce signal.
+
+| Dimension | Field | Range | What to evaluate |
+|---|---|---|---|
+| Architecture | `architectureScore` | 1-10 | Modularity, separation of concerns, appropriate abstractions, dependency direction |
+| Code Quality | `codeQualityScore` | 1-10 | Readability, naming, error handling, idiomatic patterns, consistency with codebase |
+| Performance | `performanceScore` | 1-10 | No regressions, efficient algorithms, resource management, avoids N+1 queries |
+| Test Coverage | `testCoverageScore` | 1-10 | New code tested, edge cases covered, assertions meaningful, no test gaps |
+| Unresolved Decisions | `unresolvedDecisions` | 0+ | Count of design decisions or ambiguities the implementer should address |
+| Critical Gaps | `criticalGaps` | 0+ | Count of missing error handling, security issues, data loss risks |
+| Confidence | `confidence` | 1-10 | How thoroughly you understood the change; lower if domain is unfamiliar or diff is large |
+
+**Scoring guidelines:**
+- **9-10**: Exceptional -- sets a standard for the codebase
+- **7-8**: Good -- meets expectations with minor improvements possible
+- **5-6**: Adequate -- works but has notable areas for improvement
+- **3-4**: Below expectations -- significant issues need addressing
+- **1-2**: Critical problems -- fundamental rework needed
+
 ### Verdict File
 
 Write a JSON file to the `VERDICT_FILE` path. The `summary` field must contain **detailed** findings in markdown -- all blockers and nits with `file:line` references and suggested fixes. The orchestrator sends this summary to the implementer worker as review feedback, so it must contain enough detail for the implementer to act on without reading GitHub inline comments.
+
+Note: The orchestrator constructs the `[Reviewer]` label and scorecard table in the PR comment -- you only write the verdict file.
 
 ```bash
 cat > "$VERDICT_FILE" << 'VERDICT_EOF'
@@ -189,7 +212,14 @@ cat > "$VERDICT_FILE" << 'VERDICT_EOF'
   "summary": "Detailed review findings in markdown (all blockers/nits with file:line references and suggested fixes)",
   "blockerCount": 0,
   "nitCount": 2,
-  "preExistingCount": 0
+  "preExistingCount": 0,
+  "architectureScore": 8,
+  "codeQualityScore": 9,
+  "performanceScore": 7,
+  "testCoverageScore": 8,
+  "unresolvedDecisions": 0,
+  "criticalGaps": 0,
+  "confidence": 9
 }
 VERDICT_EOF
 ```

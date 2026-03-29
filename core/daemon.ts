@@ -359,6 +359,20 @@ export interface ReviewVerdict {
   blockerCount: number;
   nitCount: number;
   preExistingCount: number;
+  /** Architecture quality: modularity, separation of concerns, appropriate abstractions (1-10). */
+  architectureScore: number;
+  /** Code quality: readability, naming, error handling, idiomatic patterns (1-10). */
+  codeQualityScore: number;
+  /** Performance: no regressions, efficient algorithms, resource management (1-10). */
+  performanceScore: number;
+  /** Test coverage: new code tested, edge cases covered, assertions meaningful (1-10). */
+  testCoverageScore: number;
+  /** Count of unresolved design decisions or ambiguities the implementer should address. */
+  unresolvedDecisions: number;
+  /** Count of critical gaps: missing error handling, security issues, data loss risks. */
+  criticalGaps: number;
+  /** Overall confidence in the review: how thoroughly the reviewer understood the change (1-10). */
+  confidence: number;
 }
 
 /** Read a verdict file. Returns null if the file doesn't exist or is invalid. */

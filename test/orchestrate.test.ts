@@ -3133,7 +3133,7 @@ describe("orchestrateLoop watch mode", () => {
           };
         case 8: // Review auto-approves W-1-2
           return {
-            items: [{ id: "W-1-2", prNumber: 2, prState: "open", ciStatus: "pass", reviewVerdict: { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 0, preExistingCount: 0 } }],
+            items: [{ id: "W-1-2", prNumber: 2, prState: "open", ciStatus: "pass", reviewVerdict: { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 0, preExistingCount: 0, architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8, unresolvedDecisions: 0, criticalGaps: 0, confidence: 9 } }],
             readyIds: [],
           };
         default:
@@ -3373,7 +3373,7 @@ describe("orchestrateLoop watch mode", () => {
           items.push({ id: item.id, prNumber: 99, prState: "open", ciStatus: "pass" });
         } else if (item.state === "reviewing") {
           // Review auto-approves
-          items.push({ id: item.id, prNumber: 99, prState: "open", ciStatus: "pass", reviewVerdict: { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 0, preExistingCount: 0 } });
+          items.push({ id: item.id, prNumber: 99, prState: "open", ciStatus: "pass", reviewVerdict: { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 0, preExistingCount: 0, architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8, unresolvedDecisions: 0, criticalGaps: 0, confidence: 9 } });
         } else if (item.state === "ci-passed" || item.state === "merging") {
           // Merge action will be taken, then item goes to done
         } else {
