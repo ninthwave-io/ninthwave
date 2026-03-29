@@ -1,8 +1,8 @@
 // Tests for checkPrStatusAsync and buildSnapshotAsync.
-// Uses dependency injection (no vi.mock) per project conventions.
+// Uses dependency injection and gh-module-level spies per project conventions.
+// Avoids vi.spyOn(shell, "run") which leaks across files (gh.test.ts also spies on it).
 
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
-import * as shell from "../core/shell.ts";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { checkPrStatusAsync } from "../core/commands/pr-monitor.ts";
 import { buildSnapshotAsync } from "../core/commands/orchestrate.ts";
 import {
@@ -14,54 +14,44 @@ import type { WorkItem } from "../core/types.ts";
 import type { Multiplexer } from "../core/mux.ts";
 import * as gh from "../core/gh.ts";
 
-// Spy on runAsync so we can mock gh CLI calls for checkPrStatusAsync
-const runAsyncSpy = vi.spyOn(shell, "runAsync");
-// Also need to spy on sync run for isAvailable check
-const runSpy = vi.spyOn(shell, "run");
+// Spy on gh-module async functions (unique to this test file -- no other file spies on these)
+const isAvailableSpy = vi.spyOn(gh, "isAvailable");
+const prListAsyncSpy = vi.spyOn(gh, "prListAsync");
+const prViewAsyncSpy = vi.spyOn(gh, "prViewAsync");
+const prChecksAsyncSpy = vi.spyOn(gh, "prChecksAsync");
 
 beforeEach(() => {
-  runAsyncSpy.mockReset();
-  runSpy.mockReset();
+  isAvailableSpy.mockReset();
+  prListAsyncSpy.mockReset();
+  prViewAsyncSpy.mockReset();
+  prChecksAsyncSpy.mockReset();
   // Default: gh is available
-  runSpy.mockImplementation((cmd: string, args: string[]) => {
-    if (cmd === "gh" && args[0] === "--version") {
-      return { stdout: "gh version 2.0.0", stderr: "", exitCode: 0 };
-    }
-    return { stdout: "", stderr: "", exitCode: 1 };
-  });
+  isAvailableSpy.mockReturnValue(true);
 });
 
-afterAll(() => {
-  runAsyncSpy.mockRestore();
-  runSpy.mockRestore();
+afterEach(() => {
+  isAvailableSpy.mockReset();
+  prListAsyncSpy.mockReset();
+  prViewAsyncSpy.mockReset();
+  prChecksAsyncSpy.mockReset();
 });
-
-function ok(stdout: string) {
-  return Promise.resolve({ stdout, stderr: "", exitCode: 0 });
-}
-function fail(stderr = "error") {
-  return Promise.resolve({ stdout: "", stderr, exitCode: 1 });
-}
 
 // ── checkPrStatusAsync ──────────────────────────────────────────────
 
 describe("checkPrStatusAsync", () => {
   it("returns open PR with CI info", async () => {
-    runAsyncSpy.mockImplementation((_cmd: string, args: string[]) => {
-      // pr list --state open
-      if (args[1] === "list" && args[5] === "open") {
-        return ok(JSON.stringify([{ number: 10, title: "Fix" }]));
-      }
-      // pr view
-      if (args[1] === "view") {
-        return ok(JSON.stringify({ reviewDecision: "", mergeable: "MERGEABLE", updatedAt: "2026-01-01T00:00:00Z" }));
-      }
-      // pr checks
-      if (args[1] === "checks") {
-        return ok(JSON.stringify([{ state: "SUCCESS", name: "test", link: "https://ci/1", completedAt: "2026-01-01T01:00:00Z" }]));
-      }
-      return fail();
+    prListAsyncSpy.mockImplementation(async (_root: string, _branch: string, state: string) => {
+      if (state === "open") return [{ number: 10, title: "Fix" }];
+      return [];
     });
+    prViewAsyncSpy.mockResolvedValue({
+      reviewDecision: "",
+      mergeable: "MERGEABLE",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+    prChecksAsyncSpy.mockResolvedValue([
+      { state: "SUCCESS", name: "test", url: "https://ci/1", completedAt: "2026-01-01T01:00:00Z" },
+    ]);
 
     const result = await checkPrStatusAsync("T-1-1", "/repo");
 
@@ -71,16 +61,10 @@ describe("checkPrStatusAsync", () => {
   });
 
   it("returns merged PR", async () => {
-    runAsyncSpy.mockImplementation((_cmd: string, args: string[]) => {
-      // pr list --state open -> empty
-      if (args[1] === "list" && args[5] === "open") {
-        return ok("[]");
-      }
-      // pr list --state merged
-      if (args[1] === "list" && args[5] === "merged") {
-        return ok(JSON.stringify([{ number: 5, title: "Done" }]));
-      }
-      return fail();
+    prListAsyncSpy.mockImplementation(async (_root: string, _branch: string, state: string) => {
+      if (state === "open") return [];
+      if (state === "merged") return [{ number: 5, title: "Done" }];
+      return [];
     });
 
     const result = await checkPrStatusAsync("T-1-1", "/repo");
@@ -91,10 +75,7 @@ describe("checkPrStatusAsync", () => {
   });
 
   it("returns no-pr when no PRs found", async () => {
-    runAsyncSpy.mockImplementation((_cmd: string, args: string[]) => {
-      if (args[1] === "list") return ok("[]");
-      return fail();
-    });
+    prListAsyncSpy.mockResolvedValue([]);
 
     const result = await checkPrStatusAsync("T-1-1", "/repo");
 
@@ -102,7 +83,7 @@ describe("checkPrStatusAsync", () => {
   });
 
   it("returns empty string when gh unavailable", async () => {
-    runSpy.mockReturnValue({ stdout: "", stderr: "not found", exitCode: 1 });
+    isAvailableSpy.mockReturnValue(false);
 
     const result = await checkPrStatusAsync("T-1-1", "/repo");
 
@@ -195,7 +176,6 @@ describe("buildSnapshotAsync", () => {
     orch.addItem(makeWorkItem("BA-3-2", ["BA-3-1"]));
     orch.getItem("BA-3-1")!.reviewCompleted = true;
     orch.setState("BA-3-1", "done");
-    // BA-3-2 stays queued, its dep BA-3-1 is done
 
     const asyncCheckPr = vi.fn(async () => null);
 
@@ -217,7 +197,6 @@ describe("buildSnapshotAsync", () => {
     orch.getItem("BA-4-1")!.reviewCompleted = true;
     orch.setState("BA-4-1", "implementing");
 
-    // checkPr returns null (failure)
     const asyncCheckPr = async (_id: string, _root: string) => null;
 
     const snapshot = await buildSnapshotAsync(
@@ -229,7 +208,6 @@ describe("buildSnapshotAsync", () => {
       asyncCheckPr,
     );
 
-    // Item should still appear in snapshot, just without PR data
     expect(snapshot.items).toHaveLength(1);
     expect(snapshot.items[0]!.id).toBe("BA-4-1");
     expect(snapshot.items[0]!.prNumber).toBeUndefined();
