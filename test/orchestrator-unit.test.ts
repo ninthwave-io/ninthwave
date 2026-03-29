@@ -1407,8 +1407,8 @@ describe("handleMerging", () => {
 // ── Reviewing state ──────────────────────────────────────────────────
 
 describe("handleReviewing", () => {
-  const approveVerdict = { verdict: "approve" as const, summary: "No issues.", blockerCount: 0, nitCount: 0, preExistingCount: 0 };
-  const requestChangesVerdict = { verdict: "request-changes" as const, summary: "Found blockers.", blockerCount: 2, nitCount: 0, preExistingCount: 0 };
+  const approveVerdict = { verdict: "approve" as const, summary: "No issues.", blockerCount: 0, nitCount: 0, preExistingCount: 0, architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8, unresolvedDecisions: 0, criticalGaps: 0, confidence: 9 };
+  const requestChangesVerdict = { verdict: "request-changes" as const, summary: "Found blockers.", blockerCount: 2, nitCount: 0, preExistingCount: 0, architectureScore: 5, codeQualityScore: 4, performanceScore: 6, testCoverageScore: 3, unresolvedDecisions: 2, criticalGaps: 2, confidence: 7 };
 
   it("transitions to ci-passed with reviewCompleted on approve verdict", () => {
     const orch = new Orchestrator({ mergeStrategy: "auto" });

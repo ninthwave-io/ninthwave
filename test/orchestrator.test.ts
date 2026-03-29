@@ -5622,8 +5622,8 @@ describe("Orchestrator", () => {
       expect(actions.some((a) => a.type === "launch-review")).toBe(true);
     });
 
-    const approveVerdict = { verdict: "approve" as const, summary: "No issues found.", blockerCount: 0, nitCount: 0, preExistingCount: 0 };
-    const requestChangesVerdict = { verdict: "request-changes" as const, summary: "Found blockers.", blockerCount: 2, nitCount: 1, preExistingCount: 0 };
+    const approveVerdict = { verdict: "approve" as const, summary: "No issues found.", blockerCount: 0, nitCount: 0, preExistingCount: 0, architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8, unresolvedDecisions: 0, criticalGaps: 0, confidence: 9 };
+    const requestChangesVerdict = { verdict: "request-changes" as const, summary: "Found blockers.", blockerCount: 2, nitCount: 1, preExistingCount: 0, architectureScore: 5, codeQualityScore: 4, performanceScore: 6, testCoverageScore: 3, unresolvedDecisions: 2, criticalGaps: 2, confidence: 7 };
 
     it("reviewing + approve verdict sets reviewCompleted, back to ci-passed, then merges (auto)", () => {
       orch = new Orchestrator({ mergeStrategy: "auto" });
@@ -6328,14 +6328,18 @@ describe("Orchestrator", () => {
   // ── executeAction: post-review (M-RX-4) ───────────────────────────
 
   describe("executeAction: post-review includes agent link and footer", () => {
-    it("approve verdict includes agent link and branding footer", () => {
+    it("approve verdict renders scorecard table with absolute reviewer link", () => {
       const prComment = vi.fn(() => true);
       const deps = mockDeps({ prComment });
       orch.addItem(makeWorkItem("PR-1"));
       orch.setState("PR-1", "reviewing");
       orch.getItem("PR-1")!.prNumber = 50;
 
-      const verdict = { verdict: "approve" as const, summary: "All good.", blockerCount: 0, nitCount: 1, preExistingCount: 0 };
+      const verdict = {
+        verdict: "approve" as const, summary: "All good.", blockerCount: 0, nitCount: 1, preExistingCount: 0,
+        architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8,
+        unresolvedDecisions: 0, criticalGaps: 1, confidence: 8,
+      };
       const result = orch.executeAction(
         { type: "post-review", itemId: "PR-1", prNumber: 50, verdict },
         defaultCtx,
@@ -6344,20 +6348,31 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       const body = prComment.mock.calls[0]![2] as string;
-      expect(body).toContain("**[Reviewer](agents/reviewer.md)**");
+      expect(body).toContain("**[Reviewer](https://github.com/test-owner/test-repo/blob/main/agents/reviewer.md)**");
       expect(body).toContain("*Powered by [Ninthwave](https://ninthwave.sh)*");
-      expect(body).toContain("Approved");
-      expect(body).toContain("0 blockers, 1 nits");
+      expect(body).toContain("Verdict: Approved");
+      expect(body).not.toContain("Reviewed PR #");
+      expect(body).toContain("Architecture | 8/10");
+      expect(body).toContain("Code Quality | 9/10");
+      expect(body).toContain("Performance | 7/10");
+      expect(body).toContain("Test Coverage | 8/10");
+      expect(body).toContain("Unresolved Decisions | 0");
+      expect(body).toContain("Critical Gaps | 1");
+      expect(body).toContain("Confidence | 8/10");
     });
 
-    it("request-changes verdict includes agent link and branding footer", () => {
+    it("request-changes verdict renders scorecard table with absolute reviewer link", () => {
       const prComment = vi.fn(() => true);
       const deps = mockDeps({ prComment });
       orch.addItem(makeWorkItem("PR-2"));
       orch.setState("PR-2", "reviewing");
       orch.getItem("PR-2")!.prNumber = 51;
 
-      const verdict = { verdict: "request-changes" as const, summary: "Found issues.", blockerCount: 3, nitCount: 2, preExistingCount: 1 };
+      const verdict = {
+        verdict: "request-changes" as const, summary: "Found issues.", blockerCount: 3, nitCount: 2, preExistingCount: 1,
+        architectureScore: 5, codeQualityScore: 4, performanceScore: 6, testCoverageScore: 3,
+        unresolvedDecisions: 2, criticalGaps: 3, confidence: 7,
+      };
       const result = orch.executeAction(
         { type: "post-review", itemId: "PR-2", prNumber: 51, verdict },
         defaultCtx,
@@ -6366,10 +6381,12 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       const body = prComment.mock.calls[0]![2] as string;
-      expect(body).toContain("**[Reviewer](agents/reviewer.md)**");
+      expect(body).toContain("**[Reviewer](https://github.com/test-owner/test-repo/blob/main/agents/reviewer.md)**");
       expect(body).toContain("*Powered by [Ninthwave](https://ninthwave.sh)*");
-      expect(body).toContain("Changes Requested");
-      expect(body).toContain("3 blockers, 2 nits");
+      expect(body).toContain("Verdict: Changes Requested");
+      expect(body).not.toContain("Reviewed PR #");
+      expect(body).toContain("Architecture | 5/10");
+      expect(body).toContain("Confidence | 7/10");
     });
 
     it("status descriptions use new format (colon, no em dashes)", () => {
@@ -6378,7 +6395,7 @@ describe("Orchestrator", () => {
       orch.setState("PR-3", "reviewing");
       orch.getItem("PR-3")!.prNumber = 52;
 
-      const approveVerdict = { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 2, preExistingCount: 0 };
+      const approveVerdict = { verdict: "approve" as const, summary: "OK", blockerCount: 0, nitCount: 2, preExistingCount: 0, architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8, unresolvedDecisions: 0, criticalGaps: 0, confidence: 9 };
       const actions = orch.processTransitions(
         snapshotWith([{ id: "PR-3", ciStatus: "pass", prState: "open", reviewVerdict: approveVerdict }]),
       );
@@ -6394,7 +6411,7 @@ describe("Orchestrator", () => {
       orch.setState("PR-4", "reviewing");
       orch.getItem("PR-4")!.prNumber = 53;
 
-      const changesVerdict = { verdict: "request-changes" as const, summary: "Issues", blockerCount: 5, nitCount: 0, preExistingCount: 0 };
+      const changesVerdict = { verdict: "request-changes" as const, summary: "Issues", blockerCount: 5, nitCount: 0, preExistingCount: 0, architectureScore: 4, codeQualityScore: 3, performanceScore: 5, testCoverageScore: 2, unresolvedDecisions: 3, criticalGaps: 5, confidence: 6 };
       const actions = orch.processTransitions(
         snapshotWith([{ id: "PR-4", ciStatus: "pass", prState: "open", reviewVerdict: changesVerdict }]),
       );
