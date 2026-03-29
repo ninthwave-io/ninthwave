@@ -100,7 +100,14 @@ if (allAreIds) {
     if (isNaN(wipLimit) || wipLimit < 1) wipLimit = undefined;
   }
 
-  await cmdRunItems(allPositional, workDir, worktreeDir, projectRoot, undefined, wipLimit);
+  // Parse --tool flag from args
+  let toolOverride: string | undefined;
+  const toolIdx = args.indexOf("--tool");
+  if (toolIdx !== -1 && args[toolIdx + 1]) {
+    toolOverride = args[toolIdx + 1];
+  }
+
+  await cmdRunItems(allPositional, workDir, worktreeDir, projectRoot, undefined, wipLimit, toolOverride);
   process.exit(0);
 }
 

@@ -26,7 +26,7 @@ import { resolveRepo, bootstrapRepo } from "../cross-repo.ts";
 import { scanExternalPRs } from "./pr-monitor.ts";
 import { launchSingleItem, launchReviewWorker, launchRebaserWorker, launchForwardFixerWorker } from "./launch.ts";
 import { cleanStaleBranchForReuse } from "../branch-cleanup.ts";
-import { detectAiTool } from "./run-items.ts";
+import { selectAiTool } from "../tool-select.ts";
 import { cleanSingleWorktree } from "./clean.ts";
 import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, ensureDomainLabels } from "../gh.ts";
 import { fetchOrigin, ffMerge, gitAdd, gitCommit, gitPush, daemonRebase } from "../git.ts";
@@ -1595,7 +1595,7 @@ export async function cmdOrchestrate(
     reviewAutoFix, reviewExternal, reviewWipLimit,
     fixForward, skipReview: cliSkipReview, noWatch, watchIntervalSecs,
     jsonFlag, skipPreflight, crewName,
-    bypassEnabled,
+    bypassEnabled, toolOverride,
   } = parsed;
   let watchMode = parsed.watchMode;
   let crewCode = parsed.crewCode;
@@ -1863,8 +1863,9 @@ export async function cmdOrchestrate(
   const savedDaemonState = readStateFile(projectRoot);
   reconstructState(orch, projectRoot, worktreeDir, mux, undefined, savedDaemonState);
 
-  // Detect AI tool
-  const aiTool = detectAiTool();
+  // Select AI tool (interactive prompt when multiple tools installed)
+  const isInteractive = !isDaemonChild && !daemonMode && process.stdin.isTTY === true;
+  const aiTool = await selectAiTool({ toolOverride, projectRoot, isInteractive });
 
   // Compute hub repo NWO once at startup for absolute agent-link URLs in PR comments
   let hubRepoNwo = "";

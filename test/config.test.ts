@@ -2,8 +2,8 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { join } from "path";
-import { mkdirSync, writeFileSync } from "fs";
-import { loadConfig } from "../core/config.ts";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "fs";
+import { loadConfig, saveConfig } from "../core/config.ts";
 import { setupTempRepo, cleanupTempRepos } from "./helpers.ts";
 
 afterEach(() => {
@@ -97,7 +97,7 @@ describe("loadConfig", () => {
     expect(config.review_external).toBe(true);
     expect(config.schedule_enabled).toBe(false);
     // Only known keys in the result
-    expect(Object.keys(config)).toEqual(["review_external", "schedule_enabled"]);
+    expect(Object.keys(config)).toEqual(["review_external", "schedule_enabled", "ai_tool"]);
   });
 
   it("treats non-boolean review_external as false", () => {
@@ -125,5 +125,98 @@ describe("loadConfig", () => {
 
     const config = loadConfig(repo);
     expect(config.schedule_enabled).toBe(false);
+  });
+
+  it("reads ai_tool field", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ ai_tool: "opencode" }),
+    );
+
+    const config = loadConfig(repo);
+    expect(config.ai_tool).toBe("opencode");
+  });
+
+  it("ignores non-string ai_tool values", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ ai_tool: 42 }),
+    );
+
+    const config = loadConfig(repo);
+    expect(config.ai_tool).toBeUndefined();
+  });
+});
+
+describe("saveConfig", () => {
+  it("creates config file when missing", () => {
+    const repo = setupTempRepo();
+    saveConfig(repo, { ai_tool: "claude" });
+
+    const configPath = join(repo, ".ninthwave", "config.json");
+    expect(existsSync(configPath)).toBe(true);
+    const content = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(content.ai_tool).toBe("claude");
+  });
+
+  it("merges ai_tool into existing config without clobbering", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ review_external: true }),
+    );
+
+    saveConfig(repo, { ai_tool: "opencode" });
+
+    const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
+    expect(content.review_external).toBe(true);
+    expect(content.ai_tool).toBe("opencode");
+  });
+
+  it("preserves unknown keys in config file", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ custom_key: "hello", review_external: false }),
+    );
+
+    saveConfig(repo, { ai_tool: "copilot" });
+
+    const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
+    expect(content.custom_key).toBe("hello");
+    expect(content.ai_tool).toBe("copilot");
+  });
+
+  it("overwrites existing ai_tool value", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ ai_tool: "claude" }),
+    );
+
+    saveConfig(repo, { ai_tool: "opencode" });
+
+    const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
+    expect(content.ai_tool).toBe("opencode");
+  });
+
+  it("round-trips with loadConfig", () => {
+    const repo = setupTempRepo();
+    saveConfig(repo, { ai_tool: "copilot" });
+
+    const config = loadConfig(repo);
+    expect(config.ai_tool).toBe("copilot");
   });
 });

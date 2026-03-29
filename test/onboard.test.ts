@@ -375,31 +375,29 @@ describe("onboard", () => {
     expect(output).not.toContain("AI coding tools");
   });
 
-  it("exits when user declines single detected AI tool", async () => {
+  it("auto-selects single detected AI tool without prompting", async () => {
     const projectDir = setupTempRepo();
+    const bundleDir = createFakeBundle(projectDir + "-bundle");
     const logs: string[] = [];
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
-    let promptCount = 0;
 
     try {
       await onboard(projectDir, {
         commandExists: (cmd) => cmd === "cmux" || cmd === "claude",
-        prompt: async () => {
-          promptCount++;
-          // First prompt: accept mux, second prompt: decline AI tool
-          return promptCount <= 1 ? "" : "n";
-        },
+        prompt: async () => "", // accept mux default
         runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
         sleep: () => {},
-        getBundleDir: () => "/fake",
+        getBundleDir: () => bundleDir,
       });
     } finally {
       console.log = origLog;
     }
 
     const output = logs.join("\n");
-    expect(output).toContain("Install a different AI tool");
+    // Single tool should be auto-selected -- no "Choose" prompt for AI tool
+    expect(output).not.toContain("Choose [1-");
+    expect(output).toContain("Launching Claude Code");
   });
 
   it("handles session launch failure gracefully", async () => {

@@ -26,21 +26,15 @@ The doctor command checks that at least one AI tool (`claude`, `opencode`, or `c
 
 ## How It Works
 
-### Tool detection
+### Tool selection
 
-ninthwave detects which AI tool to use via a 5-step chain:
+ninthwave selects the AI tool interactively:
 
-1. `NINTHWAVE_AI_TOOL` environment variable (explicit override)
-2. `OPENCODE=1` env var → OpenCode
-3. `CLAUDE_CODE_SESSION` / `CLAUDE_SESSION_ID` env vars → Claude Code
-4. Process tree walk (checks parent processes for `copilot`)
-5. Binary fallback (`which copilot`)
+- **Single tool installed:** auto-selected, no prompt
+- **Multiple tools installed:** prompted every time (last-used is pre-selected)
+- **`--tool` flag:** explicit override, no prompt (e.g., `nw watch --tool copilot`)
 
-To force Copilot CLI, set the environment variable:
-
-```bash
-export NINTHWAVE_AI_TOOL=copilot
-```
+The selection is persisted to `.ninthwave/config.json` as `ai_tool`.
 
 ### Prompt delivery
 
@@ -77,7 +71,7 @@ Both temp files are deleted by the launcher script before the session starts -- 
 | **Permissions** | `--permission-mode bypassPermissions` | `--allow-all` |
 | **Agent flag** | `--agent ninthwave-implementer` (space) | `--agent=ninthwave-implementer` (equals) |
 | **Agent directory** | `.claude/agents/*.md` | `.github/agents/*.agent.md` |
-| **Session detection** | `CLAUDE_CODE_SESSION` env var | Process tree walk (no env var) |
+| **Session detection** | Interactive prompt or `--tool` flag | Interactive prompt or `--tool` flag |
 | **Post-launch send** | Not needed (prompt embedded) | Not needed (prompt embedded via `-i`) |
 
 ### What's the same
@@ -95,7 +89,7 @@ Both temp files are deleted by the launcher script before the session starts -- 
 
 **Fix:**
 1. Verify `copilot` is in your PATH: `which copilot`
-2. If installed but not detected, set the override: `export NINTHWAVE_AI_TOOL=copilot`
+2. If installed but not selected, use `--tool copilot` or choose it from the interactive prompt
 3. Run `nw doctor` to confirm
 
 ### Agent files missing

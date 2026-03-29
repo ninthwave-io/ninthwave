@@ -1,4 +1,4 @@
-// Tests for start command: detectAiTool and cmdStart.
+// Tests for start command and launch functions.
 
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { join } from "path";
@@ -7,7 +7,7 @@ import { spawnSync } from "child_process";
 import { setupTempRepo, cleanupTempRepos, captureOutputAsync } from "./helpers.ts";
 import type { Multiplexer } from "../core/mux.ts";
 import { type LaunchGitDeps, launchSingleItem, launchAiSession, launchReviewWorker, sanitizeTitle, extractItemText } from "../core/commands/launch.ts";
-import { detectAiTool, cmdStart, cmdRunItems, WORK_ITEM_ID_CLI_PATTERN } from "../core/commands/run-items.ts";
+import { cmdStart, cmdRunItems, WORK_ITEM_ID_CLI_PATTERN } from "../core/commands/run-items.ts";
 import { cleanStaleBranchForReuse } from "../core/branch-cleanup.ts";
 import { parseWorkItems } from "../core/parser.ts";
 
@@ -143,67 +143,14 @@ function setupWorkItemsDir(repo: string): string {
 // Alias: launch.test.ts previously used `captureOutput` for the async variant
 const captureOutput = captureOutputAsync;
 
-describe("detectAiTool", () => {
-  const originalEnv = { ...process.env };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // Clear relevant env vars
-    delete process.env.NINTHWAVE_AI_TOOL;
-    delete process.env.OPENCODE;
-    delete process.env.CLAUDE_CODE_SESSION;
-    delete process.env.CLAUDE_SESSION_ID;
-  });
-
-  afterEach(() => {
-    process.env = { ...originalEnv };
-    cleanupTempRepos();
-  });
-
-  it("returns NINTHWAVE_AI_TOOL when set", () => {
-    process.env.NINTHWAVE_AI_TOOL = "custom-tool";
-    expect(detectAiTool()).toBe("custom-tool");
-  });
-
-  it("returns opencode when OPENCODE=1", () => {
-    process.env.OPENCODE = "1";
-    expect(detectAiTool()).toBe("opencode");
-  });
-
-  it("returns claude when CLAUDE_CODE_SESSION is set", () => {
-    process.env.CLAUDE_CODE_SESSION = "some-session-id";
-    expect(detectAiTool()).toBe("claude");
-  });
-
-  it("returns claude when CLAUDE_SESSION_ID is set", () => {
-    process.env.CLAUDE_SESSION_ID = "another-session-id";
-    expect(detectAiTool()).toBe("claude");
-  });
-
-  it("NINTHWAVE_AI_TOOL takes priority over OPENCODE", () => {
-    process.env.NINTHWAVE_AI_TOOL = "copilot";
-    process.env.OPENCODE = "1";
-    expect(detectAiTool()).toBe("copilot");
-  });
-
-  it("OPENCODE takes priority over CLAUDE_CODE_SESSION", () => {
-    process.env.OPENCODE = "1";
-    process.env.CLAUDE_CODE_SESSION = "some-id";
-    expect(detectAiTool()).toBe("opencode");
-  });
-});
+// detectAiTool tests removed -- replaced by selectAiTool in test/tool-select.test.ts
 
 describe("cmdStart", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    // Ensure AI tool is detectable
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -213,7 +160,7 @@ describe("cmdStart", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdStart([], workDir, worktreeDir, repo),
+      cmdStart(["--tool", "claude"], workDir, worktreeDir, repo),
     );
 
     expect(output).toContain("Usage");
@@ -225,7 +172,7 @@ describe("cmdStart", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdStart(["NONEXISTENT-1"], workDir, worktreeDir, repo),
+      cmdStart(["NONEXISTENT-1", "--tool", "claude"], workDir, worktreeDir, repo),
     );
 
     expect(output).toContain("not found");
@@ -238,26 +185,28 @@ describe("cmdStart", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdStart(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdStart(["M-CI-1", "--tool", "claude"], workDir, worktreeDir, repo, mockMux),
     );
 
     expect(output).toContain("Launched 1 session");
     expect(mockMux.launchWorkspace).toHaveBeenCalled();
   });
 
-  it("reports detected AI tool", async () => {
-    process.env.NINTHWAVE_AI_TOOL = "opencode";
-
+  it("uses --tool override when provided", async () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdStart(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdStart(["M-CI-1", "--tool", "opencode"], workDir, worktreeDir, repo, mockMux),
     );
 
-    expect(output).toContain("Detected AI tool: opencode");
+    // Tool should be used for launching (opencode uses launcher script)
+    const launchCall = mockMux.launchWorkspace.mock.calls[0];
+    expect(launchCall).toBeDefined();
+    const cmd = launchCall[1] as string;
+    expect(cmd).toMatch(/^\/tmp\/nw-launch-.*\.sh$/);
   });
 
   it("dies early when mux is unavailable (before any git operations)", async () => {
@@ -282,15 +231,11 @@ describe("cmdStart", () => {
 });
 
 describe("launchSingleItem", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -593,15 +538,11 @@ describe("launchSingleItem", () => {
 // ── Stacked launch fallback when dep branch is gone (H-SL-1) ───────
 
 describe("launchSingleItem stacked fallback on fetch failure", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -675,15 +616,11 @@ describe("launchSingleItem stacked fallback on fetch failure", () => {
 });
 
 describe("launchSingleItem external worktree handling", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -833,15 +770,11 @@ describe("launchSingleItem external worktree handling", () => {
 });
 
 describe("launchSingleItem resource cleanup on failure", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -1357,15 +1290,11 @@ describe("launchAiSession agentName", () => {
 });
 
 describe("launchSingleItem agentName default", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -1389,15 +1318,11 @@ describe("launchSingleItem agentName default", () => {
 });
 
 describe("launchReviewWorker", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -1694,15 +1619,11 @@ describe("WORK_ITEM_ID_CLI_PATTERN", () => {
 // ── cmdRunItems tests ───────────────────────────────────────────────
 
 describe("cmdRunItems", () => {
-  const originalEnv = { ...process.env };
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.NINTHWAVE_AI_TOOL = "claude";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv };
     cleanupTempRepos();
   });
 
@@ -1834,7 +1755,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["NONEXISTENT-1"], workDir, worktreeDir, repo),
+      cmdRunItems(["NONEXISTENT-1"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
     );
 
     expect(output).toContain("not found");
@@ -1848,7 +1769,7 @@ describe("cmdRunItems", () => {
 
     // H-CI-2 depends on M-CI-1, which is not passed and not completed
     const output = await captureOutput(() =>
-      cmdRunItems(["H-CI-2"], workDir, worktreeDir, repo),
+      cmdRunItems(["H-CI-2"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
     );
 
     expect(output).toContain("Cannot launch H-CI-2");
@@ -1862,7 +1783,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["H-CI-2"], workDir, worktreeDir, repo),
+      cmdRunItems(["H-CI-2"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
     );
 
     // Should suggest including the dep
@@ -1876,7 +1797,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
     );
 
     expect(output).toContain("Launch plan:");
@@ -1893,7 +1814,7 @@ describe("cmdRunItems", () => {
 
     // M-CI-1 and C-UO-1 have no inter-dependencies
     const output = await captureOutput(() =>
-      cmdRunItems(["M-CI-1", "C-UO-1"], workDir, worktreeDir, repo, mockMux, 10),
+      cmdRunItems(["M-CI-1", "C-UO-1"], workDir, worktreeDir, repo, mockMux, 10, "claude"),
     );
 
     expect(output).toContain("2 item(s) in 1 batch(es)");
@@ -1908,7 +1829,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["H-D-1", "H-D-2", "H-D-3", "H-D-4"], workDir, worktreeDir, repo, mockMux, 10),
+      cmdRunItems(["H-D-1", "H-D-2", "H-D-3", "H-D-4"], workDir, worktreeDir, repo, mockMux, 10, "claude"),
     );
 
     // Should show 3 batches: [A], [B, C], [D]
@@ -1928,7 +1849,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["H-CYC-1", "H-CYC-2"], workDir, worktreeDir, repo),
+      cmdRunItems(["H-CYC-1", "H-CYC-2"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
     );
 
     expect(output).toContain("Circular dependency detected");
@@ -1985,7 +1906,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
     );
 
     expect(output).toContain("Failed to launch M-CI-1");
@@ -1999,7 +1920,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
     );
 
     expect(output).toContain("Launch plan:");
@@ -2019,7 +1940,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
     );
 
     expect(output).toContain("cmux is not available");
@@ -2038,7 +1959,7 @@ describe("cmdRunItems", () => {
     const worktreeDir = join(repo, ".worktrees");
 
     const output = await captureOutput(() =>
-      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
+      cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
     );
 
     expect(output).toContain(diagMsg);

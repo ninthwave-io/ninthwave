@@ -9,7 +9,6 @@ import { splitIds } from "../work-item-files.ts";
 import { computeBatches, CircularDependencyError } from "./batch-order.ts";
 import { calculateMemoryWipLimit } from "../orchestrator.ts";
 import { computeDefaultWipLimit } from "./orchestrate.ts";
-import { run } from "../shell.ts";
 import { type Multiplexer, getMux } from "../mux.ts";
 import { cleanupStalePartitions } from "../partitions.ts";
 import { resolveRepo, getWorktreeInfo } from "../cross-repo.ts";
@@ -17,8 +16,7 @@ import { cmdConflicts } from "./conflicts.ts";
 import { applyGithubToken } from "../gh.ts";
 import { launchSingleItem } from "./launch.ts";
 import type { WorkItem } from "../types.ts";
-import { AI_TOOL_PROFILES, isAiToolId, allToolIds } from "../ai-tools.ts";
-import type { AiToolId } from "../ai-tools.ts";
+import { selectAiTool } from "../tool-select.ts";
 
 /**
  * CLI-level regex for detecting work item IDs as positional arguments.
@@ -26,69 +24,6 @@ import type { AiToolId } from "../ai-tools.ts";
  * Does NOT match lowercase variants or regular command names.
  */
 export const WORK_ITEM_ID_CLI_PATTERN = /^[A-Z]+-[A-Z0-9]+-\d+[a-z]*$/;
-
-/**
- * Detect which AI coding tool is running the orchestrator session.
- * The same tool is used to launch worker sessions.
- *
- * Returns an AiToolId for known tools, or a plain string for custom overrides.
- */
-export function detectAiTool(): AiToolId | string {
-  // 1. Explicit override via environment variable
-  if (process.env.NINTHWAVE_AI_TOOL) {
-    const envValue = process.env.NINTHWAVE_AI_TOOL;
-    if (!isAiToolId(envValue)) {
-      warn(`Unknown AI tool: "${envValue}". Known tools: ${allToolIds().join(", ")}. Proceeding anyway.`);
-    }
-    return envValue;
-  }
-
-  // 2. Environment variable detection -- driven from profile.envDetection.
-  // Exact-value checks (e.g. OPENCODE=1) run before presence checks so that
-  // a specific tool signal always wins over a looser signal from another tool.
-
-  // Pass 1: exact-value matches
-  for (const profile of AI_TOOL_PROFILES) {
-    if (!profile.envDetection) continue;
-    for (const check of profile.envDetection) {
-      if (check.value === undefined) continue;
-      if (process.env[check.varName] === check.value) return profile.id;
-    }
-  }
-
-  // Pass 2: presence matches
-  for (const profile of AI_TOOL_PROFILES) {
-    if (!profile.envDetection) continue;
-    for (const check of profile.envDetection) {
-      if (check.value !== undefined) continue;
-      if (process.env[check.varName]) return profile.id;
-    }
-  }
-
-  // 3. Walk up the process tree -- driven from profile.processNames
-  let pid = process.pid;
-  let depth = 0;
-  while (pid > 1 && depth < 10) {
-    const result = run("ps", ["-o", "comm=", "-p", String(pid)]);
-    if (result.exitCode === 0 && result.stdout) {
-      const cmdBase = basename(result.stdout.trim());
-      for (const profile of AI_TOOL_PROFILES) {
-        if (profile.processNames.includes(cmdBase)) return profile.id;
-      }
-    }
-    const ppidResult = run("ps", ["-o", "ppid=", "-p", String(pid)]);
-    if (ppidResult.exitCode !== 0) break;
-    pid = parseInt(ppidResult.stdout.trim(), 10) || 1;
-    depth++;
-  }
-
-  // 4. Fallback: check if any tool binary is available -- driven from profile.command
-  for (const profile of AI_TOOL_PROFILES) {
-    if (run("which", [profile.command]).exitCode === 0) return profile.id;
-  }
-
-  return "unknown";
-}
 
 /**
  * Launch work items by ID with topological dependency ordering.
@@ -104,6 +39,7 @@ export async function cmdRunItems(
   projectRoot: string,
   muxOverride?: Multiplexer,
   wipLimitOverride?: number,
+  toolOverride?: string,
 ): Promise<void> {
   // Pre-flight: fail fast if the mux backend is not usable (binary missing
   // or no active session). Without this, workers create worktrees first and
@@ -191,14 +127,9 @@ export async function cmdRunItems(
   // Apply custom GitHub token so workers inherit it via environment
   applyGithubToken(projectRoot);
 
-  // Detect AI tool
-  const aiTool = detectAiTool();
-  if (aiTool === "unknown") {
-    die(
-      "Could not detect AI tool. Ensure claude, opencode, or copilot is in your PATH.",
-    );
-  }
-  info(`Detected AI tool: ${aiTool}`);
+  // Select AI tool (interactive prompt when multiple tools installed)
+  const isInteractive = process.stdin.isTTY === true;
+  const aiTool = await selectAiTool({ toolOverride, projectRoot, isInteractive });
 
   // Ensure worktree directory exists
   mkdirSync(worktreeDir, { recursive: true });
@@ -278,6 +209,14 @@ export async function cmdStart(
     die(muxEarly.diagnoseUnavailable());
   }
 
+  // Parse --tool flag from args
+  let toolOverride: string | undefined;
+  const toolIdx = args.indexOf("--tool");
+  if (toolIdx !== -1) {
+    toolOverride = args[toolIdx + 1];
+    args = [...args.slice(0, toolIdx), ...args.slice(toolIdx + 2)];
+  }
+
   const ids = splitIds(args);
 
   if (ids.length < 1) die("Usage: ninthwave start <ID1> [ID2...]");
@@ -293,14 +232,9 @@ export async function cmdStart(
   // Apply custom GitHub token so workers inherit it via environment
   applyGithubToken(projectRoot);
 
-  // Detect AI tool
-  const aiTool = detectAiTool();
-  if (aiTool === "unknown") {
-    die(
-      "Could not detect AI tool. Ensure claude, opencode, or copilot is in your PATH.",
-    );
-  }
-  info(`Detected AI tool: ${aiTool}`);
+  // Select AI tool (interactive prompt when multiple tools installed)
+  const isInteractive = process.stdin.isTTY === true;
+  const aiTool = await selectAiTool({ toolOverride, projectRoot, isInteractive });
 
   // Validate all items exist and check dependencies
   for (const id of ids) {

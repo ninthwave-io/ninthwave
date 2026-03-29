@@ -101,7 +101,7 @@ export function launchAiSession(
     cmd = result.cmd;
     initialPrompt = result.initialPrompt;
   } else {
-    // Unknown/custom tool (e.g. NINTHWAVE_AI_TOOL override): launch the raw
+    // Unknown/custom tool (e.g. --tool override): launch the raw
     // command string and deliver the prompt post-launch via sendMessage.
     cmd = tool;
     initialPrompt = `${deps.readFileSync(promptFile, "utf-8")}\n\nStart implementing this work item now.`;

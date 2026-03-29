@@ -120,7 +120,7 @@ export function launchScheduledTask(
 
   // For known AI tools, derive the command name from the profile (makes derivation
   // explicit and ensures future profiles stay consistent); for custom tools
-  // (NINTHWAVE_AI_TOOL override), use the raw string as-is.
+  // (--tool override), use the raw string as-is.
   const toolCmd = isAiToolId(aiTool) ? getToolProfile(aiTool).id : aiTool;
   const command = `cd "${projectRoot}" && ${toolCmd} --print "${escapedPrompt}"`;
 

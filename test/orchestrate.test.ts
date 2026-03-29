@@ -3817,6 +3817,16 @@ describe("parseWatchArgs", () => {
     const result = parseWatchArgs(["--items", "A-1", "--no-review", "--review"]);
     expect(result.skipReview).toBe(false);
   });
+
+  it("parses --tool flag", () => {
+    const result = parseWatchArgs(["--items", "H-FOO-1", "--tool", "opencode"]);
+    expect(result.toolOverride).toBe("opencode");
+  });
+
+  it("defaults toolOverride to undefined when --tool not passed", () => {
+    const result = parseWatchArgs(["--items", "H-FOO-1"]);
+    expect(result.toolOverride).toBeUndefined();
+  });
 });
 
 // ── validateItemIds ────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ export interface ParsedWatchArgs {
   crewUrl?: string;
   crewName?: string;
   bypassEnabled: boolean;
+  toolOverride?: string;
 }
 
 export function parseWatchArgs(args: string[]): ParsedWatchArgs {
@@ -59,6 +60,7 @@ export function parseWatchArgs(args: string[]): ParsedWatchArgs {
   let crewUrl: string | undefined;
   let crewName: string | undefined;
   let bypassEnabled = false;
+  let toolOverride: string | undefined;
 
   let i = 0;
   while (i < args.length) {
@@ -194,6 +196,10 @@ export function parseWatchArgs(args: string[]): ParsedWatchArgs {
         mergeStrategy = "bypass";
         i += 1;
         break;
+      case "--tool":
+        toolOverride = args[i + 1];
+        i += 2;
+        break;
       default:
         throw new Error(`Unknown option: ${args[i]}`);
     }
@@ -210,7 +216,7 @@ export function parseWatchArgs(args: string[]): ParsedWatchArgs {
     reviewAutoFix, reviewExternal, reviewWipLimit,
     fixForward, skipReview, watchMode, noWatch, watchIntervalSecs,
     jsonFlag, skipPreflight, crewCode, crewCreate, crewPort, crewUrl, crewName,
-    bypassEnabled,
+    bypassEnabled, toolOverride,
   };
 }
 

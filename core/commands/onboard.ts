@@ -32,6 +32,8 @@ import { loadConfig } from "../config.ts";
 import { printHelp } from "../help.ts";
 import { AI_TOOL_PROFILES } from "../ai-tools.ts";
 import type { AiToolProfile } from "../ai-tools.ts";
+import { selectAiTool } from "../tool-select.ts";
+import { detectInstalledAITools } from "../tool-select.ts";
 
 // ── Multiplexer descriptors ─────────────────────────────────────────
 
@@ -115,15 +117,8 @@ export function detectInstalledMuxes(
   return MUX_OPTIONS.filter((m) => commandExists(m.type));
 }
 
-/**
- * Detect all installed AI coding tools.
- * Returns matching AiToolProfile entries in preference order (claude > opencode > copilot).
- */
-export function detectInstalledAITools(
-  commandExists: CommandChecker = defaultCommandExists,
-): AiToolProfile[] {
-  return AI_TOOL_PROFILES.filter((p) => commandExists(p.command));
-}
+// detectInstalledAITools re-exported from tool-select.ts for backward compatibility.
+export { detectInstalledAITools } from "../tool-select.ts";
 
 // ── Interactive choice ──────────────────────────────────────────────
 
@@ -261,8 +256,6 @@ export async function onboard(
   // ── Step 3: Detect AI tool ──────────────────────────────────────
   console.log(`${DIM}Detecting AI coding tools...${RESET}`);
   const installedTools = detectInstalledAITools(commandExists);
-  let chosenTool: AiToolProfile;
-
   if (installedTools.length === 0) {
     console.log(`  ${YELLOW}No AI coding tool found.${RESET}`);
     console.log();
@@ -277,27 +270,16 @@ export async function onboard(
     console.log();
     console.log(`Install an AI tool and re-run ${BOLD}ninthwave${RESET}.`);
     return;
-  } else if (installedTools.length === 1) {
-    chosenTool = installedTools[0]!;
-    console.log(
-      `  ${GREEN}✓${RESET} Found ${BOLD}${chosenTool.displayName}${RESET} ${DIM}(${chosenTool.description})${RESET}`,
-    );
-    const confirm = await prompt(`  Use ${chosenTool.displayName}? [Y/n]: `);
-    if (confirm.toLowerCase() === "n") {
-      console.log(
-        `  Install a different AI tool and re-run ${BOLD}ninthwave${RESET}.`,
-      );
-      return;
-    }
-  } else {
-    console.log("  Found multiple AI tools:");
-    const idx = await promptChoice(
-      installedTools,
-      (t) => `${t.displayName} ${DIM}(${t.description})${RESET}`,
-      prompt,
-    );
-    chosenTool = installedTools[idx]!;
   }
+  const chosenToolId = await selectAiTool(
+    { projectRoot: projectDir, isInteractive: true },
+    { commandExists, prompt },
+  );
+  const chosenTool = AI_TOOL_PROFILES.find(p => p.id === chosenToolId) ?? {
+    displayName: chosenToolId,
+    command: chosenToolId,
+    description: "Custom AI tool",
+  } as AiToolProfile;
   console.log();
 
   // ── Step 4: Run setup ───────────────────────────────────────────
