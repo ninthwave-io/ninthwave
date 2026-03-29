@@ -524,34 +524,34 @@ describe("getTerminalWidth", () => {
 
 describe("renderStatus", () => {
   it("returns a string (not void)", () => {
-    const result = renderStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+    const result = renderStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
     expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
   });
 
   it("contains the same content cmdStatus would print", () => {
     // renderStatus should include 'ninthwave' header
-    const result = stripAnsi(renderStatus("/nonexistent/path/.worktrees", "/nonexistent/path"));
+    const result = stripAnsi(renderStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path"));
     expect(result).toContain("Ninthwave");
     expect(result).toContain("No active items");
   });
 
   it("includes worktreeDir path when it does not exist", () => {
-    const result = stripAnsi(renderStatus("/nonexistent/path/.worktrees", "/nonexistent/path"));
-    expect(result).toContain("/nonexistent/path/.worktrees");
+    const result = stripAnsi(renderStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path"));
+    expect(result).toContain("/nonexistent/path/.ninthwave/.worktrees");
     expect(result).toContain("not found");
   });
 
   it("includes getting-started hints when no items exist", () => {
-    const result = stripAnsi(renderStatus("/nonexistent/path/.worktrees", "/nonexistent/path"));
+    const result = stripAnsi(renderStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path"));
     expect(result).toContain("To get started:");
     expect(result).toContain("ninthwave list --ready");
   });
 
   it("shows 'No active items' when worktreeDir exists but has no item entries", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "nw-status-test-"));
-    const worktreeDir = join(tmpDir, ".worktrees");
-    mkdirSync(worktreeDir);
+    const worktreeDir = join(tmpDir, ".ninthwave", ".worktrees");
+    mkdirSync(worktreeDir, { recursive: true });
     writeFileSync(join(worktreeDir, "some-other-file"), "");
 
     try {
@@ -564,7 +564,7 @@ describe("renderStatus", () => {
   });
 
   it("ends with a newline", () => {
-    const result = renderStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+    const result = renderStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
     expect(result.endsWith("\n")).toBe(true);
   });
 });
@@ -575,9 +575,9 @@ describe("cmdStatus", () => {
   it("writes to stdout with the same content as renderStatus", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      cmdStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+      cmdStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
       const written = writeSpy.mock.calls.map((call) => String(call[0])).join("");
-      const expected = renderStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+      const expected = renderStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
       expect(written).toBe(expected);
     } finally {
       writeSpy.mockRestore();
@@ -587,7 +587,7 @@ describe("cmdStatus", () => {
   it("shows 'No active items' when worktreeDir does not exist", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      cmdStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+      cmdStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
       const output = stripAnsi(writeSpy.mock.calls.map((call) => String(call[0])).join(""));
       expect(output).toContain("No active items");
       expect(output).toContain("Ninthwave");
@@ -599,9 +599,9 @@ describe("cmdStatus", () => {
   it("shows worktreeDir path when it does not exist", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      cmdStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+      cmdStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
       const output = stripAnsi(writeSpy.mock.calls.map((call) => String(call[0])).join(""));
-      expect(output).toContain("/nonexistent/path/.worktrees");
+      expect(output).toContain("/nonexistent/path/.ninthwave/.worktrees");
       expect(output).toContain("not found");
     } finally {
       writeSpy.mockRestore();
@@ -611,7 +611,7 @@ describe("cmdStatus", () => {
   it("shows getting-started hints when worktreeDir does not exist", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      cmdStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+      cmdStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
       const output = stripAnsi(writeSpy.mock.calls.map((call) => String(call[0])).join(""));
       expect(output).toContain("To get started:");
       expect(output).toContain("ninthwave list --ready");
@@ -622,8 +622,8 @@ describe("cmdStatus", () => {
 
   it("shows 'No active items' when worktreeDir exists but has no item entries", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "nw-status-test-"));
-    const worktreeDir = join(tmpDir, ".worktrees");
-    mkdirSync(worktreeDir);
+    const worktreeDir = join(tmpDir, ".ninthwave", ".worktrees");
+    mkdirSync(worktreeDir, { recursive: true });
     writeFileSync(join(worktreeDir, "some-other-file"), "");
 
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -640,8 +640,8 @@ describe("cmdStatus", () => {
 
   it("shows getting-started hints when worktreeDir exists but is empty", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "nw-status-test-"));
-    const worktreeDir = join(tmpDir, ".worktrees");
-    mkdirSync(worktreeDir);
+    const worktreeDir = join(tmpDir, ".ninthwave", ".worktrees");
+    mkdirSync(worktreeDir, { recursive: true });
 
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
@@ -1541,7 +1541,7 @@ describe("status command flag routing", () => {
   it("--once invokes single snapshot mode (cmdStatus)", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    cmdStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+    cmdStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
 
     const allWrites = writeSpy.mock.calls.map((call) => String(call[0]));
     const joined = allWrites.join("");
@@ -1630,7 +1630,7 @@ describe("cmdStatus (--once mode)", () => {
   it("prints status table without entering TUI", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    cmdStatus("/nonexistent/path/.worktrees", "/nonexistent/path");
+    cmdStatus("/nonexistent/path/.ninthwave/.worktrees", "/nonexistent/path");
 
     const allWrites = writeSpy.mock.calls.map((call) => String(call[0]));
     const joined = stripAnsi(allWrites.join(""));

@@ -25,7 +25,7 @@ function getTestFiles(): { name: string; content: string; path: string }[] {
 /** Read all .ts and .md project files, excluding non-source directories. */
 function getProjectFiles(): { name: string; content: string; path: string }[] {
   const projectRoot = join(import.meta.dirname, "..");
-  const excludePrefixes = ["node_modules/", ".worktrees/", "dist/", ".git/"];
+  const excludePrefixes = ["node_modules/", ".ninthwave/.worktrees/", "dist/", ".git/"];
   const files: { name: string; content: string; path: string }[] = [];
 
   for (const pattern of ["**/*.ts", "**/*.md"]) {

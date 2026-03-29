@@ -12,7 +12,7 @@ import { makeWorkItem } from "../scenario/helpers.ts";
 import { writeHeartbeat, type DaemonIO } from "../../core/daemon.ts";
 
 const PROJECT_ROOT = "/tmp/test-project";
-const WORKTREE_DIR = "/tmp/test-project/.worktrees";
+const WORKTREE_DIR = "/tmp/test-project/.ninthwave/.worktrees";
 
 // ── In-memory DaemonIO for heartbeat writes ────────────────────────
 // Avoids touching the real filesystem during tests.

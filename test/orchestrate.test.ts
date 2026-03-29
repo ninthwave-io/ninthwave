@@ -84,7 +84,7 @@ function mockActionDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps
 
 const defaultCtx: ExecutionContext = {
   projectRoot: "/tmp/test-project",
-  worktreeDir: "/tmp/test-project/.worktrees",
+  worktreeDir: "/tmp/test-project/.ninthwave/.worktrees",
   workDir: "/tmp/test-project/.ninthwave/work",
   aiTool: "claude",
 };
@@ -994,7 +994,7 @@ describe("reconstructState", () => {
     orch.getItem("R-1-1")!.reviewCompleted = true;
 
     // Non-existent worktree dir -- items stay queued
-    reconstructState(orch, "/nonexistent", "/nonexistent/.worktrees");
+    reconstructState(orch, "/nonexistent", "/nonexistent/.ninthwave/.worktrees");
 
     expect(orch.getItem("R-1-1")!.state).toBe("queued");
   });
@@ -1006,7 +1006,7 @@ describe("reconstructState", () => {
 
     // Create a temp worktree dir to simulate existing worktree
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-test-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-H-DF-1");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1042,7 +1042,7 @@ describe("reconstructState", () => {
     orch.getItem("H-DF-2")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-test2-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-H-DF-2");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1075,7 +1075,7 @@ describe("reconstructState", () => {
     orch.getItem("REC-1")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-cifc-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-REC-1");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1112,7 +1112,7 @@ describe("reconstructState", () => {
     orch.getItem("REC-2")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-nostate-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-REC-2");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1134,7 +1134,7 @@ describe("reconstructState", () => {
     orch.getItem("REC-3")!.reviewCompleted = true;
 
     // No worktree dir needed -- items without worktrees are skipped
-    reconstructState(orch, "/nonexistent", "/nonexistent/.worktrees", undefined, () => null, null);
+    reconstructState(orch, "/nonexistent", "/nonexistent/.ninthwave/.worktrees", undefined, () => null, null);
 
     const item = orch.getItem("REC-3")!;
     expect(item.ciFailCount).toBe(0);
@@ -1148,7 +1148,7 @@ describe("reconstructState", () => {
     orch.getItem("REC-4")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-stuck-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-REC-4");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1206,7 +1206,7 @@ describe("reconstructState", () => {
     orch.getItem("WR-1")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-wr1-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-WR-1");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1228,7 +1228,7 @@ describe("reconstructState", () => {
     orch.getItem("WR-2")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-wr2-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-WR-2");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1249,7 +1249,7 @@ describe("reconstructState", () => {
     orch.getItem("WR-3")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-wr3-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-WR-3");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1271,7 +1271,7 @@ describe("reconstructState review fields", () => {
     orch.addItem(makeWorkItem("RVW-1"));
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-rvw-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-RVW-1");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1311,7 +1311,7 @@ describe("reconstructState review fields", () => {
     orch.getItem("RVW-2")!.reviewCompleted = true;
 
     const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-rvwt-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-RVW-2");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1351,8 +1351,8 @@ describe("reconstructState cross-repo", () => {
     orch.addItem(item);
 
     const tmpDir = join(require("os").tmpdir(), `nw-xr-reconstruct-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
-    const targetWtPath = join("/tmp/target-repo", ".worktrees", "ninthwave-XR-1-1");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
+    const targetWtPath = join("/tmp/target-repo", ".ninthwave", ".worktrees", "ninthwave-XR-1-1");
     require("fs").mkdirSync(wtDir, { recursive: true });
 
     // Write cross-repo index pointing to target repo worktree
@@ -1376,7 +1376,7 @@ describe("reconstructState cross-repo", () => {
     orch.getItem("XR-2-1")!.resolvedRepoRoot = "/target-repo";
 
     const tmpDir = join(require("os").tmpdir(), `nw-xr-reconstruct2-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     const wtPath = join(wtDir, "ninthwave-XR-2-1");
     require("fs").mkdirSync(wtPath, { recursive: true });
 
@@ -1422,7 +1422,7 @@ describe("buildSnapshot cross-repo", () => {
       closeWorkspace: () => true,
     };
 
-    buildSnapshot(orch, "/hub-root", "/hub-root/.worktrees", fakeMux, () => null, trackingCheckPr);
+    buildSnapshot(orch, "/hub-root", "/hub-root/.ninthwave/.worktrees", fakeMux, () => null, trackingCheckPr);
     expect(checkedRepo).toBe("/target-repo");
   });
 
@@ -1451,7 +1451,7 @@ describe("buildSnapshot cross-repo", () => {
       closeWorkspace: () => true,
     };
 
-    buildSnapshot(orch, "/hub-root", "/hub-root/.worktrees", fakeMux, trackingCommitTime, () => null);
+    buildSnapshot(orch, "/hub-root", "/hub-root/.ninthwave/.worktrees", fakeMux, trackingCommitTime, () => null);
     expect(commitTimeRepo).toBe("/target-repo");
   });
 });
@@ -1624,7 +1624,7 @@ describe("buildSnapshot lastCommitTime", () => {
     const getLastCommitTime = vi.fn(() => fixedTime);
     const mux = mockMux("workspace:1");
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, noOpCheckPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, noOpCheckPr);
 
     // getLastCommitTime was called with the right branch name
     expect(getLastCommitTime).toHaveBeenCalledWith("/tmp/project", "ninthwave/HC-1-1");
@@ -1649,7 +1649,7 @@ describe("buildSnapshot lastCommitTime", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux("workspace:2");
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, noOpCheckPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, noOpCheckPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "HC-2-1");
     expect(snapItem).toBeDefined();
@@ -1671,7 +1671,7 @@ describe("buildSnapshot lastCommitTime", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux("workspace:3");
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, noOpCheckPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, noOpCheckPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "HC-3-1");
     expect(snapItem).toBeDefined();
@@ -1687,7 +1687,7 @@ describe("buildSnapshot lastCommitTime", () => {
     const getLastCommitTime = vi.fn(() => "2026-03-24T12:00:00+00:00");
     const mux = mockMux();
 
-    buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, noOpCheckPr);
+    buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, noOpCheckPr);
 
     // Should not have been called for ci-pending items
     expect(getLastCommitTime).not.toHaveBeenCalled();
@@ -1722,7 +1722,7 @@ describe("buildSnapshot isMergeable", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux();
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, checkPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, checkPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "M-1-1");
     expect(snapItem).toBeDefined();
@@ -1740,7 +1740,7 @@ describe("buildSnapshot isMergeable", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux();
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, checkPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, checkPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "M-2-1");
     expect(snapItem).toBeDefined();
@@ -1758,7 +1758,7 @@ describe("buildSnapshot isMergeable", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux();
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, checkPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, checkPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "M-3-1");
     expect(snapItem).toBeDefined();
@@ -1776,7 +1776,7 @@ describe("buildSnapshot isMergeable", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux();
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, checkPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, checkPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "M-4-1");
     expect(snapItem).toBeDefined();
@@ -1812,7 +1812,7 @@ describe("buildSnapshot ready status mapping", () => {
     const getLastCommitTime = vi.fn(() => null);
     const mux = mockMux();
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, getLastCommitTime, checkPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, getLastCommitTime, checkPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "R-1-1");
     expect(snapItem).toBeDefined();
@@ -1854,7 +1854,7 @@ describe("buildSnapshot merge detection", () => {
     const checkPr = () => "MRG-1-1\t99\tmerged\t\t\trefactor: rewrite polling internals";
     const mux = mockMux();
 
-    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.worktrees", mux, () => null, checkPr);
+    const snapshot = buildSnapshot(orch, "/tmp/project", "/tmp/project/.ninthwave/.worktrees", mux, () => null, checkPr);
 
     const snapItem = snapshot.items.find((i) => i.id === "MRG-1-1");
     expect(snapItem).toBeDefined();
@@ -1874,7 +1874,7 @@ describe("reconstructState merge detection", () => {
 
     // Create a temp worktree so reconstructState processes this item
     const tmpDir = join(require("os").tmpdir(), `nw-mrg-test-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     require("fs").mkdirSync(join(wtDir, "ninthwave-MRG-2-1"), { recursive: true });
 
     // checkPr returns merged with a mismatched title (old cycle's PR)
@@ -1897,7 +1897,7 @@ describe("reconstructState merge detection", () => {
     orch.getItem("MRG-3-1")!.prNumber = 77;
 
     const tmpDir = join(require("os").tmpdir(), `nw-mrg-test2-${Date.now()}`);
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     require("fs").mkdirSync(join(wtDir, "ninthwave-MRG-3-1"), { recursive: true });
 
     // checkPr returns merged with a different title but matching PR number

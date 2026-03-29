@@ -27,7 +27,7 @@ describe("cross-repo", () => {
       const workDir = useFixtureDir(repo, "cross_repo.md");
       const items = parseWorkItems(
         workDir,
-        join(repo, ".worktrees"),
+        join(repo, ".ninthwave", ".worktrees"),
       );
 
       expect(items).toHaveLength(4);
@@ -38,7 +38,7 @@ describe("cross-repo", () => {
       const workDir = useFixtureDir(repo, "cross_repo.md");
       const items = parseWorkItems(
         workDir,
-        join(repo, ".worktrees"),
+        join(repo, ".ninthwave", ".worktrees"),
       );
 
       const apiItem = items.find((i) => i.id === "H-API-1");
@@ -53,7 +53,7 @@ describe("cross-repo", () => {
       const workDir = useFixtureDir(repo, "cross_repo.md");
       const items = parseWorkItems(
         workDir,
-        join(repo, ".worktrees"),
+        join(repo, ".ninthwave", ".worktrees"),
       );
 
       const docItem = items.find((i) => i.id === "M-DOC-1");
@@ -65,7 +65,7 @@ describe("cross-repo", () => {
       const workDir = useFixtureDir(repo, "valid.md");
       const items = parseWorkItems(
         workDir,
-        join(repo, ".worktrees"),
+        join(repo, ".ninthwave", ".worktrees"),
       );
 
       expect(items).toHaveLength(4);
@@ -76,7 +76,7 @@ describe("cross-repo", () => {
       const workDir = useFixtureDir(repo, "valid.md");
       const items = parseWorkItems(
         workDir,
-        join(repo, ".worktrees"),
+        join(repo, ".ninthwave", ".worktrees"),
       );
 
       const item = items.find((i) => i.id === "M-CI-1");
@@ -100,12 +100,12 @@ describe("cross-repo", () => {
     it("index can be written and read", { timeout: 15000 }, () => {
       const hub = setupTempRepoPair();
       const parent = dirname(hub);
-      mkdirSync(join(hub, ".worktrees"), { recursive: true });
+      mkdirSync(join(hub, ".ninthwave", ".worktrees"), { recursive: true });
 
-      const indexFile = join(hub, ".worktrees", ".cross-repo-index");
+      const indexFile = join(hub, ".ninthwave", ".worktrees", ".cross-repo-index");
       writeFileSync(
         indexFile,
-        `H-API-1\t${parent}/target-repo-a\t${parent}/target-repo-a/.worktrees/ninthwave-H-API-1\nH-WA-1\t${parent}/target-repo-b\t${parent}/target-repo-b/.worktrees/ninthwave-H-WA-1\n`,
+        `H-API-1\t${parent}/target-repo-a\t${parent}/target-repo-a/.ninthwave/.worktrees/ninthwave-H-API-1\nH-WA-1\t${parent}/target-repo-b\t${parent}/target-repo-b/.ninthwave/.worktrees/ninthwave-H-WA-1\n`,
       );
 
       expect(existsSync(indexFile)).toBe(true);
@@ -119,12 +119,12 @@ describe("cross-repo", () => {
     it("entry can be removed from index", { timeout: 15000 }, () => {
       const hub = setupTempRepoPair();
       const parent = dirname(hub);
-      mkdirSync(join(hub, ".worktrees"), { recursive: true });
+      mkdirSync(join(hub, ".ninthwave", ".worktrees"), { recursive: true });
 
-      const indexFile = join(hub, ".worktrees", ".cross-repo-index");
+      const indexFile = join(hub, ".ninthwave", ".worktrees", ".cross-repo-index");
       writeFileSync(
         indexFile,
-        `H-API-1\t${parent}/target-repo-a\t${parent}/target-repo-a/.worktrees/ninthwave-H-API-1\nH-WA-1\t${parent}/target-repo-b\t${parent}/target-repo-b/.worktrees/ninthwave-H-WA-1\n`,
+        `H-API-1\t${parent}/target-repo-a\t${parent}/target-repo-a/.ninthwave/.worktrees/ninthwave-H-API-1\nH-WA-1\t${parent}/target-repo-b\t${parent}/target-repo-b/.ninthwave/.worktrees/ninthwave-H-WA-1\n`,
       );
 
       // Simulate removal: filter out H-API-1
@@ -145,10 +145,10 @@ describe("cross-repo", () => {
   describe("writeCrossRepoIndex deduplication", () => {
     it("writing same ID twice results in one entry", () => {
       const repo = setupTempRepo();
-      const indexFile = join(repo, ".worktrees", ".cross-repo-index");
+      const indexFile = join(repo, ".ninthwave", ".worktrees", ".cross-repo-index");
 
-      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.worktrees/ninthwave-T-1");
-      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.worktrees/ninthwave-T-1-v2");
+      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.ninthwave/.worktrees/ninthwave-T-1");
+      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.ninthwave/.worktrees/ninthwave-T-1-v2");
 
       const content = readFileSync(indexFile, "utf-8");
       const lines = content.split("\n").filter((l) => l.trim());
@@ -158,10 +158,10 @@ describe("cross-repo", () => {
 
     it("writing different IDs produces separate entries", () => {
       const repo = setupTempRepo();
-      const indexFile = join(repo, ".worktrees", ".cross-repo-index");
+      const indexFile = join(repo, ".ninthwave", ".worktrees", ".cross-repo-index");
 
-      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.worktrees/ninthwave-T-1");
-      writeCrossRepoIndex(indexFile, "T-2", "/repo-b", "/repo-b/.worktrees/ninthwave-T-2");
+      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.ninthwave/.worktrees/ninthwave-T-1");
+      writeCrossRepoIndex(indexFile, "T-2", "/repo-b", "/repo-b/.ninthwave/.worktrees/ninthwave-T-2");
 
       const content = readFileSync(indexFile, "utf-8");
       const lines = content.split("\n").filter((l) => l.trim());
@@ -172,15 +172,15 @@ describe("cross-repo", () => {
 
     it("existing index operations still work after dedup write", () => {
       const repo = setupTempRepo();
-      const indexFile = join(repo, ".worktrees", ".cross-repo-index");
-      mkdirSync(join(repo, ".worktrees"), { recursive: true });
+      const indexFile = join(repo, ".ninthwave", ".worktrees", ".cross-repo-index");
+      mkdirSync(join(repo, ".ninthwave", ".worktrees"), { recursive: true });
 
       // Write two entries
-      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.worktrees/ninthwave-T-1");
-      writeCrossRepoIndex(indexFile, "T-2", "/repo-b", "/repo-b/.worktrees/ninthwave-T-2");
+      writeCrossRepoIndex(indexFile, "T-1", "/repo-a", "/repo-a/.ninthwave/.worktrees/ninthwave-T-1");
+      writeCrossRepoIndex(indexFile, "T-2", "/repo-b", "/repo-b/.ninthwave/.worktrees/ninthwave-T-2");
 
       // getWorktreeInfo should find them
-      const info1 = getWorktreeInfo("T-1", indexFile, join(repo, ".worktrees"));
+      const info1 = getWorktreeInfo("T-1", indexFile, join(repo, ".ninthwave", ".worktrees"));
       expect(info1).not.toBeNull();
       expect(info1!.itemId).toBe("T-1");
       expect(info1!.repoRoot).toBe("/repo-a");
@@ -356,7 +356,7 @@ describe("cross-repo", () => {
       const workDir = useFixtureDir(repo, "valid.md");
       const items = parseWorkItems(
         workDir,
-        join(repo, ".worktrees"),
+        join(repo, ".ninthwave", ".worktrees"),
       );
 
       for (const item of items) {

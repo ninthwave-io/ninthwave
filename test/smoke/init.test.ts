@@ -51,18 +51,19 @@ describe("smoke: nw init", () => {
     expect(result.stdout).toContain("Done!");
   });
 
-  it("creates .gitignore with worktrees entry", () => {
+  it("creates .ninthwave/.gitignore with deny-by-default pattern", () => {
     const repo = setupTempRepo();
 
     const result = runCli(repo, "init", "--yes");
 
     expect(result.exitCode).toBe(0);
 
-    const gitignorePath = join(repo, ".gitignore");
-    expect(existsSync(gitignorePath)).toBe(true);
+    const nwGitignorePath = join(repo, ".ninthwave", ".gitignore");
+    expect(existsSync(nwGitignorePath)).toBe(true);
 
-    const content = require("fs").readFileSync(gitignorePath, "utf-8");
-    expect(content).toContain(".worktrees/");
+    const content = require("fs").readFileSync(nwGitignorePath, "utf-8");
+    expect(content).toContain("*");
+    expect(content).toContain("!config.json");
   });
 
   it("produces no unhandled exceptions in stderr", () => {

@@ -9,7 +9,7 @@ describe("deps", () => {
   it("shows upstream dependencies", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdDeps(["H-CI-2"], workDir, worktreeDir),
@@ -25,7 +25,7 @@ describe("deps", () => {
   it("shows downstream dependents", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdDeps(["M-CI-1"], workDir, worktreeDir),
@@ -39,7 +39,7 @@ describe("deps", () => {
   it("shows bundle relationships", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // H-UO-2 bundles with H-CI-2
     const output = captureOutput(() =>
@@ -53,7 +53,7 @@ describe("deps", () => {
   it("shows (none) when item has no deps", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdDeps(["C-UO-1"], workDir, worktreeDir),
@@ -66,7 +66,7 @@ describe("deps", () => {
   it("errors on unknown ID", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdDeps(["FAKE-99"], workDir, worktreeDir),
@@ -78,7 +78,7 @@ describe("deps", () => {
   it("shows reverse bundle (item referenced by another's bundle-with)", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // H-CI-2 is referenced in H-UO-2's bundle-with field
     const output = captureOutput(() =>

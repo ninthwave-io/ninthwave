@@ -25,7 +25,6 @@ import {
   buildSymlinkPlan,
   executeSymlinkPlan,
   interactiveAgentSelection,
-  SYMLINK_GITIGNORE_DIRS,
   AGENT_SOURCES,
   AGENT_TARGET_DIRS,
   AGENT_DESCRIPTIONS,

@@ -12,7 +12,7 @@ import { tmpdir } from "os";
 
 const TEST_DIR = join(tmpdir(), `nw-partition-test-${process.pid}`);
 const PARTITION_DIR = join(TEST_DIR, ".partitions");
-const WORKTREE_DIR = join(TEST_DIR, ".worktrees");
+const WORKTREE_DIR = join(TEST_DIR, ".ninthwave", ".worktrees");
 
 beforeEach(() => {
   mkdirSync(TEST_DIR, { recursive: true });
@@ -112,7 +112,7 @@ describe("cleanupStalePartitions", () => {
 
   it("keeps partitions for items with a cross-repo worktree", () => {
     allocatePartition(PARTITION_DIR, "X-CR-1");
-    const crossRepoPath = join(TEST_DIR, "other-repo", ".worktrees", "ninthwave-X-CR-1");
+    const crossRepoPath = join(TEST_DIR, "other-repo", ".ninthwave", ".worktrees", "ninthwave-X-CR-1");
     mkdirSync(crossRepoPath, { recursive: true });
 
     const getInfo = (todoId: string): WorktreeInfo | null => {

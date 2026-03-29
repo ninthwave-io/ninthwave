@@ -29,7 +29,7 @@ No build step -- Bun executes TypeScript directly. Changes take effect immediate
 - Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - Tests live in `test/` using bun's native test runner (vitest-compatible API via `import { describe, it, expect, vi } from "vitest"`)
 - **Mock isolation:** `bun test` does not isolate `vi.mock` between test files -- mocks leak across files and break unrelated tests. Prefer dependency injection (pass collaborators as function arguments) over `vi.mock`. Only use `vi.mock` when the mocked module is not imported by any other test file. When in doubt, inject.
-- **Always run `bun test test/`** (scoped to test directory) to avoid picking up tests from `.worktrees/` during orchestration
+- **Always run `bun test test/`** (scoped to test directory) to avoid picking up tests from `.ninthwave/.worktrees/` during orchestration
 - Convention over configuration -- sensible defaults, minimal config files
 - **VISION.md is forward-looking only.** Do not add completion markers (`*(complete)*`, strikethrough `~~done~~`, `(Shipped.)`, `Decomposed →`) to VISION.md. Completed work belongs in CHANGELOG.md. Vision workers should remove or collapse shipped sections, not annotate them.
 

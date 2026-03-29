@@ -11,7 +11,7 @@ describe("list", () => {
   it("lists all items with no filters", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() => cmdList([], workDir, worktreeDir));
 
@@ -25,7 +25,7 @@ describe("list", () => {
   it("filters by priority", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--priority", "high"], workDir, worktreeDir),
@@ -44,7 +44,7 @@ describe("list", () => {
   it("filters by domain", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--domain", "cloud-infrastructure"], workDir, worktreeDir),
@@ -60,7 +60,7 @@ describe("list", () => {
   it("filters by feature code", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--feature", "UO"], workDir, worktreeDir),
@@ -79,7 +79,7 @@ describe("list", () => {
   it("filters by ready (deps all satisfied)", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--ready"], workDir, worktreeDir),
@@ -99,7 +99,7 @@ describe("list", () => {
   it("--depth 1 is equivalent to --ready", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--depth", "1"], workDir, worktreeDir),
@@ -115,7 +115,7 @@ describe("list", () => {
   it("--depth 2 includes items one hop from ready roots", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--depth", "2"], workDir, worktreeDir),
@@ -133,7 +133,7 @@ describe("list", () => {
   it("--depth implies --ready", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // --depth without --ready should still filter
     const output = captureOutput(() =>
@@ -146,7 +146,7 @@ describe("list", () => {
   it("--depth with invalid value exits with error", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdList(["--depth", "0"], workDir, worktreeDir),
@@ -158,7 +158,7 @@ describe("list", () => {
   it("shows repo label for cross-repo items", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "cross_repo.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() => cmdList([], workDir, worktreeDir));
 
@@ -169,7 +169,7 @@ describe("list", () => {
   it("--remote flag is parsed without error", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // Should not throw -- no remote configured, so all items show as "local"
     const output = captureOutput(() => cmdList(["--remote"], workDir, worktreeDir, repo));
@@ -182,7 +182,7 @@ describe("list", () => {
     const repo = setupTempRepoWithRemote();
     const workDir = join(repo, ".ninthwave", "work");
     mkdirSync(workDir, { recursive: true });
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Create two items and push both
@@ -226,7 +226,7 @@ describe("list", () => {
     const repo = setupTempRepoWithRemote();
     const workDir = join(repo, ".ninthwave", "work");
     mkdirSync(workDir, { recursive: true });
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     writeFileSync(
@@ -252,7 +252,7 @@ describe("list", () => {
   it("--remote graceful fallback when no remote configured", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // No remote configured -- should show all items as "local"
     const output = captureOutput(() => cmdList(["--remote"], workDir, worktreeDir, repo));

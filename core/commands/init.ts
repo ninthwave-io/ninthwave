@@ -23,8 +23,6 @@ import { run } from "../shell.ts";
 import type { WorkspaceConfig, WorkspacePackage } from "../types.ts";
 import {
   createSkillSymlinks,
-  isSelfHosting,
-  SYMLINK_GITIGNORE_DIRS,
   type CommandChecker,
   type AuthChecker,
   type CommandPathResolver,
@@ -690,47 +688,25 @@ than average. Open a work item for anything that needs attention.
   const plan = buildSymlinkPlan(projectDir, bundleDir, selection);
   executeSymlinkPlan(plan);
 
-  // --- .gitignore ---
-  const gitignorePath = join(projectDir, ".gitignore");
-  const selfHosting = isSelfHosting(projectDir, bundleDir);
+  // --- .ninthwave/.gitignore (deny-by-default: only explicitly allowed files are committed) ---
+  const nwGitignorePath = join(projectDir, ".ninthwave", ".gitignore");
+  if (!existsSync(nwGitignorePath)) {
+    writeFileSync(
+      nwGitignorePath,
+      `# Deny by default -- only explicitly allowed files are committed
+*
 
-  if (existsSync(gitignorePath)) {
-    let content = readFileSync(gitignorePath, "utf-8");
-    let modified = false;
-
-    if (!content.includes(".worktrees/")) {
-      content += "\n# ninthwave worktrees\n.worktrees/\n";
-      modified = true;
-    }
-
-    // Add symlink directories for non-self-hosting projects
-    if (!selfHosting) {
-      const missing = SYMLINK_GITIGNORE_DIRS.filter(
-        (d) => !content.includes(d),
-      );
-      if (missing.length > 0) {
-        content +=
-          "\n# ninthwave symlinks (developer-local, re-created by ninthwave init)\n";
-        for (const entry of missing) {
-          content += entry + "\n";
-        }
-        modified = true;
-      }
-    }
-
-    if (modified) {
-      writeFileSync(gitignorePath, content);
-    }
-  } else {
-    let content = "# ninthwave worktrees\n.worktrees/\n";
-    if (!selfHosting) {
-      content +=
-        "\n# ninthwave symlinks (developer-local, re-created by ninthwave init)\n";
-      for (const entry of SYMLINK_GITIGNORE_DIRS) {
-        content += entry + "\n";
-      }
-    }
-    writeFileSync(gitignorePath, content);
+# Committed project files
+!.gitignore
+!config.json
+!work/
+!work/**
+!schedules/
+!schedules/**
+!friction/
+!friction/**
+`,
+    );
   }
 
   // --- Version tracking ---

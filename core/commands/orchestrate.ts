@@ -1915,7 +1915,7 @@ export async function cmdOrchestrate(
       try { mux.closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
       // Clean the review worktree if it exists (only for direct/pr modes)
       try {
-        cleanSingleWorktree(`review-${itemId}`, join(projectRoot, ".worktrees"), projectRoot);
+        cleanSingleWorktree(`review-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
       } catch { /* best-effort -- review worktree may not exist for off mode */ }
       return true;
     },
@@ -1943,7 +1943,7 @@ export async function cmdOrchestrate(
     cleanForwardFixer: (itemId, fixForwardWorkspaceRef) => {
       try { mux.closeWorkspace(fixForwardWorkspaceRef); } catch { /* best-effort */ }
       try {
-        cleanSingleWorktree(`ninthwave-fix-forward-${itemId}`, join(projectRoot, ".worktrees"), projectRoot);
+        cleanSingleWorktree(`ninthwave-fix-forward-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
       } catch { /* best-effort -- forward-fixer worktree may already be cleaned */ }
       return true;
     },

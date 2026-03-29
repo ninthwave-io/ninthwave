@@ -225,7 +225,7 @@ describe("checkCommitCI", () => {
     };
 
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, fakeCommitTime, fakeCheckPr, undefined, fakeCheckCommitCI,
     );
 
@@ -251,7 +251,7 @@ describe("checkCommitCI", () => {
     };
 
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, fakeCommitTime, fakeCheckPr, undefined, fakeCheckCommitCI,
     );
 
@@ -272,7 +272,7 @@ describe("checkCommitCI", () => {
     const fakeCommitTime = () => null;
 
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, fakeCommitTime, fakeCheckPr, undefined, undefined,
     );
 
@@ -313,7 +313,7 @@ describe("merge commit SHA retrieval in executeMerge", () => {
 
     const ctx: ExecutionContext = {
       projectRoot: "/tmp/proj",
-      worktreeDir: "/tmp/proj/.worktrees",
+      worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
       workDir: "/tmp/proj/.ninthwave/work",
       aiTool: "test",
     };
@@ -353,7 +353,7 @@ describe("merge commit SHA retrieval in executeMerge", () => {
 
     const ctx: ExecutionContext = {
       projectRoot: "/tmp/proj",
-      worktreeDir: "/tmp/proj/.worktrees",
+      worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
       workDir: "/tmp/proj/.ninthwave/work",
       aiTool: "test",
     };
@@ -394,7 +394,7 @@ describe("merge commit SHA retrieval in executeMerge", () => {
 
     const ctx: ExecutionContext = {
       projectRoot: "/tmp/proj",
-      worktreeDir: "/tmp/proj/.worktrees",
+      worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
       workDir: "/tmp/proj/.ninthwave/work",
       aiTool: "test",
     };
@@ -444,7 +444,7 @@ describe("checkCommitCI ignores Ninthwave / Review check", () => {
 
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, () => null, () => null, undefined, fakeCheckCommitCI,
     );
 
@@ -487,7 +487,7 @@ describe("dependency resolution with fix-forward", () => {
     const fakeCheckCommitCI = () => "pending" as const;
 
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, () => null, () => null, undefined, fakeCheckCommitCI,
     );
 
@@ -505,7 +505,7 @@ describe("dependency resolution with fix-forward", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
 
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, () => null, () => null,
     );
 
@@ -522,7 +522,7 @@ describe("dependency resolution with fix-forward", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
 
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, () => null, () => null,
     );
 
@@ -778,7 +778,7 @@ describe("fixing-forward state handling", () => {
 describe("executeLaunchForwardFixer action", () => {
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "test",
   };
@@ -804,7 +804,7 @@ describe("executeLaunchForwardFixer action", () => {
     const deps: OrchestratorDeps = {
       ...baseDeps,
       launchForwardFixer: (_itemId, _sha, _repoRoot) => ({
-        worktreePath: "/tmp/proj/.worktrees/ninthwave-fix-forward-H-1-1",
+        worktreePath: "/tmp/proj/.ninthwave/.worktrees/ninthwave-fix-forward-H-1-1",
         workspaceRef: "workspace:7",
       }),
     };
@@ -864,7 +864,7 @@ describe("executeLaunchForwardFixer action", () => {
 describe("executeCleanForwardFixer action", () => {
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "test",
   };

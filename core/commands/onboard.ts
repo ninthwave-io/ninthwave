@@ -402,7 +402,7 @@ export async function cmdNoArgs(
   }
 
   const workDir = join(projectRoot, ".ninthwave", "work");
-  const worktreeDir = join(projectRoot, ".worktrees");
+  const worktreeDir = join(projectRoot, ".ninthwave", ".worktrees");
 
   // State 3: .ninthwave/ exists but no work item files
   let todos: WorkItem[] = [];

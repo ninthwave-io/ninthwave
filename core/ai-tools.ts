@@ -4,7 +4,8 @@
 // All other modules should derive tool-specific behaviour from this module rather
 // than maintaining their own per-tool switch statements.
 
-import { readFileSync as defaultReadFileSync, writeFileSync as defaultWriteFileSync } from "fs";
+import { mkdirSync as defaultMkdirSync, readFileSync as defaultReadFileSync, writeFileSync as defaultWriteFileSync } from "fs";
+import { join } from "path";
 import { run as defaultRun } from "./shell.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ export type AiToolId = "claude" | "opencode" | "copilot";
 export interface LaunchDeps {
   readFileSync: (path: string, encoding: BufferEncoding) => string;
   writeFileSync: (path: string, content: string) => void;
+  mkdirSync: (path: string, options?: { recursive?: boolean }) => void;
   run: (cmd: string, args: string[]) => unknown;
 }
 
@@ -29,10 +31,12 @@ export interface LaunchOpts {
   wsName: string;
   /** Agent persona to load (e.g. "ninthwave-implementer"). */
   agentName: string;
-  /** Absolute path to the .nw-prompt file containing the system prompt. */
+  /** Absolute path to the .prompt file containing the system prompt. */
   promptFile: string;
   /** Work item ID -- used for unique temp-file names (Copilot). */
   id: string;
+  /** Absolute path to ~/.ninthwave/projects/{slug}/ for temp file storage. */
+  stateDir: string;
 }
 
 /** Result of buildLaunchCmd. */
@@ -134,7 +138,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
       const cmd =
         `claude --name '${opts.wsName}' --permission-mode bypassPermissions` +
         ` --agent ${opts.agentName}` +
-        ` --append-system-prompt "$(cat '.nw-prompt')" -- Start`;
+        ` --append-system-prompt "$(cat '.ninthwave/.prompt')" -- Start`;
       return { cmd, initialPrompt: "" };
     },
   },
@@ -154,8 +158,10 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
       // Uses --prompt to seed the initial prompt into the TUI (auto-starts execution),
       // and OPENCODE_PERMISSION to auto-approve all permission prompts.
       const ts = Date.now();
-      const launcherScript = `/tmp/nw-launch-${opts.id}-${ts}.sh`;
-      const promptDataFile = `/tmp/nw-prompt-${opts.id}-${ts}`;
+      const tmpDir = join(opts.stateDir, "tmp");
+      deps.mkdirSync(tmpDir, { recursive: true });
+      const launcherScript = join(tmpDir, `nw-launch-${opts.id}-${ts}.sh`);
+      const promptDataFile = join(tmpDir, `nw-prompt-${opts.id}-${ts}`);
       const promptContent = deps.readFileSync(opts.promptFile, "utf-8");
       deps.writeFileSync(promptDataFile, `${promptContent}\n\nStart implementing this work item now.`);
       deps.writeFileSync(
@@ -184,8 +190,10 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
       // Write a launcher script so the full prompt reaches copilot via -i without
       // any shell quoting issues from multiplexer pipelines.
       const ts = Date.now();
-      const launcherScript = `/tmp/nw-launch-${opts.id}-${ts}.sh`;
-      const promptDataFile = `/tmp/nw-prompt-${opts.id}-${ts}`;
+      const tmpDir = join(opts.stateDir, "tmp");
+      deps.mkdirSync(tmpDir, { recursive: true });
+      const launcherScript = join(tmpDir, `nw-launch-${opts.id}-${ts}.sh`);
+      const promptDataFile = join(tmpDir, `nw-prompt-${opts.id}-${ts}`);
       const promptContent = deps.readFileSync(opts.promptFile, "utf-8");
       deps.writeFileSync(promptDataFile, `${promptContent}\n\nStart implementing this work item now.`);
       deps.writeFileSync(
@@ -250,5 +258,6 @@ export function agentFileTargets(sources: string[]): AgentFileTargetEntry[] {
 export const defaultLaunchDeps: LaunchDeps = {
   readFileSync: (path, enc) => defaultReadFileSync(path, enc),
   writeFileSync: defaultWriteFileSync,
+  mkdirSync: defaultMkdirSync,
   run: (cmd, args) => defaultRun(cmd, args),
 };

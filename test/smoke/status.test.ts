@@ -30,7 +30,7 @@ describe("smoke: nw status", () => {
     const repo = setupTempRepo();
 
     // Create .worktrees dir so status has something to check
-    mkdirSync(join(repo, ".worktrees"), { recursive: true });
+    mkdirSync(join(repo, ".ninthwave", ".worktrees"), { recursive: true });
 
     const result = runCli(repo, {}, "status", "--once");
 

@@ -321,7 +321,7 @@ export function reconcile(
 
   for (const entry of crossRepoEntries) {
     if (doneIds.has(entry.itemId) && !crossRepoCleaned.has(entry.itemId)) {
-      const targetWtDir = join(entry.repoRoot, ".worktrees");
+      const targetWtDir = join(entry.repoRoot, ".ninthwave", ".worktrees");
       if (deps.cleanWorktree(entry.itemId, targetWtDir, entry.repoRoot)) {
         cleanedCount++;
         crossRepoCleaned.add(entry.itemId);
@@ -355,7 +355,7 @@ export function reconcile(
   for (const entry of crossRepoEntries) {
     if (crossRepoCleaned.has(entry.itemId)) continue;
     if (!doneIds.has(entry.itemId) && !refreshedOpenIds.has(entry.itemId)) {
-      const targetWtDir = join(entry.repoRoot, ".worktrees");
+      const targetWtDir = join(entry.repoRoot, ".ninthwave", ".worktrees");
       if (deps.cleanWorktree(entry.itemId, targetWtDir, entry.repoRoot)) {
         orphanCount++;
         crossRepoCleaned.add(entry.itemId);
@@ -390,7 +390,7 @@ export function reconcile(
     if (crossRepoCleaned.has(entry.itemId)) continue;
     if (doneIds.has(entry.itemId)) continue;
     if (!refreshedOpenIds.has(entry.itemId)) continue;
-    const targetWtDir = join(entry.repoRoot, ".worktrees");
+    const targetWtDir = join(entry.repoRoot, ".ninthwave", ".worktrees");
     if (deps.worktreeHasCommits(entry.itemId, targetWtDir, entry.repoRoot)) continue;
     if (deps.branchHasOpenPR(entry.itemId, entry.repoRoot)) continue;
 

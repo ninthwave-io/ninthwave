@@ -174,8 +174,8 @@ export function getWorktreeInfo(
   // Fallback: hub repo worktree (backwards compat)
   const hubPath = join(worktreeDir, `ninthwave-${todoId}`);
   if (existsSync(hubPath)) {
-    // Derive project root from worktree dir (worktreeDir = <projectRoot>/.worktrees)
-    const projectRoot = dirname(worktreeDir);
+    // Derive project root from worktree dir (worktreeDir = <projectRoot>/.ninthwave/.worktrees)
+    const projectRoot = dirname(dirname(worktreeDir));
     return { itemId: todoId, repoRoot: projectRoot, worktreePath: hubPath };
   }
 
@@ -183,18 +183,19 @@ export function getWorktreeInfo(
 }
 
 /**
- * Ensure .worktrees/ is excluded in a target repo via .git/info/exclude.
+ * Ensure .ninthwave/.worktrees/ is excluded in a target repo via .git/info/exclude.
  */
 export function ensureWorktreeExcluded(targetRepo: string): void {
   const excludeFile = join(targetRepo, ".git", "info", "exclude");
+  const excludePattern = ".ninthwave/.worktrees/";
   if (existsSync(excludeFile)) {
     const content = readFileSync(excludeFile, "utf-8");
-    if (!content.includes(".worktrees/")) {
-      appendFileSync(excludeFile, "\n.worktrees/\n");
+    if (!content.includes(excludePattern)) {
+      appendFileSync(excludeFile, `\n${excludePattern}\n`);
     }
   } else {
     mkdirSync(dirname(excludeFile), { recursive: true });
-    writeFileSync(excludeFile, ".worktrees/\n");
+    writeFileSync(excludeFile, `${excludePattern}\n`);
   }
 }
 

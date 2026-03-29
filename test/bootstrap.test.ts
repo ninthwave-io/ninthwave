@@ -51,7 +51,7 @@ function emptySnapshot(readyIds: string[] = []): PollSnapshot {
 
 const defaultCtx: ExecutionContext = {
   projectRoot: "/tmp/test-project",
-  worktreeDir: "/tmp/test-project/.worktrees",
+  worktreeDir: "/tmp/test-project/.ninthwave/.worktrees",
   workDir: "/tmp/test-project/.ninthwave/work",
   aiTool: "claude",
 };

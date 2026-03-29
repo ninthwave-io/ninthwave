@@ -414,10 +414,10 @@ describe("formatTelemetrySuffix", () => {
   it("shows worktree path for stuck items", () => {
     const item = makeStatusItem({
       state: "stuck",
-      worktreePath: "/tmp/project/.worktrees/ninthwave-H-FOO-1",
+      worktreePath: "/tmp/project/.ninthwave/.worktrees/ninthwave-H-FOO-1",
     });
     const result = stripAnsi(formatTelemetrySuffix(item));
-    expect(result).toContain("worktree: /tmp/project/.worktrees/ninthwave-H-FOO-1");
+    expect(result).toContain("worktree: /tmp/project/.ninthwave/.worktrees/ninthwave-H-FOO-1");
   });
 
   it("does not show worktree path for stuck items without worktreePath", () => {
@@ -428,7 +428,7 @@ describe("formatTelemetrySuffix", () => {
   it("does not show worktree path for non-stuck items", () => {
     const item = makeStatusItem({
       state: "implementing",
-      worktreePath: "/tmp/project/.worktrees/ninthwave-H-FOO-1",
+      worktreePath: "/tmp/project/.ninthwave/.worktrees/ninthwave-H-FOO-1",
     });
     expect(formatTelemetrySuffix(item)).toBe("");
   });

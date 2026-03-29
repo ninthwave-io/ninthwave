@@ -71,7 +71,7 @@ function setupWorkItemsDir(files: Record<string, string>): {
 } {
   const dir = makeTmpDir();
   const workDir = join(dir, ".ninthwave", "work");
-  const worktreeDir = join(dir, ".worktrees");
+  const worktreeDir = join(dir, ".ninthwave", ".worktrees");
   mkdirSync(workDir, { recursive: true });
   mkdirSync(worktreeDir, { recursive: true });
   for (const [name, content] of Object.entries(files)) {
@@ -294,7 +294,7 @@ describe("reconstructState: item ID collision safety", () => {
     orch.getItem("H-FOO-1")!.reviewCompleted = true;
 
     const tmpDir = makeTmpDir();
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     mkdirSync(join(wtDir, "ninthwave-H-FOO-1"), { recursive: true });
 
     // Mock checkPr: returns "merged" with a title that doesn't match
@@ -318,7 +318,7 @@ describe("reconstructState: item ID collision safety", () => {
     orch.addItem(makeWorkItem("H-FOO-1", "old work"));
 
     const tmpDir = makeTmpDir();
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     mkdirSync(join(wtDir, "ninthwave-H-FOO-1"), { recursive: true });
 
     const mockCheckPr = (id: string) => {
@@ -340,7 +340,7 @@ describe("reconstructState: item ID collision safety", () => {
     orch.addItem(makeWorkItem("H-FOO-1", "some work"));
 
     const tmpDir = makeTmpDir();
-    const wtDir = join(tmpDir, ".worktrees");
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     mkdirSync(join(wtDir, "ninthwave-H-FOO-1"), { recursive: true });
 
     // Simulate old-format checkPr that doesn't include title (3 fields only)
@@ -391,7 +391,7 @@ describe("buildSnapshot: item ID collision safety", () => {
     const snapshot = buildSnapshot(
       orch,
       "/tmp/test",
-      "/tmp/test/.worktrees",
+      "/tmp/test/.ninthwave/.worktrees",
       noopMux,
       () => null,
       mockCheckPr,
@@ -438,7 +438,7 @@ describe("buildSnapshot: item ID collision safety", () => {
     const snapshot = buildSnapshot(
       orch,
       "/tmp/test",
-      "/tmp/test/.worktrees",
+      "/tmp/test/.ninthwave/.worktrees",
       noopMux,
       () => null,
       mockCheckPr,
@@ -482,7 +482,7 @@ describe("buildSnapshot: item ID collision safety", () => {
     const snapshot = buildSnapshot(
       orch,
       "/tmp/test",
-      "/tmp/test/.worktrees",
+      "/tmp/test/.ninthwave/.worktrees",
       noopMux,
       () => null,
       mockCheckPr,
@@ -521,7 +521,7 @@ describe("buildSnapshot: item ID collision safety", () => {
     const snapshot = buildSnapshot(
       orch,
       "/tmp/test",
-      "/tmp/test/.worktrees",
+      "/tmp/test/.ninthwave/.worktrees",
       noopMux,
       () => null,
       mockCheckPr,

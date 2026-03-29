@@ -107,7 +107,7 @@ describe("cleanSingleWorktree", () => {
   it("returns false when worktree directory does not exist", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const result = cleanSingleWorktree("H-CI-2", worktreeDir, repo, deps);
     expect(result).toBe(false);
@@ -117,7 +117,7 @@ describe("cleanSingleWorktree", () => {
   it("returns true and cleans up when worktree exists", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     const result = cleanSingleWorktree("H-CI-2", worktreeDir, repo, deps);
@@ -130,7 +130,7 @@ describe("cleanSingleWorktree", () => {
   it("falls back to rmSync and logs warning when removeWorktree throws", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
     deps.removeWorktree.mockImplementation(() => {
       throw new Error("git worktree remove failed");
@@ -148,7 +148,7 @@ describe("cleanSingleWorktree", () => {
   it("logs warning when deleteBranch fails and continues cleanup", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
     deps.deleteBranch.mockImplementation(() => {
       throw new Error("branch not found");
@@ -167,7 +167,7 @@ describe("cleanSingleWorktree", () => {
   it("logs warning when deleteRemoteBranch fails and continues cleanup", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
     deps.deleteRemoteBranch.mockImplementation(() => {
       throw new Error("remote branch not found");
@@ -185,7 +185,7 @@ describe("cleanSingleWorktree", () => {
   it("completes cleanup even when all operations fail", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
     deps.removeWorktree.mockImplementation(() => {
       throw new Error("worktree failed");
@@ -214,7 +214,7 @@ describe("cmdCleanSingle", () => {
   it("dies with no target ID", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdCleanSingle([], worktreeDir, repo, deps),
@@ -226,7 +226,7 @@ describe("cmdCleanSingle", () => {
   it("reports no worktree found when directory doesn't exist", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdCleanSingle(["H-CI-2"], worktreeDir, repo, deps),
@@ -238,7 +238,7 @@ describe("cmdCleanSingle", () => {
   it("cleans existing worktree", () => {
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     // Create a fake worktree directory
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
@@ -259,7 +259,7 @@ describe("cmdClean", () => {
     const deps = createMockCleanDeps();
 
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdClean([], worktreeDir, repo, mockMux, deps),
@@ -272,7 +272,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.isBranchMerged.mockReturnValue(true);
@@ -289,7 +289,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.isBranchMerged.mockReturnValue(false);
@@ -306,7 +306,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     // Create worktrees for H-1 (target), H-2, and H-3
     mkdirSync(join(worktreeDir, "ninthwave-H-1"), { recursive: true });
     mkdirSync(join(worktreeDir, "ninthwave-H-2"), { recursive: true });
@@ -328,7 +328,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-1"), { recursive: true });
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
@@ -347,7 +347,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     // Create worktrees for two items: H-CI-1 (merged) and H-CI-2 (not merged)
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-1"), { recursive: true });
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
@@ -373,7 +373,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     // Three items: all have active workspaces, none are merged
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-1"), { recursive: true });
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
@@ -396,7 +396,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.isBranchMerged.mockReturnValue(true);
@@ -417,7 +417,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.isBranchMerged.mockReturnValue(true);
@@ -437,7 +437,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.isBranchMerged.mockReturnValue(true);
@@ -457,7 +457,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.isBranchMerged.mockReturnValue(true);
@@ -487,11 +487,11 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Create a fake cross-repo worktree directory at a different location
-    const crossRepoPath = join(repo, "external-repo", ".worktrees", "ninthwave-X-CR-1");
+    const crossRepoPath = join(repo, "external-repo", ".ninthwave", ".worktrees", "ninthwave-X-CR-1");
     mkdirSync(crossRepoPath, { recursive: true });
     const crossRepoRoot = join(repo, "external-repo");
     mkdirSync(join(crossRepoRoot, ".git"), { recursive: true });
@@ -527,7 +527,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Write a cross-repo index with malformed entries
@@ -558,7 +558,7 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Write an index entry pointing to a nonexistent path
@@ -583,12 +583,12 @@ describe("cmdClean", () => {
     const mockMux = createMockMux();
     const deps = createMockCleanDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Create two cross-repo entries, only target one
-    const crossRepoPath1 = join(repo, "ext1", ".worktrees", "ninthwave-X-CR-1");
-    const crossRepoPath2 = join(repo, "ext2", ".worktrees", "ninthwave-X-CR-2");
+    const crossRepoPath1 = join(repo, "ext1", ".ninthwave", ".worktrees", "ninthwave-X-CR-1");
+    const crossRepoPath2 = join(repo, "ext2", ".ninthwave", ".worktrees", "ninthwave-X-CR-2");
     const crossRepoRoot1 = join(repo, "ext1");
     const crossRepoRoot2 = join(repo, "ext2");
     mkdirSync(crossRepoPath1, { recursive: true });

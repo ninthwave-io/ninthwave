@@ -8,7 +8,7 @@ describe("conflicts", () => {
 
   it("detects file overlap between items", () => {
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const workDir = writeWorkItemFiles(repo, `## Shared
 
@@ -42,7 +42,7 @@ Key files: \`lib/shared.ex\`, \`lib/unique_b.ex\`
   it("detects domain overlap between items", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // M-CI-1 and H-CI-2 are both in cloud-infrastructure domain
     const output = captureOutput(() =>
@@ -56,7 +56,7 @@ Key files: \`lib/shared.ex\`, \`lib/unique_b.ex\`
   it("cross-repo items don't conflict", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "cross_repo.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // H-API-1 (target-repo-a) and H-WA-1 (target-repo-b) target different repos
     const output = captureOutput(() =>
@@ -70,7 +70,7 @@ Key files: \`lib/shared.ex\`, \`lib/unique_b.ex\`
   it("same-repo items are still compared", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "cross_repo.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // H-API-1 and M-API-2 both target target-repo-a
     const output = captureOutput(() =>
@@ -85,7 +85,7 @@ Key files: \`lib/shared.ex\`, \`lib/unique_b.ex\`
   it("reports CLEAR when no conflicts found", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // M-CI-1 (cloud-infrastructure) and C-UO-1 (user-onboarding) - different domains, no file overlap
     const output = captureOutput(() =>
@@ -98,7 +98,7 @@ Key files: \`lib/shared.ex\`, \`lib/unique_b.ex\`
   it("errors with fewer than 2 IDs", () => {
     const repo = setupTempRepo();
     const workDir = useFixtureDir(repo, "valid.md");
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdConflicts(["M-CI-1"], workDir, worktreeDir),
@@ -109,7 +109,7 @@ Key files: \`lib/shared.ex\`, \`lib/unique_b.ex\`
 
   it("does not flag false positives from description-mentioned paths", () => {
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // Two items that mention the same file in description but NOT in Key files
     const workDir = writeWorkItemFiles(repo, `## Features

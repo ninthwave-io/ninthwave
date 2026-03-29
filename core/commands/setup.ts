@@ -201,17 +201,6 @@ export function createNwSymlink(
 }
 
 /**
- * Symlink directories that should be gitignored in non-self-hosting projects.
- * These are created by `ninthwave init` and point to the local ninthwave installation.
- */
-export const SYMLINK_GITIGNORE_DIRS = [
-  ".claude/agents/",
-  ".claude/skills/",
-  ".opencode/agents/",
-  ".github/agents/",
-];
-
-/**
  * Check if the project is the ninthwave repo itself (self-hosting mode).
  * In self-hosting mode, agent/skill directories contain source files, not symlinks.
  */

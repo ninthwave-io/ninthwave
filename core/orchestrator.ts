@@ -1837,7 +1837,7 @@ export class Orchestrator {
           const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
           const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
           const wtRepoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
-          const worktreePath = wtInfo?.worktreePath ?? join(wtRepoRoot, ".worktrees", `ninthwave-${item.id}`);
+          const worktreePath = wtInfo?.worktreePath ?? join(wtRepoRoot, ".ninthwave", ".worktrees", `ninthwave-${item.id}`);
           const branch = `ninthwave/${item.id}`;
           try {
             const rebaseSuccess = deps.daemonRebase(worktreePath, branch);
@@ -1938,7 +1938,7 @@ export class Orchestrator {
 
       const otherWtInfo = getWorktreeInfo(other.id, crossRepoIndex, ctx.worktreeDir, cachedEntries);
       const otherRepoRoot = otherWtInfo?.repoRoot ?? other.resolvedRepoRoot ?? ctx.projectRoot;
-      const otherWorktreePath = otherWtInfo?.worktreePath ?? join(otherRepoRoot, ".worktrees", `ninthwave-${other.id}`);
+      const otherWorktreePath = otherWtInfo?.worktreePath ?? join(otherRepoRoot, ".ninthwave", ".worktrees", `ninthwave-${other.id}`);
       const otherBranch = `ninthwave/${other.id}`;
 
       if (!deps.rebaseOnto || !deps.forcePush) {
@@ -2010,7 +2010,7 @@ export class Orchestrator {
 
       const otherBranch = `ninthwave/${other.id}`;
       const otherWtInfo2 = getWorktreeInfo(other.id, crossRepoIndex, ctx.worktreeDir, cachedEntries);
-      const otherWorktreePath = otherWtInfo2?.worktreePath ?? join(otherRepoRoot2, ".worktrees", `ninthwave-${other.id}`);
+      const otherWorktreePath = otherWtInfo2?.worktreePath ?? join(otherRepoRoot2, ".ninthwave", ".worktrees", `ninthwave-${other.id}`);
 
       // Try daemon-rebase first for all siblings
       let daemonSuccess = false;
@@ -2140,7 +2140,7 @@ export class Orchestrator {
     const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
     const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
     const repoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
-    const worktreeDir = repoRoot !== ctx.projectRoot ? join(repoRoot, ".worktrees") : ctx.worktreeDir;
+    const worktreeDir = repoRoot !== ctx.projectRoot ? join(repoRoot, ".ninthwave", ".worktrees") : ctx.worktreeDir;
     const worktreeCleaned = deps.cleanSingleWorktree(item.id, worktreeDir, repoRoot);
 
     // Clean up heartbeat file (best-effort)
@@ -2278,7 +2278,7 @@ export class Orchestrator {
       const indexPath = join(ctx.worktreeDir, ".cross-repo-index");
       const wtInfo = getWorktreeInfo(item.id, indexPath, ctx.worktreeDir);
       const repoRoot = wtInfo?.repoRoot ?? item.resolvedRepoRoot ?? ctx.projectRoot;
-      const worktreePath = wtInfo?.worktreePath ?? join(repoRoot, ".worktrees", `ninthwave-${item.id}`);
+      const worktreePath = wtInfo?.worktreePath ?? join(repoRoot, ".ninthwave", ".worktrees", `ninthwave-${item.id}`);
       try {
         const success = deps.daemonRebase(worktreePath, branch);
         if (success) {

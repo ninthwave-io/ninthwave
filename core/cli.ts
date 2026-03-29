@@ -86,7 +86,7 @@ if (allAreIds) {
 
   const projectRoot = getProjectRoot();
   const workDir = join(projectRoot, ".ninthwave", "work");
-  const worktreeDir = join(projectRoot, ".worktrees");
+  const worktreeDir = join(projectRoot, ".ninthwave", ".worktrees");
 
   if (!existsSync(workDir)) {
     die(`Todos directory not found at ${workDir}`);
@@ -146,7 +146,7 @@ if (!entry.needsRoot) {
 // Commands that need a project root
 const projectRoot = getProjectRoot();
 const workDir = join(projectRoot, ".ninthwave", "work");
-const worktreeDir = join(projectRoot, ".worktrees");
+const worktreeDir = join(projectRoot, ".ninthwave", ".worktrees");
 const partitionDir = join(worktreeDir, ".partitions");
 
 if (entry.needsWork && !existsSync(workDir)) {

@@ -74,7 +74,7 @@ describe("reconstructState", () => {
 
     const fakeCheckPr = (_id: string, _root: string) => "H-1-1\t\tno-pr";
 
-    reconstructState(orch, "/tmp/proj", "/tmp/proj/.worktrees", undefined, fakeCheckPr);
+    reconstructState(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", undefined, fakeCheckPr);
 
     // Items without a worktree directory won't be reconstructed (existsSync check),
     // so items stay queued when worktree doesn't exist
@@ -89,7 +89,7 @@ describe("reconstructState", () => {
     // reconstructState only processes items whose worktree exists on disk.
     // Without a real worktree, items remain queued -- verifying the guard.
     const fakeCheckPr = (_id: string, _root: string) => "H-1-1\t42\tready";
-    reconstructState(orch, "/tmp/proj", "/tmp/proj/.worktrees", undefined, fakeCheckPr);
+    reconstructState(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", undefined, fakeCheckPr);
     expect(orch.getItem("H-1-1")!.state).toBe("queued");
   });
 
@@ -103,7 +103,7 @@ describe("reconstructState", () => {
     };
 
     reconstructState(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees", undefined,
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", undefined,
       () => "", daemonState,
     );
 
@@ -123,7 +123,7 @@ describe("reconstructState", () => {
     };
 
     reconstructState(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees", undefined,
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", undefined,
       () => "", daemonState,
     );
 
@@ -147,7 +147,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     expect(snap.readyIds).toContain("H-1-2");
   });
@@ -162,7 +162,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     expect(snap.readyIds).not.toContain("H-1-2");
     expect(snap.readyIds).toContain("H-1-1"); // no deps → always ready
@@ -180,7 +180,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     const itemSnap = snap.items.find((s) => s.id === "H-1-1");
     expect(itemSnap).toBeDefined();
@@ -198,7 +198,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     const itemSnap = snap.items.find((s) => s.id === "H-1-1");
     expect(itemSnap!.ciStatus).toBe("pass");
@@ -217,7 +217,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     const itemSnap = snap.items.find((s) => s.id === "H-1-1");
     expect(itemSnap!.ciStatus).toBe("fail");
@@ -237,7 +237,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     expect(snap.items.find((s) => s.id === "H-1-1")).toBeUndefined();
     expect(snap.items.find((s) => s.id === "H-1-2")).toBeUndefined();
@@ -253,7 +253,7 @@ describe("buildSnapshot", () => {
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
     const fakeCommitTime = () => null;
 
-    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
+    const snap = buildSnapshot(orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", fakeMux, fakeCommitTime, fakeCheckPr);
 
     const itemSnap = snap.items.find((s) => s.id === "H-1-1");
     expect(itemSnap!.eventTime).toBe("2026-01-15T11:59:00Z");
@@ -1965,7 +1965,7 @@ describe("executeLaunch stale branch cleanup", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };
@@ -2071,7 +2071,7 @@ describe("executeLaunch stacked dep race guard", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };
@@ -2215,7 +2215,7 @@ describe("executeMerge conflict-aware rebase", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };
@@ -2390,7 +2390,7 @@ describe("executeMerge admin override", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };
@@ -2956,7 +2956,7 @@ describe("buildSnapshot heartbeat", () => {
 
     // Build snapshot -- readHeartbeat will return null since no file exists at /tmp/proj
     const snap = buildSnapshot(
-      orch, "/tmp/proj", "/tmp/proj/.worktrees",
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees",
       fakeMux, fakeCommitTime, fakeCheckPr,
     );
 
@@ -2978,7 +2978,7 @@ describe("buildSnapshot heartbeat", () => {
     const fakeCommitTime = () => null;
 
     const snap = buildSnapshot(
-      orch, "/tmp/nonexistent", "/tmp/nonexistent/.worktrees",
+      orch, "/tmp/nonexistent", "/tmp/nonexistent/.ninthwave/.worktrees",
       fakeMux, fakeCommitTime, fakeCheckPr,
     );
 
@@ -3003,7 +3003,7 @@ describe("executeClean heartbeat cleanup", () => {
     // the cleanup is skipped gracefully. We verify the overall clean still succeeds.
     const ctx: ExecutionContext = {
       projectRoot: "/tmp/proj-heartbeat-test",
-      worktreeDir: "/tmp/proj-heartbeat-test/.worktrees",
+      worktreeDir: "/tmp/proj-heartbeat-test/.ninthwave/.worktrees",
       workDir: "/tmp/proj-heartbeat-test/.ninthwave/work",
       aiTool: "test",
     };
@@ -3281,7 +3281,7 @@ describe("rebaser worker state transitions", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };
@@ -3450,7 +3450,7 @@ describe("rebase circuit breaker and worker message priority", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };
@@ -3665,7 +3665,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
-    worktreeDir: "/tmp/proj/.worktrees",
+    worktreeDir: "/tmp/proj/.ninthwave/.worktrees",
     workDir: "/tmp/proj/.ninthwave/work",
     aiTool: "claude",
   };

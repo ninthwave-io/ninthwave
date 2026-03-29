@@ -157,7 +157,7 @@ describe("cmdStart", () => {
   it("dies with no arguments", async () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdStart(["--tool", "claude"], workDir, worktreeDir, repo),
@@ -169,7 +169,7 @@ describe("cmdStart", () => {
   it("dies when item ID not found", async () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdStart(["NONEXISTENT-1", "--tool", "claude"], workDir, worktreeDir, repo),
@@ -182,7 +182,7 @@ describe("cmdStart", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdStart(["M-CI-1", "--tool", "claude"], workDir, worktreeDir, repo, mockMux),
@@ -196,7 +196,7 @@ describe("cmdStart", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdStart(["M-CI-1", "--tool", "opencode"], workDir, worktreeDir, repo, mockMux),
@@ -206,7 +206,7 @@ describe("cmdStart", () => {
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     expect(launchCall).toBeDefined();
     const cmd = launchCall[1] as string;
-    expect(cmd).toMatch(/^\/tmp\/nw-launch-.*\.sh$/);
+    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
   });
 
   it("dies early when mux is unavailable (before any git operations)", async () => {
@@ -218,7 +218,7 @@ describe("cmdStart", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdStart(["M-CI-1"], workDir, worktreeDir, repo, mockMux),
@@ -244,7 +244,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -266,7 +266,7 @@ describe("launchSingleItem", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -290,7 +290,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -307,7 +307,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -325,7 +325,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -350,7 +350,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -375,7 +375,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -404,7 +404,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -420,7 +420,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -445,7 +445,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -470,7 +470,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -493,7 +493,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -514,7 +514,7 @@ describe("launchSingleItem", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -551,7 +551,7 @@ describe("launchSingleItem stacked fallback on fetch failure", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -588,7 +588,7 @@ describe("launchSingleItem stacked fallback on fetch failure", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -629,7 +629,7 @@ describe("launchSingleItem external worktree handling", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -664,7 +664,7 @@ describe("launchSingleItem external worktree handling", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -704,7 +704,7 @@ describe("launchSingleItem external worktree handling", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -736,7 +736,7 @@ describe("launchSingleItem external worktree handling", () => {
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
     const expectedWorktreePath = join(worktreeDir, "ninthwave-M-CI-1");
@@ -786,7 +786,7 @@ describe("launchSingleItem resource cleanup on failure", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -821,15 +821,14 @@ describe("launchSingleItem resource cleanup on failure", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
-    // Make the worktree path a file instead of directory so writeFileSync on .nw-prompt throws
+    // Make the .ninthwave/.prompt path a directory so writeFileSync throws
     deps.createWorktree.mockImplementationOnce((_repo: string, wtPath: string) => {
-      // Create worktree dir, but make .nw-prompt a directory so writeFileSync fails
       mkdirSync(wtPath, { recursive: true });
-      mkdirSync(join(wtPath, ".nw-prompt"), { recursive: true });
+      mkdirSync(join(wtPath, ".ninthwave", ".prompt"), { recursive: true });
     });
 
     const output = await captureOutput(() => {
@@ -864,7 +863,7 @@ describe("launchSingleItem resource cleanup on failure", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -1185,7 +1184,7 @@ describe("launchAiSession agentName", () => {
     expect(launchCall).toBeDefined();
     const cmd = launchCall[1] as string;
     // cmd is a launcher script path in /tmp
-    expect(cmd).toMatch(/^\/tmp\/nw-launch-.*\.sh$/);
+    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
     const script = readFileSync(cmd, "utf-8");
     expect(script).toContain("--agent ninthwave-reviewer");
     expect(script).toContain("--prompt");
@@ -1205,7 +1204,7 @@ describe("launchAiSession agentName", () => {
     expect(launchCall).toBeDefined();
     const cmd = launchCall[1] as string;
     // cmd is a launcher script path in /tmp
-    expect(cmd).toMatch(/^\/tmp\/nw-launch-.*\.sh$/);
+    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
     const script = readFileSync(cmd, "utf-8");
     expect(script).toContain("--agent=ninthwave-reviewer");
     expect(script).toContain("--allow-all");
@@ -1226,7 +1225,7 @@ describe("launchAiSession agentName", () => {
     // Launcher script should exist and contain the prompt file reference
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     const cmd = launchCall[1] as string;
-    expect(cmd).toMatch(/^\/tmp\/nw-launch-.*\.sh$/);
+    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
   });
 
   it("passes Start as positional CLI arg for claude (no post-launch send)", () => {
@@ -1260,7 +1259,7 @@ describe("launchAiSession agentName", () => {
     // Launcher script should exist and contain --prompt
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     const cmd = launchCall[1] as string;
-    expect(cmd).toMatch(/^\/tmp\/nw-launch-.*\.sh$/);
+    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
     const script = readFileSync(cmd, "utf-8");
     expect(script).toContain("--prompt");
     expect(script).toContain("OPENCODE_PERMISSION");
@@ -1302,7 +1301,7 @@ describe("launchSingleItem agentName default", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     const items = parseWorkItems(workDir, worktreeDir);
     const item = items.find((i) => i.id === "M-CI-1")!;
 
@@ -1533,7 +1532,7 @@ describe("launchReviewWorker", () => {
     const mockMux = createMockMux();
     const deps = createMockLaunchDeps();
     const repo = setupTempRepo();
-    const implWorktree = join(repo, ".worktrees", "ninthwave-H-RVW-1");
+    const implWorktree = join(repo, ".ninthwave", ".worktrees", "ninthwave-H-RVW-1");
     mkdirSync(implWorktree, { recursive: true });
 
     await captureOutput(() => {
@@ -1550,7 +1549,7 @@ describe("launchReviewWorker", () => {
     expect(deps.fetchOrigin).not.toHaveBeenCalled();
     // The review-{id} directory should NOT have been created
     const { existsSync } = require("fs");
-    expect(existsSync(join(repo, ".worktrees", "review-H-RVW-1"))).toBe(false);
+    expect(existsSync(join(repo, ".ninthwave", ".worktrees", "review-H-RVW-1"))).toBe(false);
     // The launch should have been called with the implementer's worktree as workDir
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     expect(launchCall[0]).toBe(implWorktree);
@@ -1752,7 +1751,7 @@ describe("cmdRunItems", () => {
   it("dies when an ID is not found", async () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["NONEXISTENT-1"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
@@ -1765,7 +1764,7 @@ describe("cmdRunItems", () => {
   it("dies when a dependency is not included and not completed", async () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // H-CI-2 depends on M-CI-1, which is not passed and not completed
     const output = await captureOutput(() =>
@@ -1780,7 +1779,7 @@ describe("cmdRunItems", () => {
   it("suggests including the missing dependency", async () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["H-CI-2"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
@@ -1794,7 +1793,7 @@ describe("cmdRunItems", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
@@ -1810,7 +1809,7 @@ describe("cmdRunItems", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // M-CI-1 and C-UO-1 have no inter-dependencies
     const output = await captureOutput(() =>
@@ -1826,7 +1825,7 @@ describe("cmdRunItems", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupDiamondItems(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["H-D-1", "H-D-2", "H-D-3", "H-D-4"], workDir, worktreeDir, repo, mockMux, 10, "claude"),
@@ -1846,7 +1845,7 @@ describe("cmdRunItems", () => {
   it("dies with helpful message on circular dependency", async () => {
     const repo = setupTempRepo();
     const workDir = setupCircularItems(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["H-CYC-1", "H-CYC-2"], workDir, worktreeDir, repo, undefined, undefined, "claude"),
@@ -1885,7 +1884,7 @@ describe("cmdRunItems", () => {
     spawnSync("git", ["-C", repo, "add", ".ninthwave/work/"], { stdio: "pipe" });
     spawnSync("git", ["-C", repo, "commit", "-m", "Add work item", "--quiet"], { stdio: "pipe" });
 
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     // M-CI-1 doesn't exist in the item list → treated as completed → should be OK
     const output = await captureOutput(() =>
@@ -1903,7 +1902,7 @@ describe("cmdRunItems", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
@@ -1917,7 +1916,7 @@ describe("cmdRunItems", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
@@ -1937,7 +1936,7 @@ describe("cmdRunItems", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),
@@ -1956,7 +1955,7 @@ describe("cmdRunItems", () => {
 
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = await captureOutput(() =>
       cmdRunItems(["M-CI-1"], workDir, worktreeDir, repo, mockMux, undefined, "claude"),

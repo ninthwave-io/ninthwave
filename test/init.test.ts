@@ -38,7 +38,6 @@ import type {
   AgentSelection,
 } from "../core/commands/setup.ts";
 import {
-  SYMLINK_GITIGNORE_DIRS,
   AGENT_SOURCES,
   AGENT_TARGET_DIRS,
   AGENT_DESCRIPTIONS,
@@ -643,7 +642,7 @@ describe("initProject", () => {
     // Scaffolding completed
     expect(existsSync(join(projectDir, ".ninthwave/work/.gitkeep"))).toBe(true);
     expect(existsSync(join(projectDir, ".ninthwave/friction/.gitkeep"))).toBe(true);
-    expect(existsSync(join(projectDir, ".gitignore"))).toBe(true);
+    expect(existsSync(join(projectDir, ".ninthwave/.gitignore"))).toBe(true);
     expect(existsSync(join(userStateDir(projectDir), "version"))).toBe(true);
 
     // Init should NOT create TODOS.md
@@ -774,8 +773,8 @@ describe("initProject", () => {
 
 // --- initProject symlink gitignore entries ---
 
-describe("initProject -- symlink gitignore entries", () => {
-  it("adds symlink directories to .gitignore for non-ninthwave projects", () => {
+describe("initProject -- .ninthwave/.gitignore", () => {
+  it("creates deny-by-default .gitignore inside .ninthwave/", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 
@@ -786,12 +785,11 @@ describe("initProject -- symlink gitignore entries", () => {
 
     initProject(projectDir, bundleDir, deps);
 
-    const content = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    expect(content).toContain(".claude/agents/");
-    expect(content).toContain(".claude/skills/");
-    expect(content).toContain(".opencode/agents/");
-    expect(content).toContain(".github/agents/");
-    expect(content).toContain("ninthwave symlinks");
+    const content = readFileSync(join(projectDir, ".ninthwave", ".gitignore"), "utf-8");
+    expect(content).toContain("*");
+    expect(content).toContain("!config.json");
+    expect(content).toContain("!work/");
+    expect(content).toContain("!schedules/");
   });
 
   it("does NOT add symlink directories when projectDir equals bundleDir (self-hosting)", () => {
@@ -818,15 +816,15 @@ describe("initProject -- symlink gitignore entries", () => {
 
     initProject(projectDir, projectDir, deps);
 
-    const content = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    expect(content).toContain(".worktrees/");
-    expect(content).not.toContain(".claude/agents/");
-    expect(content).not.toContain(".claude/skills/");
-    expect(content).not.toContain(".opencode/agents/");
-    expect(content).not.toContain(".github/agents/");
+    // Root .gitignore should NOT be created (ninthwave no longer modifies it)
+    expect(existsSync(join(projectDir, ".gitignore"))).toBe(false);
+    // .ninthwave/.gitignore should exist with deny-by-default pattern
+    const nwGitignore = readFileSync(join(projectDir, ".ninthwave", ".gitignore"), "utf-8");
+    expect(nwGitignore).toContain("*");
+    expect(nwGitignore).toContain("!config.json");
   });
 
-  it("does not duplicate symlink gitignore entries on re-run", () => {
+  it("does not duplicate .ninthwave/.gitignore on re-run", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 
@@ -839,11 +837,10 @@ describe("initProject -- symlink gitignore entries", () => {
     initProject(projectDir, bundleDir, deps);
     initProject(projectDir, bundleDir, deps);
 
-    const content = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    for (const dir of SYMLINK_GITIGNORE_DIRS) {
-      const matches = content.match(new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"));
-      expect(matches).toHaveLength(1);
-    }
+    const content = readFileSync(join(projectDir, ".ninthwave", ".gitignore"), "utf-8");
+    // Should only have one deny-by-default block (not duplicated)
+    const matches = content.match(/\*/g);
+    expect(matches!.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -1725,7 +1722,7 @@ describe("initProject -- idempotency", () => {
       "utf-8",
     );
     const steadyGitignore = readFileSync(
-      join(projectDir, ".gitignore"),
+      join(projectDir, ".ninthwave", ".gitignore"),
       "utf-8",
     );
 
@@ -1736,7 +1733,7 @@ describe("initProject -- idempotency", () => {
     expect(readFileSync(join(projectDir, ".ninthwave/config.json"), "utf-8")).toBe(
       steadyConfig,
     );
-    expect(readFileSync(join(projectDir, ".gitignore"), "utf-8")).toBe(
+    expect(readFileSync(join(projectDir, ".ninthwave", ".gitignore"), "utf-8")).toBe(
       steadyGitignore,
     );
 
@@ -1757,7 +1754,7 @@ describe("initProject -- idempotency", () => {
     }
   });
 
-  it("does not duplicate symlink gitignore entries on re-run", () => {
+  it("does not duplicate .ninthwave/.gitignore on re-run", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 
@@ -1770,11 +1767,10 @@ describe("initProject -- idempotency", () => {
     initProject(projectDir, bundleDir, deps);
     initProject(projectDir, bundleDir, deps);
 
-    const content = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    for (const dir of SYMLINK_GITIGNORE_DIRS) {
-      const matches = content.match(new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"));
-      expect(matches).toHaveLength(1);
-    }
+    const content = readFileSync(join(projectDir, ".ninthwave", ".gitignore"), "utf-8");
+    // Should only have one deny-by-default block (not duplicated)
+    const matches = content.match(/\*/g);
+    expect(matches!.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -1866,7 +1862,7 @@ describe("initProject -- preserves existing files", () => {
     }
   });
 
-  it("creates .gitignore with .worktrees/ entry", () => {
+  it("creates .ninthwave/.gitignore with deny-by-default pattern", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 
@@ -1877,12 +1873,18 @@ describe("initProject -- preserves existing files", () => {
 
     initProject(projectDir, bundleDir, deps);
 
-    expect(existsSync(join(projectDir, ".gitignore"))).toBe(true);
-    const content = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    expect(content).toContain(".worktrees/");
+    const nwGitignore = join(projectDir, ".ninthwave", ".gitignore");
+    expect(existsSync(nwGitignore)).toBe(true);
+    const content = readFileSync(nwGitignore, "utf-8");
+    expect(content).toContain("*");
+    expect(content).toContain("!.gitignore");
+    expect(content).toContain("!config.json");
+    expect(content).toContain("!work/");
+    expect(content).toContain("!schedules/");
+    expect(content).toContain("!friction/");
   });
 
-  it("appends to existing .gitignore without duplicating", () => {
+  it("does not modify root .gitignore", () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle-parent");
 
@@ -1896,16 +1898,9 @@ describe("initProject -- preserves existing files", () => {
 
     initProject(projectDir, bundleDir, deps);
 
+    // Root .gitignore should be untouched
     const content = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    expect(content).toContain("node_modules/");
-    expect(content).toContain(".worktrees/");
-
-    // Run again -- should not duplicate
-    initProject(projectDir, bundleDir, deps);
-
-    const content2 = readFileSync(join(projectDir, ".gitignore"), "utf-8");
-    const matches = content2.match(/\.worktrees\//g);
-    expect(matches).toHaveLength(1);
+    expect(content).toBe("node_modules/\n");
   });
 
   it("creates .ninthwave/schedules/ with example file on fresh init", () => {

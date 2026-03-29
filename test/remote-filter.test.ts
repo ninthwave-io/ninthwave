@@ -160,7 +160,7 @@ describe("parseWorkItems with projectRoot", () => {
     gitCmd(repo, "add", ".ninthwave/work/2-local--M-9-1.md");
     gitCmd(repo, "commit", "-m", "Add local item", "--quiet");
 
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // With projectRoot: only pushed items
@@ -191,7 +191,7 @@ describe("parseWorkItems with projectRoot", () => {
     gitCmd(repo, "add", ".ninthwave/work/");
     gitCmd(repo, "commit", "-m", "Add work items", "--quiet");
 
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Even with projectRoot, returns all items since origin/main doesn't exist

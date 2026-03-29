@@ -35,7 +35,7 @@ describe("cmdWatchReady", () => {
   it("reports no active worktrees when directory doesn't exist", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
 
     const output = captureOutput(() =>
       cmdWatchReady(worktreeDir, repo, true, deps),
@@ -47,7 +47,7 @@ describe("cmdWatchReady", () => {
   it("classifies merged PRs as merged", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     // No open PRs, but has merged PRs
@@ -67,7 +67,7 @@ describe("cmdWatchReady", () => {
   it("classifies items with no PR as no-pr", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-M-CI-1"), { recursive: true });
 
     deps.prList.mockReturnValue({ ok: true, data: [] });
@@ -80,7 +80,7 @@ describe("cmdWatchReady", () => {
   it("classifies failing CI as failing", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.prList.mockImplementation(
@@ -104,7 +104,7 @@ describe("cmdWatchReady", () => {
   it("classifies passing CI with approval as ready", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.prList.mockImplementation(
@@ -130,7 +130,7 @@ describe("cmdWatchReady", () => {
   it("classifies passing CI without approval as ci-passed", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.prList.mockImplementation(
@@ -154,7 +154,7 @@ describe("cmdWatchReady", () => {
   it("classifies passing CI with non-mergeable as ci-passed", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-H-CI-2"), { recursive: true });
 
     deps.prList.mockImplementation(
@@ -178,7 +178,7 @@ describe("cmdWatchReady", () => {
   it("classifies pending CI as pending", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-M-CI-1"), { recursive: true });
 
     deps.prList.mockImplementation(
@@ -530,12 +530,12 @@ describe("cmdWatchReady cross-repo", () => {
   it("checks cross-repo worktrees from the cross-repo index", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Write cross-repo index with an entry pointing to a different repo
     const indexPath = join(worktreeDir, ".cross-repo-index");
-    writeFileSync(indexPath, "X-CR-1\t/target-repo\t/target-repo/.worktrees/ninthwave-X-CR-1\n");
+    writeFileSync(indexPath, "X-CR-1\t/target-repo\t/target-repo/.ninthwave/.worktrees/ninthwave-X-CR-1\n");
 
     // Mock prList to return no-pr for this cross-repo item
     deps.prList.mockReturnValue({ ok: true, data: [] });
@@ -548,7 +548,7 @@ describe("cmdWatchReady cross-repo", () => {
   it("handles missing cross-repo index gracefully", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
     // No .cross-repo-index file -- should not crash
 
@@ -571,7 +571,7 @@ describe("cmdWatchReady with print=false (replaces getWatchReadyState)", () => {
   it("returns status lines for worktrees", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-A-1-1"), { recursive: true });
     mkdirSync(join(worktreeDir, "ninthwave-B-2-1"), { recursive: true });
 
@@ -586,7 +586,7 @@ describe("cmdWatchReady with print=false (replaces getWatchReadyState)", () => {
   it("skips non-item entries", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(join(worktreeDir, "ninthwave-A-1-1"), { recursive: true });
     mkdirSync(join(worktreeDir, "other-dir"), { recursive: true });
 
@@ -604,12 +604,12 @@ describe("cmdWatchReady cross-repo with print=false", () => {
   it("includes cross-repo worktrees in state output", () => {
     const deps = createMockPrMonitorDeps();
     const repo = setupTempRepo();
-    const worktreeDir = join(repo, ".worktrees");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(worktreeDir, { recursive: true });
 
     // Write cross-repo index
     const indexPath = join(worktreeDir, ".cross-repo-index");
-    writeFileSync(indexPath, "X-CR-2\t/other-repo\t/other-repo/.worktrees/ninthwave-X-CR-2\n");
+    writeFileSync(indexPath, "X-CR-2\t/other-repo\t/other-repo/.ninthwave/.worktrees/ninthwave-X-CR-2\n");
 
     deps.prList.mockReturnValue({ ok: true, data: [] });
 

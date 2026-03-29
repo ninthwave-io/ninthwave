@@ -2,8 +2,8 @@
 
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join, basename } from "path";
-import { tmpdir } from "os";
 import { warn, info } from "../output.ts";
+import { userStateDir } from "../daemon.ts";
 import {
   fetchOrigin as defaultFetchOrigin,
   ffMerge as defaultFfMerge,
@@ -97,7 +97,8 @@ export function launchAiSession(
   if (isAiToolId(tool)) {
     // Known tool: dispatch through its registered profile.
     const profile = getToolProfile(tool);
-    const result = profile.buildLaunchCmd({ wsName, agentName, promptFile, id }, deps);
+    const stateDir = userStateDir(options.projectRoot ?? worktreePath);
+    const result = profile.buildLaunchCmd({ wsName, agentName, promptFile, id, stateDir }, deps);
     cmd = result.cmd;
     initialPrompt = result.initialPrompt;
   } else {
@@ -184,7 +185,7 @@ export function ensureWorktreeAndBranch(
 
   // Ensure target worktree dir exists for cross-repo items
   if (targetRepo !== projectRoot) {
-    mkdirSync(join(targetRepo, ".worktrees"), { recursive: true });
+    mkdirSync(join(targetRepo, ".ninthwave", ".worktrees"), { recursive: true });
     ensureWorktreeExcluded(targetRepo);
   }
 
@@ -315,7 +316,7 @@ export function launchSingleItem(
   if (targetRepo === projectRoot) {
     worktreePath = join(worktreeDir, `ninthwave-${item.id}`);
   } else {
-    worktreePath = join(targetRepo, ".worktrees", `ninthwave-${item.id}`);
+    worktreePath = join(targetRepo, ".ninthwave", ".worktrees", `ninthwave-${item.id}`);
   }
 
   // Ensure worktree and branch are ready (handles all branch collision/PR detection)
@@ -368,8 +369,9 @@ HUB_ROOT: ${projectRoot}
 ${baseBranchLine}${hubRepoNwoLine}${seededAgentsLine}
 ${itemText}`;
 
-    // Write system prompt into the workspace (gitignored .nw-prompt)
-    const promptFile = join(worktreePath, ".nw-prompt");
+    // Write system prompt into the workspace (.ninthwave/.prompt, auto-ignored)
+    const promptFile = join(worktreePath, ".ninthwave", ".prompt");
+    mkdirSync(join(worktreePath, ".ninthwave"), { recursive: true });
     writeFileSync(promptFile, systemPrompt);
 
     const workspaceRef = launchAiSession(
@@ -434,7 +436,7 @@ export function launchReviewWorker(
     } else {
       // Fallback: create a plain directory under the project root so it inherits
       // workspace trust (launching in /tmp triggers Claude Code's interactive trust prompt).
-      workDir = join(repoRoot, ".worktrees", `review-${itemId}`);
+      workDir = join(repoRoot, ".ninthwave", ".worktrees", `review-${itemId}`);
       mkdirSync(workDir, { recursive: true });
       ensureWorktreeExcluded(repoRoot);
     }
@@ -442,13 +444,13 @@ export function launchReviewWorker(
     // direct or pr: create worktree from existing ninthwave/{id} branch
     const branchName = `ninthwave/${itemId}`;
     const reviewBranch = `review/${itemId}`;
-    worktreePath = join(repoRoot, ".worktrees", `review-${itemId}`);
+    worktreePath = join(repoRoot, ".ninthwave", ".worktrees", `review-${itemId}`);
     workDir = worktreePath;
 
     if (existsSync(worktreePath)) {
       warn(`Review worktree already exists for ${itemId} at ${worktreePath}, reusing`);
     } else {
-      mkdirSync(join(repoRoot, ".worktrees"), { recursive: true });
+      mkdirSync(join(repoRoot, ".ninthwave", ".worktrees"), { recursive: true });
       ensureWorktreeExcluded(repoRoot);
 
       info(
@@ -482,7 +484,9 @@ export function launchReviewWorker(
 
   // Build system prompt
   const reviewType = options.reviewType ?? "todo";
-  const verdictPath = join(tmpdir(), `nw-verdict-${itemId}.json`);
+  const tmpDir = join(userStateDir(repoRoot), "tmp");
+  mkdirSync(tmpDir, { recursive: true });
+  const verdictPath = join(tmpDir, `nw-verdict-${itemId}.json`);
   const baseBranchLine = options.baseBranch
     ? `BASE_BRANCH: ${options.baseBranch}\n`
     : "";
@@ -503,7 +507,8 @@ ${baseBranchLine}${hubRepoNwoLine}${securityLine}`;
 
   const safeTitle = sanitizeTitle(`Review PR #${prNumber}`);
   info(`Launching ${aiTool} review session for ${itemId}: PR #${prNumber} (${autoFixMode} mode)`);
-  const promptFile = join(workDir, ".nw-prompt");
+  const promptFile = join(workDir, ".ninthwave", ".prompt");
+  mkdirSync(join(workDir, ".ninthwave"), { recursive: true });
   writeFileSync(promptFile, systemPrompt);
 
   const workspaceRef = launchAiSession(
@@ -534,7 +539,7 @@ export function launchRebaserWorker(
   options: { hubRepoNwo?: string } = {},
 ): RebaserLaunchResult | null {
   // The rebaser worker runs in the existing worktree for this item
-  const worktreePath = join(repoRoot, ".worktrees", `ninthwave-${itemId}`);
+  const worktreePath = join(repoRoot, ".ninthwave", ".worktrees", `ninthwave-${itemId}`);
   if (!existsSync(worktreePath)) {
     warn(`No worktree found for rebaser of ${itemId} at ${worktreePath}`);
     return null;
@@ -548,7 +553,8 @@ ${hubRepoNwoLine}`;
 
   const safeTitle = sanitizeTitle(`Rebase PR #${prNumber}`);
   info(`Launching ${aiTool} rebaser session for ${itemId}: PR #${prNumber}`);
-  const promptFile = join(worktreePath, ".nw-prompt");
+  const promptFile = join(worktreePath, ".ninthwave", ".prompt");
+  mkdirSync(join(worktreePath, ".ninthwave"), { recursive: true });
   writeFileSync(promptFile, systemPrompt);
   const workspaceRef = launchAiSession(aiTool, worktreePath, itemId, safeTitle, promptFile, mux, { projectRoot: repoRoot, agentName: "ninthwave-rebaser" });
   if (!workspaceRef) return null;
@@ -571,13 +577,13 @@ export function launchForwardFixerWorker(
   options: { hubRepoNwo?: string } = {},
   deps: LaunchGitDeps = defaultLaunchGitDeps,
 ): ForwardFixerLaunchResult | null {
-  const worktreePath = join(repoRoot, ".worktrees", `ninthwave-fix-forward-${itemId}`);
+  const worktreePath = join(repoRoot, ".ninthwave", ".worktrees", `ninthwave-fix-forward-${itemId}`);
   const branch = `ninthwave/fix-forward-${itemId}`;
 
   if (existsSync(worktreePath)) {
     warn(`Forward-fixer worktree already exists for ${itemId} at ${worktreePath}, reusing`);
   } else {
-    mkdirSync(join(repoRoot, ".worktrees"), { recursive: true });
+    mkdirSync(join(repoRoot, ".ninthwave", ".worktrees"), { recursive: true });
     ensureWorktreeExcluded(repoRoot);
 
     info(`Fetching main in ${basename(repoRoot)} for forward-fixer of ${itemId}`);
@@ -612,7 +618,8 @@ ${hubRepoNwoLine}`;
 
   const safeTitle = sanitizeTitle(`Fix-forward ${itemId}`);
   info(`Launching ${aiTool} forward-fixer session for ${itemId}: merge SHA ${mergeCommitSha.slice(0, 8)}`);
-  const promptFile = join(worktreePath, ".nw-prompt");
+  const promptFile = join(worktreePath, ".ninthwave", ".prompt");
+  mkdirSync(join(worktreePath, ".ninthwave"), { recursive: true });
   writeFileSync(promptFile, systemPrompt);
   const workspaceRef = launchAiSession(aiTool, worktreePath, itemId, safeTitle, promptFile, mux, { projectRoot: repoRoot, agentName: "ninthwave-forward-fixer" });
   if (!workspaceRef) return null;

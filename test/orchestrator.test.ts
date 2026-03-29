@@ -51,7 +51,7 @@ function snapshotWith(
 
 const defaultCtx: ExecutionContext = {
   projectRoot: "/tmp/test-project",
-  worktreeDir: "/tmp/test-project/.worktrees",
+  worktreeDir: "/tmp/test-project/.ninthwave/.worktrees",
   workDir: "/tmp/test-project/.ninthwave/work",
   aiTool: "claude",
   hubRepoNwo: "test-owner/test-repo",
@@ -5745,7 +5745,7 @@ describe("Orchestrator", () => {
 
       expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
         "X-1-3",
-        "/path/to/target-repo/.worktrees",
+        "/path/to/target-repo/.ninthwave/.worktrees",
         "/path/to/target-repo",
       );
     });
@@ -5768,7 +5768,7 @@ describe("Orchestrator", () => {
       );
 
       expect(daemonRebase).toHaveBeenCalledWith(
-        "/path/to/target-repo/.worktrees/ninthwave-X-1-4",
+        "/path/to/target-repo/.ninthwave/.worktrees/ninthwave-X-1-4",
         "ninthwave/X-1-4",
       );
     });
@@ -5821,7 +5821,7 @@ describe("Orchestrator", () => {
 
       // Sibling rebase should use target-repo's worktree path
       expect(daemonRebase).toHaveBeenCalledWith(
-        "/path/to/target-repo/.worktrees/ninthwave-X-1-7",
+        "/path/to/target-repo/.ninthwave/.worktrees/ninthwave-X-1-7",
         "ninthwave/X-1-7",
       );
     });
@@ -6831,7 +6831,7 @@ describe("Orchestrator", () => {
     it("launch stores worktreePath on success", () => {
       const deps = mockDeps({
         launchSingleItem: vi.fn(() => ({
-          worktreePath: "/tmp/test/.worktrees/ninthwave-WP-1-5",
+          worktreePath: "/tmp/test/.ninthwave/.worktrees/ninthwave-WP-1-5",
           workspaceRef: "workspace:7",
         })),
       });
@@ -6845,7 +6845,7 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      expect(orch.getItem("WP-1-5")!.worktreePath).toBe("/tmp/test/.worktrees/ninthwave-WP-1-5");
+      expect(orch.getItem("WP-1-5")!.worktreePath).toBe("/tmp/test/.ninthwave/.worktrees/ninthwave-WP-1-5");
     });
   });
 

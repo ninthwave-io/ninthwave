@@ -146,7 +146,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -169,7 +169,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -191,7 +191,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -211,7 +211,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -233,7 +233,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -259,7 +259,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -287,7 +287,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -312,7 +312,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       asyncGetLastCommitTime,
       asyncCheckPr,
@@ -338,7 +338,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,
@@ -366,7 +366,7 @@ describe("buildSnapshotAsync", () => {
     const snapshot = await buildSnapshotAsync(
       orch,
       "/project",
-      "/project/.worktrees",
+      "/project/.ninthwave/.worktrees",
       fakeMux,
       () => null,
       asyncCheckPr,

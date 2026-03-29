@@ -81,7 +81,7 @@ function stubMux(): Multiplexer {
 function stubCtx(): ExecutionContext {
   return {
     projectRoot: PROJECT_ROOT,
-    worktreeDir: join(PROJECT_ROOT, ".worktrees"),
+    worktreeDir: join(PROJECT_ROOT, ".ninthwave", ".worktrees"),
     workDir: join(PROJECT_ROOT, ".ninthwave", "work"),
     aiTool: "claude",
   };
@@ -125,7 +125,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       const snapshot = buildSnapshot(
         orch,
         PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
+        join(PROJECT_ROOT, ".ninthwave", ".worktrees"),
         stubMux(),
         () => null,
         checkPr,
@@ -236,7 +236,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       const snapshot = buildSnapshot(
         orch,
         PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
+        join(PROJECT_ROOT, ".ninthwave", ".worktrees"),
         stubMux(),
         () => null,
         checkPr,
@@ -273,7 +273,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       const snapshot = buildSnapshot(
         orch,
         PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
+        join(PROJECT_ROOT, ".ninthwave", ".worktrees"),
         stubMux(),
         () => null,
         checkPr,
@@ -442,7 +442,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       const snapshot = buildSnapshot(
         orch,
         PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
+        join(PROJECT_ROOT, ".ninthwave", ".worktrees"),
         stubMux(),
         () => null,
         checkPr,
@@ -583,7 +583,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
       const snapshot = buildSnapshot(
         orch,
         PROJECT_ROOT,
-        join(PROJECT_ROOT, ".worktrees"),
+        join(PROJECT_ROOT, ".ninthwave", ".worktrees"),
         stubMux(),
         () => null,
         checkPr,
@@ -614,7 +614,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
 
     beforeEach(() => {
       tmpDir = join(tmpdir(), `nw-mrg-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-      wtDir = join(tmpDir, ".worktrees");
+      wtDir = join(tmpDir, ".ninthwave", ".worktrees");
     });
 
     afterEach(() => {

@@ -114,7 +114,7 @@ Acceptance: Checklist shows on first login. Items check off as completed.
 Key files: \`lib/onboarding/checklist.ex\`, \`assets/js/checklist.tsx\`
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(4);
   });
 
@@ -140,7 +140,7 @@ Acceptance: Runners upgraded.
 Acceptance: Fixed.
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const ids = items.map((i) => i.id);
     expect(ids).toContain("M-CI-1");
     expect(ids).toContain("H-CI-2");
@@ -171,7 +171,7 @@ Acceptance: Fixed.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("M-CI-1")!.priority).toBe("medium");
@@ -197,7 +197,7 @@ Acceptance: Fixed.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("M-CI-1")!.title).toContain("Upgrade CI runners");
@@ -222,7 +222,7 @@ Acceptance: Fixed.
 **Domain:** user-onboarding
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("M-CI-1")!.domain).toBe("cloud-infrastructure");
@@ -261,7 +261,7 @@ Acceptance: Fixed.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("H-CI-2")!.dependencies).toContain("M-CI-1");
@@ -281,7 +281,7 @@ Acceptance: Fixed.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items[0]!.bundleWith).toContain("H-CI-2");
   });
 
@@ -303,7 +303,7 @@ Acceptance: Fixed.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
 
     for (const item of items) {
       expect(item.status).toBe("open");
@@ -336,7 +336,7 @@ Acceptance: Fixed.
 Key files: \`config/test.exs\`
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     const mci1Paths = byId.get("M-CI-1")!.filePaths;
@@ -360,7 +360,7 @@ Key files: \`config/test.exs\`
 Acceptance: Runners upgraded.
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items[0]!.rawText).toContain("Upgrade CI runners");
     expect(items[0]!.rawText).toContain("**Priority:** Medium");
   });
@@ -376,7 +376,7 @@ Acceptance: Runners upgraded.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items[0]!.filePath).toBe(join(workDir, "2-test--M-CI-1.md"));
   });
 });
@@ -394,7 +394,7 @@ describe("parseWorkItems -- items with missing optional fields", () => {
 Description only.
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(1);
     expect(items[0]!.dependencies).toEqual([]);
   });
@@ -421,7 +421,7 @@ This item has no Priority line.
 This is valid.
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     // Only the valid item is returned
     expect(items).toHaveLength(1);
     expect(items[0]!.id).toBe("M-BK-2");
@@ -446,7 +446,7 @@ This is valid.
 **Domain:** test
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(1);
     expect(items[0]!.id).toBe("M-BK-3");
   });
@@ -457,7 +457,7 @@ describe("parseWorkItems -- empty directory", () => {
     const repo = setupTempRepo();
     const workDir = setupWorkItemsDir(repo);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(0);
   });
 
@@ -466,7 +466,7 @@ describe("parseWorkItems -- empty directory", () => {
     const workDir = join(repo, ".ninthwave", "work");
     // Don't create the directory
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(0);
   });
 });
@@ -497,7 +497,7 @@ describe("parseWorkItems -- multi-domain items", () => {
 **Domain:** section-beta
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(3);
 
     const byId = new Map(items.map((i) => [i.id, i]));
@@ -524,7 +524,7 @@ describe("parseWorkItems -- multi-domain items", () => {
 **Domain:** alpha
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("M-AL-2")!.dependencies).toContain("H-AL-1");
@@ -571,7 +571,7 @@ Key files: \`lib/gateway/rate_limiter.ex\`
 **Domain:** documentation
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("H-API-1")!.repoAlias).toBe("target-repo-a");
@@ -616,7 +616,7 @@ Key files: \`lib/gateway/rate_limiter.ex\`
 **Domain:** docs
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(4);
   });
 });
@@ -641,10 +641,10 @@ describe("parseWorkItems -- in-progress detection", () => {
 `);
 
     // Create a worktree dir for M-CI-1
-    const wtDir = join(repo, ".worktrees", "ninthwave-M-CI-1");
+    const wtDir = join(repo, ".ninthwave", ".worktrees", "ninthwave-M-CI-1");
     mkdirSync(wtDir, { recursive: true });
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("M-CI-1")!.status).toBe("in-progress");
@@ -670,11 +670,11 @@ describe("parseWorkItems -- in-progress detection", () => {
 `);
 
     // Create the worktrees dir and cross-repo index
-    const wtDir = join(repo, ".worktrees");
+    const wtDir = join(repo, ".ninthwave", ".worktrees");
     mkdirSync(wtDir, { recursive: true });
 
     // Create a dummy target path that exists
-    const targetPath = join(repo, ".worktrees", "ninthwave-H-CI-2");
+    const targetPath = join(repo, ".ninthwave", ".worktrees", "ninthwave-H-CI-2");
     mkdirSync(targetPath, { recursive: true });
 
     // Write cross-repo index pointing to the existing path
@@ -683,7 +683,7 @@ describe("parseWorkItems -- in-progress detection", () => {
       `H-CI-2\ttarget-repo\t${targetPath}\n`,
     );
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("H-CI-2")!.status).toBe("in-progress");
@@ -716,7 +716,7 @@ describe("parseWorkItems -- circular deps", () => {
 **Domain:** circular
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(3);
   });
 
@@ -745,7 +745,7 @@ describe("parseWorkItems -- circular deps", () => {
 **Domain:** circular
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     expect(byId.get("H-CC-1")!.dependencies).toContain("H-CC-2");
@@ -951,7 +951,7 @@ Acceptance: Test workflows use 4 vCPU runners.
 Acceptance: Fixed.
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     const mci1Plan = byId.get("M-CI-1")!.testPlan;
@@ -975,7 +975,7 @@ Acceptance: Fixed.
 Acceptance: Email sent.
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items[0]!.testPlan).toBe("");
   });
 });
@@ -1142,7 +1142,7 @@ describe("parseWorkItems -- wildcard dependencies", () => {
 **Domain:** other-domain
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     const mot1 = byId.get("M-OT-1")!;
@@ -1182,7 +1182,7 @@ describe("parseWorkItems -- wildcard dependencies", () => {
 **Domain:** gamma
 `);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     const byId = new Map(items.map((i) => [i.id, i]));
 
     const mga1 = byId.get("M-GA-1")!;
@@ -1218,7 +1218,7 @@ Acceptance: Item round-trips correctly.
 
     writeWorkItemFile(workDir, item);
 
-    const items = parseWorkItems(workDir, join(repo, ".worktrees"));
+    const items = parseWorkItems(workDir, join(repo, ".ninthwave", ".worktrees"));
     expect(items).toHaveLength(1);
     expect(items[0]!.id).toBe("H-RT-1");
     expect(items[0]!.priority).toBe("high");

@@ -45,7 +45,7 @@ const SAMPLE_WORK_ITEM_FILES: Record<string, string> = {
 function setupWorkItemsDir(files: Record<string, string> = SAMPLE_WORK_ITEM_FILES): { workDir: string; worktreeDir: string; projectRoot: string } {
   const dir = makeTmpDir();
   const workDir = join(dir, ".ninthwave", "work");
-  const worktreeDir = join(dir, ".worktrees");
+  const worktreeDir = join(dir, ".ninthwave", ".worktrees");
   mkdirSync(workDir, { recursive: true });
   mkdirSync(worktreeDir, { recursive: true });
   for (const [name, content] of Object.entries(files)) {
@@ -559,7 +559,7 @@ describe("reconcile cross-repo", () => {
 
     // Write a cross-repo index entry
     const indexPath = join(worktreeDir, ".cross-repo-index");
-    writeFileSync(indexPath, "M-CI-1\t/target-repo\t/target-repo/.worktrees/ninthwave-M-CI-1\n");
+    writeFileSync(indexPath, "M-CI-1\t/target-repo\t/target-repo/.ninthwave/.worktrees/ninthwave-M-CI-1\n");
 
     const deps = makeDeps({
       getMergedTodoIds: () => [mergedPr("M-CI-1")],
@@ -575,7 +575,7 @@ describe("reconcile cross-repo", () => {
       (c) => c.root === "/target-repo",
     );
     expect(crossRepoClean).toBeDefined();
-    expect(crossRepoClean!.wtDir).toBe("/target-repo/.worktrees");
+    expect(crossRepoClean!.wtDir).toBe("/target-repo/.ninthwave/.worktrees");
   });
 
   it("uses target repo root for cross-repo stale worktree checks", () => {
@@ -585,7 +585,7 @@ describe("reconcile cross-repo", () => {
 
     // Cross-repo index with an item that has a matching work item file
     const indexPath = join(worktreeDir, ".cross-repo-index");
-    writeFileSync(indexPath, "M-CI-1\t/target-repo\t/target-repo/.worktrees/ninthwave-M-CI-1\n");
+    writeFileSync(indexPath, "M-CI-1\t/target-repo\t/target-repo/.ninthwave/.worktrees/ninthwave-M-CI-1\n");
 
     const deps = makeDeps({
       getMergedTodoIds: () => [],
