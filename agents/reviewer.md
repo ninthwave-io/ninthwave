@@ -19,7 +19,7 @@ Read the following variables from your system prompt (written to `.ninthwave/.pr
 
 - **YOUR_REVIEW_PR**: The PR number to review (e.g., `123`)
 - **YOUR_REVIEW_ITEM_ID**: The review item identifier (e.g., `RVW-5`)
-- **PROJECT_ROOT**: Absolute path to the project repository
+- **PROJECT_ROOT**: Absolute path to your working directory (the git worktree)
 - **REPO_ROOT**: Repository root (may differ from PROJECT_ROOT in monorepos)
 - **AUTO_FIX_MODE**: One of `off`, `direct`, or `pr` (default: `off`)
 - **REVIEW_TYPE**: One of `todo` or `external` (default: `todo`)

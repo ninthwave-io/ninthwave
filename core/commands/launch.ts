@@ -364,8 +364,9 @@ export function launchSingleItem(
       : "";
     const systemPrompt = `YOUR_TODO_ID: ${item.id}
 YOUR_PARTITION: ${partition}
-PROJECT_ROOT: ${targetRepo}
+PROJECT_ROOT: ${worktreePath}
 HUB_ROOT: ${projectRoot}
+IS_HUB_LOCAL: ${targetRepo === projectRoot}
 ${baseBranchLine}${hubRepoNwoLine}${seededAgentsLine}
 ${itemText}`;
 
@@ -498,7 +499,7 @@ export function launchReviewWorker(
     : "";
   const systemPrompt = `YOUR_REVIEW_PR: ${prNumber}
 YOUR_REVIEW_ITEM_ID: ${itemId}
-PROJECT_ROOT: ${repoRoot}
+PROJECT_ROOT: ${workDir}
 REPO_ROOT: ${repoRoot}
 AUTO_FIX_MODE: ${autoFixMode}
 REVIEW_TYPE: ${reviewType}
@@ -548,7 +549,7 @@ export function launchRebaserWorker(
   const hubRepoNwoLine = options.hubRepoNwo ? `HUB_REPO_NWO: ${options.hubRepoNwo}\n` : "";
   const systemPrompt = `YOUR_REBASE_ITEM_ID: ${itemId}
 YOUR_REBASE_PR: ${prNumber}
-PROJECT_ROOT: ${repoRoot}
+PROJECT_ROOT: ${worktreePath}
 ${hubRepoNwoLine}`;
 
   const safeTitle = sanitizeTitle(`Rebase PR #${prNumber}`);
@@ -612,7 +613,7 @@ export function launchForwardFixerWorker(
   const hubRepoNwoLine = options.hubRepoNwo ? `HUB_REPO_NWO: ${options.hubRepoNwo}\n` : "";
   const systemPrompt = `YOUR_VERIFY_ITEM_ID: ${itemId}
 YOUR_VERIFY_MERGE_SHA: ${mergeCommitSha}
-PROJECT_ROOT: ${repoRoot}
+PROJECT_ROOT: ${worktreePath}
 REPO_ROOT: ${repoRoot}
 ${hubRepoNwoLine}`;
 

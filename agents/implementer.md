@@ -17,10 +17,12 @@ You are a focused implementation agent. You receive a single work item and your 
 
 ## 1. Understand the Work Item
 
-Look for `YOUR_TODO_ID`, `YOUR_PARTITION`, `HUB_ROOT`, and `HUB_REPO_NWO` in your system prompt (written to `.ninthwave/.prompt` in your working directory by the orchestrator). These tell you:
+Look for `YOUR_TODO_ID`, `YOUR_PARTITION`, `PROJECT_ROOT`, `HUB_ROOT`, `IS_HUB_LOCAL`, and `HUB_REPO_NWO` in your system prompt (written to `.ninthwave/.prompt` in your working directory by the orchestrator). These tell you:
 - **YOUR_TODO_ID**: The work item identifier (e.g., `C-2-1`, `H-3-4`)
 - **YOUR_PARTITION**: The test partition number for database and port isolation
-- **HUB_ROOT**: Absolute path to the hub repo where `.ninthwave/` lives (including `.ninthwave/work/`). For hub-local items, this equals `PROJECT_ROOT`. For cross-repo items, `PROJECT_ROOT` is the target repo while `HUB_ROOT` points back to the orchestrator's repo.
+- **PROJECT_ROOT**: Absolute path to your working directory (the git worktree checked out to your branch). All file reads and writes should be relative to this directory.
+- **HUB_ROOT**: Absolute path to the hub repo where `.ninthwave/` lives (including `.ninthwave/work/`)
+- **IS_HUB_LOCAL**: `true` if this item targets the hub repo itself, `false` if it targets a different (cross-repo) repository
 - **HUB_REPO_NWO**: The GitHub `owner/repo` slug for the hub repository (e.g., `ninthwave-sh/ninthwave`). Used for absolute links in PR comments.
 
 Read the full work item details from your system prompt, including: title, description, **acceptance criteria**, priority, source, domain, and affected files.
@@ -223,7 +225,7 @@ nw heartbeat --progress 0.85 --label "Checked diff"
 
 ## 8. Remove Your Work Item File
 
-**Hub-local items only** (when `PROJECT_ROOT` equals `HUB_ROOT`):
+**Hub-local items only** (when `IS_HUB_LOCAL` is `true`):
 
 Before creating the PR, delete your work item file so that merging the PR automatically marks the item as done.
 
@@ -233,7 +235,7 @@ Before creating the PR, delete your work item file so that merging the PR automa
 
 > **Why?** Each work item is a separate file in `.ninthwave/work/`. Deleting your file cannot conflict with other workers' changes -- they each touch only their own file.
 
-**Cross-repo items** (when `PROJECT_ROOT` differs from `HUB_ROOT`):
+**Cross-repo items** (when `IS_HUB_LOCAL` is `false`):
 
 Skip this step entirely. The work item file lives in the hub repo, not the target repo where your PR is created. The orchestrator daemon automatically removes your work item file from the hub repo after your PR merges.
 

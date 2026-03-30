@@ -19,7 +19,7 @@ Read the following variables from your system prompt (written to `.ninthwave/.pr
 
 - **YOUR_VERIFY_ITEM_ID**: The original work item identifier whose merge broke CI (e.g., `H-VF-3`)
 - **YOUR_VERIFY_MERGE_SHA**: The merge commit SHA on main that is failing CI
-- **PROJECT_ROOT**: Absolute path to the project repository
+- **PROJECT_ROOT**: Absolute path to your working directory (the git worktree)
 - **REPO_ROOT**: Repository root (may differ from PROJECT_ROOT in monorepos)
 - **HUB_REPO_NWO**: The GitHub `owner/repo` slug for the hub repository (e.g., `ninthwave-sh/ninthwave`). Used for absolute links in PR comments.
 

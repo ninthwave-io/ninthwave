@@ -1411,7 +1411,7 @@ describe("launchReviewWorker", () => {
     expect(sentPrompt).toContain("YOUR_REVIEW_PR: 99");
     expect(sentPrompt).toContain("YOUR_REVIEW_ITEM_ID: H-RVW-2");
     expect(sentPrompt).toContain("AUTO_FIX_MODE: direct");
-    expect(sentPrompt).toContain(`PROJECT_ROOT: ${repo}`);
+    expect(sentPrompt).toContain(`PROJECT_ROOT: ${join(repo, ".ninthwave", ".worktrees", "review-H-RVW-2")}`);
     expect(sentPrompt).toContain(`REPO_ROOT: ${repo}`);
   });
 
