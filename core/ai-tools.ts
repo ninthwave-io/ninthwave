@@ -154,26 +154,21 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
     envDetection: [{ varName: "OPENCODE", value: "1" }],
     processNames: ["opencode"],
     buildLaunchCmd(opts, deps): LaunchCmdResult {
-      // Launcher script pattern (same as Copilot) to safely pass multi-KB prompts.
-      // Uses --prompt to seed the initial prompt into the TUI (auto-starts execution),
-      // and OPENCODE_PERMISSION to auto-approve all permission prompts.
+      // Inline command pattern: write prompt to a plain-text data file, then
+      // construct a shell command that reads it, cleans up, and execs the tool.
+      // Avoids creating executable .sh scripts (which trigger EDR alerts).
       const ts = Date.now();
       const tmpDir = join(opts.stateDir, "tmp");
       deps.mkdirSync(tmpDir, { recursive: true });
-      const launcherScript = join(tmpDir, `nw-launch-${opts.id}-${ts}.sh`);
       const promptDataFile = join(tmpDir, `nw-prompt-${opts.id}-${ts}`);
       const promptContent = deps.readFileSync(opts.promptFile, "utf-8");
       deps.writeFileSync(promptDataFile, `${promptContent}\n\nStart implementing this work item now.`);
-      deps.writeFileSync(
-        launcherScript,
-        `#!/bin/bash\n` +
-          `PROMPT=$(cat '${promptDataFile}')\n` +
-          `rm -f '${promptDataFile}' '${launcherScript}'\n` +
-          `export OPENCODE_PERMISSION='{"$schema":"https://opencode.ai/config.json","permission":"allow"}'\n` +
-          `exec opencode --agent ${opts.agentName} --prompt "$PROMPT"\n`,
-      );
-      deps.run("chmod", ["+x", launcherScript]);
-      return { cmd: launcherScript, initialPrompt: "" };
+      const cmd =
+        `export OPENCODE_PERMISSION='{"$schema":"https://opencode.ai/config.json","permission":"allow"}'` +
+        ` && PROMPT=$(cat '${promptDataFile}')` +
+        ` && rm -f '${promptDataFile}'` +
+        ` && exec opencode --agent ${opts.agentName} --prompt "$PROMPT"`;
+      return { cmd, initialPrompt: "" };
     },
   },
   {
@@ -187,25 +182,20 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
     projectIndicators: [".github/copilot-instructions.md", ".github/agents"],
     processNames: ["copilot"],
     buildLaunchCmd(opts, deps): LaunchCmdResult {
-      // Write a launcher script so the full prompt reaches copilot via -i without
-      // any shell quoting issues from multiplexer pipelines.
+      // Inline command pattern: write prompt to a plain-text data file, then
+      // construct a shell command that reads it, cleans up, and execs the tool.
+      // Avoids creating executable .sh scripts (which trigger EDR alerts).
       const ts = Date.now();
       const tmpDir = join(opts.stateDir, "tmp");
       deps.mkdirSync(tmpDir, { recursive: true });
-      const launcherScript = join(tmpDir, `nw-launch-${opts.id}-${ts}.sh`);
       const promptDataFile = join(tmpDir, `nw-prompt-${opts.id}-${ts}`);
       const promptContent = deps.readFileSync(opts.promptFile, "utf-8");
       deps.writeFileSync(promptDataFile, `${promptContent}\n\nStart implementing this work item now.`);
-      deps.writeFileSync(
-        launcherScript,
-        `#!/bin/bash\n` +
-          `PROMPT=$(cat '${promptDataFile}')\n` +
-          `rm -f '${promptDataFile}' '${launcherScript}'\n` +
-          `exec copilot --agent=${opts.agentName} --allow-all -i "$PROMPT"\n`,
-      );
-      deps.run("chmod", ["+x", launcherScript]);
-      // Prompt is embedded in the launcher script via -i; no post-launch send.
-      return { cmd: launcherScript, initialPrompt: "" };
+      const cmd =
+        `PROMPT=$(cat '${promptDataFile}')` +
+        ` && rm -f '${promptDataFile}'` +
+        ` && exec copilot --agent=${opts.agentName} --allow-all -i "$PROMPT"`;
+      return { cmd, initialPrompt: "" };
     },
   },
 ];

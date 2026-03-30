@@ -202,11 +202,11 @@ describe("cmdStart", () => {
       cmdStart(["M-CI-1", "--tool", "opencode"], workDir, worktreeDir, repo, mockMux),
     );
 
-    // Tool should be used for launching (opencode uses launcher script)
+    // Tool should be used for launching (opencode uses inline command)
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     expect(launchCall).toBeDefined();
     const cmd = launchCall[1] as string;
-    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
+    expect(cmd).toContain("exec opencode");
   });
 
   it("dies early when mux is unavailable (before any git operations)", async () => {
@@ -1183,11 +1183,9 @@ describe("launchAiSession agentName", () => {
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     expect(launchCall).toBeDefined();
     const cmd = launchCall[1] as string;
-    // cmd is a launcher script path in /tmp
-    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
-    const script = readFileSync(cmd, "utf-8");
-    expect(script).toContain("--agent ninthwave-reviewer");
-    expect(script).toContain("--prompt");
+    // cmd is an inline shell command (no .sh script)
+    expect(cmd).toContain("--agent ninthwave-reviewer");
+    expect(cmd).toContain("--prompt");
   });
 
   it("passes custom agentName to copilot command", () => {
@@ -1203,12 +1201,10 @@ describe("launchAiSession agentName", () => {
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     expect(launchCall).toBeDefined();
     const cmd = launchCall[1] as string;
-    // cmd is a launcher script path in /tmp
-    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
-    const script = readFileSync(cmd, "utf-8");
-    expect(script).toContain("--agent=ninthwave-reviewer");
-    expect(script).toContain("--allow-all");
-    expect(script).toContain("-i ");
+    // cmd is an inline shell command (no .sh script)
+    expect(cmd).toContain("--agent=ninthwave-reviewer");
+    expect(cmd).toContain("--allow-all");
+    expect(cmd).toContain("-i ");
   });
 
   it("embeds prompt inline via -i for copilot (no post-launch send)", () => {
@@ -1222,10 +1218,10 @@ describe("launchAiSession agentName", () => {
     expect(wsRef).not.toBeNull();
     // No message should be sent after launch -- prompt is embedded in -i
     expect(mockMux.sendMessage.mock.calls.length).toBe(0);
-    // Launcher script should exist and contain the prompt file reference
+    // Inline command should reference the prompt data file
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     const cmd = launchCall[1] as string;
-    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
+    expect(cmd).toContain("exec copilot");
   });
 
   it("passes Start as positional CLI arg for claude (no post-launch send)", () => {
@@ -1245,7 +1241,7 @@ describe("launchAiSession agentName", () => {
     expect(mockMux.sendMessage.mock.calls.length).toBe(0);
   });
 
-  it("opencode embeds prompt via --prompt in launcher script (no post-launch send)", () => {
+  it("opencode embeds prompt via --prompt in inline command (no post-launch send)", () => {
     const mockMux = createMockMux();
     const repo = setupTempRepo();
     const promptFile = join(repo, "prompt.txt");
@@ -1256,13 +1252,11 @@ describe("launchAiSession agentName", () => {
     expect(wsRef).not.toBeNull();
     // No message should be sent after launch -- prompt is embedded via --prompt
     expect(mockMux.sendMessage.mock.calls.length).toBe(0);
-    // Launcher script should exist and contain --prompt
+    // Inline command should contain --prompt and OPENCODE_PERMISSION
     const launchCall = mockMux.launchWorkspace.mock.calls[0];
     const cmd = launchCall[1] as string;
-    expect(cmd).toMatch(/nw-launch-.*\.sh$/);
-    const script = readFileSync(cmd, "utf-8");
-    expect(script).toContain("--prompt");
-    expect(script).toContain("OPENCODE_PERMISSION");
+    expect(cmd).toContain("--prompt");
+    expect(cmd).toContain("OPENCODE_PERMISSION");
   });
 
   it("custom/unknown tool falls back to raw command launch with post-launch send", () => {
