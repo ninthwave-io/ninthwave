@@ -197,7 +197,21 @@ export async function onboard(
   const prompt = deps.prompt ?? defaultPrompt;
   const runShell = deps.runShell ?? run;
   const sleep = deps.sleep ?? defaultSleep;
-  const bundleDir = (deps.getBundleDir ?? getBundleDir)();
+  let bundleDir: string;
+  try {
+    bundleDir = (deps.getBundleDir ?? getBundleDir)();
+  } catch {
+    console.error();
+    console.error(`${RED}ninthwave installation not found.${RESET}`);
+    console.error();
+    console.error("Set NINTHWAVE_HOME to your ninthwave installation directory:");
+    console.error(`  ${BOLD}export NINTHWAVE_HOME=/path/to/ninthwave${RESET}`);
+    console.error();
+    console.error("Or install via Homebrew:");
+    console.error(`  ${BOLD}brew install ninthwave-sh/tap/ninthwave${RESET}`);
+    console.error();
+    return;
+  }
 
   // ── Step 1: Welcome ─────────────────────────────────────────────
   console.log();

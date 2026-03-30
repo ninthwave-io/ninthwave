@@ -2,10 +2,11 @@
 //
 // Resolution chain:
 // 1. NINTHWAVE_HOME env var -- explicit override
-// 2. Binary install prefix -- if process.argv[0] is at <prefix>/bin/ninthwave,
-//    check <prefix>/share/ninthwave/
+// 2. Binary install prefix -- if process.execPath or process.argv[0] is at
+//    <prefix>/bin/ninthwave, check <prefix>/share/ninthwave/
 // 3. Development fallback -- walk up from this source file to find repo root
 //    containing skills/work/SKILL.md
+// 4. ~/.ninthwave/ -- user-level install fallback
 
 import { existsSync } from "fs";
 import { dirname, join, resolve } from "path";
@@ -36,18 +37,26 @@ function resolveFromEnv(checkExists: (path: string) => boolean = existsSync): st
 /**
  * Resolve from binary install prefix.
  * If the binary is at <prefix>/bin/ninthwave, look for <prefix>/share/ninthwave/.
+ *
+ * Tries process.execPath first (Bun guarantees this is the absolute path to the
+ * compiled binary), then process.argv[0] as a fallback.
  */
 function resolveFromBinaryPrefix(checkExists: (path: string) => boolean = existsSync): string | null {
-  const argv0 = process.argv[0];
-  if (!argv0) return null;
+  // process.execPath is the absolute path to the binary for compiled Bun executables.
+  // process.argv[0] may be just the basename in some shell environments.
+  const candidates = [process.execPath, process.argv[0]].filter(Boolean);
 
-  const binDir = dirname(resolve(argv0));
-  // binDir should end with /bin for a standard install prefix
-  if (!binDir.endsWith("/bin")) return null;
+  for (const candidate of candidates) {
+    const binDir = dirname(resolve(candidate));
+    // binDir should end with /bin for a standard install prefix
+    if (!binDir.endsWith("/bin")) continue;
 
-  const prefix = dirname(binDir);
-  const shareDir = join(prefix, "share", "ninthwave");
-  return isBundleDir(shareDir, checkExists) ? shareDir : null;
+    const prefix = dirname(binDir);
+    const shareDir = join(prefix, "share", "ninthwave");
+    if (isBundleDir(shareDir, checkExists)) return shareDir;
+  }
+
+  return null;
 }
 
 /**
@@ -69,12 +78,23 @@ function resolveFromDevSource(checkExists: (path: string) => boolean = existsSyn
 }
 
 /**
+ * Resolve from ~/.ninthwave/ (user-level install fallback).
+ */
+function resolveFromUserHome(checkExists: (path: string) => boolean = existsSync): string | null {
+  const home = process.env.HOME;
+  if (!home) return null;
+  const userDir = join(home, ".ninthwave");
+  return isBundleDir(userDir, checkExists) ? userDir : null;
+}
+
+/**
  * Resolve the ninthwave bundle directory containing skills, agents, and docs.
  *
  * Resolution order:
  * 1. `NINTHWAVE_HOME` environment variable
  * 2. Binary install prefix (`<prefix>/share/ninthwave/`)
  * 3. Development fallback (walk up from source file to repo root)
+ * 4. `~/.ninthwave/` (user-level install)
  *
  * @throws {Error} if no valid bundle directory can be found
  */
@@ -89,6 +109,9 @@ export function getBundleDir(
 
   const fromDev = resolveFromDevSource(checkExists);
   if (fromDev) return fromDev;
+
+  const fromUserHome = resolveFromUserHome(checkExists);
+  if (fromUserHome) return fromUserHome;
 
   throw new Error(
     "Could not find ninthwave bundle directory. " +
