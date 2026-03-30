@@ -3707,6 +3707,7 @@ describe("orchestrateLoop crew mode", () => {
         "session_started",
         "T-MODEL-1",
         { agent: "claude", model: "opus", role: "implementer" },
+        { model: "opus" },
       ]);
       expect(reportCalls[0]![2]).not.toHaveProperty("provider");
     } finally {
@@ -3865,6 +3866,64 @@ describe("orchestrateLoop crew mode", () => {
 
     // Broker should have been notified of completion
     expect(completedIds).toContain("T-1");
+  });
+
+  it("reports complete with model and token usage before broker.complete", async () => {
+    const ctx = createTelemetryCtx("implementer.md", "claude-sonnet-4-6");
+    try {
+      const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("T-2"));
+      orch.getItem("T-2")!.reviewCompleted = true;
+
+      let cycle = 0;
+      const { broker } = mockCrewBroker({
+        connected: true,
+        claimResults: ["T-2"],
+      });
+
+      const deps: OrchestrateLoopDeps = {
+        buildSnapshot: (): PollSnapshot => {
+          cycle++;
+          switch (cycle) {
+            case 1:
+              return { items: [], readyIds: ["T-2"] };
+            case 2:
+              return { items: [{ id: "T-2", workerAlive: true }], readyIds: [] };
+            case 3:
+              return { items: [{ id: "T-2", prNumber: 2, prState: "open", ciStatus: "pass" }], readyIds: [] };
+            case 4:
+              return { items: [{ id: "T-2", prState: "merged" }], readyIds: [] };
+            default:
+              return { items: [], readyIds: [] };
+          }
+        },
+        sleep: () => Promise.resolve(),
+        log: () => {},
+        actionDeps: mockActionDeps(),
+        crewBroker: broker,
+        getFreeMem: () => 16 * 1024 ** 3,
+        readTokenUsage: () => ({ inputTokens: 100, outputTokens: 40, cacheTokens: 10 }),
+      };
+
+      await orchestrateLoop(orch, ctx, deps, { maxIterations: 10 });
+
+      const completeReportCall = (broker.report as any).mock.calls.find(([event]: [string]) => event === "complete");
+      const completeReportIndex = (broker.report as any).mock.calls.findIndex(([event]: [string]) => event === "complete");
+      expect(completeReportCall).toBeDefined();
+      expect(completeReportCall).toEqual([
+        "complete",
+        "T-2",
+        expect.objectContaining({ state: "merged", prNumber: 2 }),
+        {
+          model: "claude-sonnet-4-6",
+          tokenUsage: { inputTokens: 100, outputTokens: 40, cacheTokens: 10 },
+        },
+      ]);
+
+      expect((broker.report as any).mock.invocationCallOrder[completeReportIndex]).toBeLessThan((broker.complete as any).mock.invocationCallOrder[0]);
+    } finally {
+      rmSync(ctx.projectRoot, { recursive: true, force: true });
+    }
   });
 });
 

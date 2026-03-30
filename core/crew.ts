@@ -30,6 +30,9 @@ export interface SyncAckMessage {
   type: "sync_ack";
   crewCode: string;
   todoIds: string[];
+  telemetrySettings?: {
+    sendTokenUsage?: boolean;
+  };
 }
 
 export interface ClaimMessage {
@@ -93,12 +96,24 @@ export interface ErrorMessage {
   message: string;
 }
 
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheTokens?: number;
+}
+
 export interface ReportMessage {
   type: "report";
   daemonId: string;
   event: string;
   todoPath: string;
   metadata: Record<string, unknown>;
+  repoUrl?: string;
+  branch?: string;
+  commitAuthor?: string;
+  model?: string;
+  sessionId?: string;
+  tokenUsage?: TokenUsage;
 }
 
 export interface ReportAckMessage {
@@ -176,7 +191,12 @@ export interface CrewBroker {
   getCrewStatus(): CrewStatus | null;
 
   /** Send a telemetry report event. Fire-and-forget, no-op if telemetry disabled. */
-  report(event: string, todoPath: string, metadata: Record<string, unknown>): void;
+  report(
+    event: string,
+    todoPath: string,
+    metadata: Record<string, unknown>,
+    opts?: { model?: string; tokenUsage?: TokenUsage },
+  ): void;
 
   /** Enable or disable telemetry reporting. */
   setTelemetry(enabled: boolean): void;
@@ -341,6 +361,9 @@ export class WebSocketCrewBroker implements CrewBroker {
   private disconnectedIntentionally = false;
   private crewStatus: CrewStatus | null = null;
   private telemetryEnabled: boolean;
+  private sessionId: string | null = null;
+  private currentModel: string | undefined;
+  private sendTokenUsage = false;
 
   constructor(
     projectRoot: string,
@@ -378,6 +401,7 @@ export class WebSocketCrewBroker implements CrewBroker {
   private doConnect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.connectPromise = { resolve, reject };
+      this.sessionId ??= randomUUID();
       const wsUrl = `${this.url}?daemonId=${this.daemonId}&name=${encodeURIComponent(this.name)}&operatorId=${encodeURIComponent(this.operatorId)}&repoUrl=${encodeURIComponent(this.repoUrl)}`;
       this.ws = new WebSocket(wsUrl);
 
@@ -479,14 +503,28 @@ export class WebSocketCrewBroker implements CrewBroker {
     });
   }
 
-  report(event: string, todoPath: string, metadata: Record<string, unknown>): void {
+  report(
+    event: string,
+    todoPath: string,
+    metadata: Record<string, unknown>,
+    opts?: { model?: string; tokenUsage?: TokenUsage },
+  ): void {
     if (!this.telemetryEnabled) return;
+
+    const model = opts?.model ?? this.extractModelFromMetadata(metadata) ?? this.currentModel;
+    if (model) {
+      this.currentModel = model;
+    }
+
     this.send({
       type: "report",
       daemonId: this.daemonId,
       event,
       todoPath,
       metadata,
+      ...(model ? { model } : {}),
+      ...(this.sessionId ? { sessionId: this.sessionId } : {}),
+      ...(this.sendTokenUsage && opts?.tokenUsage ? { tokenUsage: opts.tokenUsage } : {}),
     });
   }
 
@@ -503,6 +541,9 @@ export class WebSocketCrewBroker implements CrewBroker {
     this.stopReconnectTimer();
     this.stopHeartbeatTimer();
     this.rejectAllPendingClaims();
+    if (this.ws && this.connected && this.telemetryEnabled) {
+      this.report("session_end", "", {}, { model: this.currentModel });
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -541,6 +582,7 @@ export class WebSocketCrewBroker implements CrewBroker {
 
     switch (data.type) {
       case "sync_ack":
+        this.sendTokenUsage = data.telemetrySettings?.sendTokenUsage === true;
         // Initial connection handshake complete
         if (this.connectPromise) {
           this.connectPromise.resolve();
@@ -635,6 +677,11 @@ export class WebSocketCrewBroker implements CrewBroker {
         });
       }
     }, intervalMs);
+  }
+
+  private extractModelFromMetadata(metadata: Record<string, unknown>): string | undefined {
+    const model = metadata.model;
+    return typeof model === "string" && model.length > 0 ? model : undefined;
   }
 
   private stopReconnectTimer(): void {

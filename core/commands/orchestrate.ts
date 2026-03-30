@@ -47,6 +47,7 @@ import {
   parseWorkerTelemetry,
 } from "../analytics.ts";
 import { parseAgentModel, readAgentFileContent } from "../agent-files.ts";
+import { readLatestTokenUsage } from "../token-usage.ts";
 import {
   writePidFile,
   cleanPidFile,
@@ -67,6 +68,7 @@ import {
   type DaemonState,
   type ExternalReviewItem,
 } from "../daemon.ts";
+import type { TokenUsage } from "../crew.ts";
 import {
   formatStatusTable,
   mapDaemonItemState,
@@ -997,7 +999,9 @@ function handleActionExecution(
   // Report session_started for successful launches
   if (result.success && deps.crewBroker) {
     if (sessionEndedMetadata) {
-      deps.crewBroker.report("session_ended", action.itemId, sessionEndedMetadata);
+      deps.crewBroker.report("session_ended", action.itemId, sessionEndedMetadata, {
+        model: sessionEndedMetadata.model,
+      });
     }
 
     const launchTelemetry = getLaunchTelemetry(action.type);
@@ -1009,6 +1013,8 @@ function handleActionExecution(
         agent: orchItem.aiTool ?? ctx.aiTool ?? "unknown",
         model: model ?? "unknown",
         role: launchTelemetry.role,
+      }, {
+        model,
       });
     }
   }
@@ -1157,6 +1163,18 @@ function readLaunchModel(ctx: ExecutionContext, filename: string): string | null
   return content ? parseAgentModel(content) : null;
 }
 
+function resolveCompletionModel(item: OrchestratorItem, ctx: ExecutionContext): string | undefined {
+  return item.implementerModel ?? readLaunchModel(ctx, "implementer.md") ?? undefined;
+}
+
+function buildCompletionReportMetadata(item: OrchestratorItem): Record<string, unknown> {
+  return {
+    state: item.state,
+    ...(item.prNumber ? { prNumber: item.prNumber } : {}),
+    ...(item.startedAt ? { durationMs: Date.now() - new Date(item.startedAt).getTime() } : {}),
+  };
+}
+
 // ── Event loop ─────────────────────────────────────────────────────
 
 /** Dependencies injected into orchestrateLoop for testability. */
@@ -1181,6 +1199,8 @@ export interface OrchestrateLoopDeps {
   scanWorkItems?: () => WorkItem[];
   /** Crew coordination broker. When present, crew mode is active -- claim before launch, complete after merge. */
   crewBroker?: CrewBroker;
+  /** Override token usage resolution for telemetry tests. */
+  readTokenUsage?: (item: OrchestratorItem, action: Action, ctx: ExecutionContext) => TokenUsage | undefined;
   /** Schedule dependencies. When present, scheduled task processing is active. */
   scheduleDeps?: ScheduleLoopDeps;
   /**
@@ -1736,6 +1756,15 @@ export async function orchestrateLoop(
           const orchItem = orch.getItem(action.itemId);
           if (orchItem && (orchItem.state === "done" || orchItem.state === "merged")) {
             try {
+              const model = resolveCompletionModel(orchItem, ctx);
+              const tokenUsage = deps.readTokenUsage?.(orchItem, action, ctx)
+                ?? readLatestTokenUsage(ctx.projectRoot, orchItem.aiTool ?? ctx.aiTool ?? "unknown", {
+                  since: orchItem.startedAt,
+                });
+              deps.crewBroker.report("complete", action.itemId, buildCompletionReportMetadata(orchItem), {
+                model,
+                tokenUsage,
+              });
               deps.crewBroker.complete(action.itemId);
             } catch { /* best-effort */ }
           }

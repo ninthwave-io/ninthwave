@@ -50,6 +50,8 @@ function startTestServer(opts?: {
   autoReply?: ServerMessage;
   /** If set, delay sync_ack by this many ms. */
   syncAckDelayMs?: number;
+  /** Override the default sync_ack payload. */
+  syncAck?: ServerMessage;
 }): {
   server: ReturnType<typeof Bun.serve>;
   port: number;
@@ -84,7 +86,7 @@ function startTestServer(opts?: {
 
         // Auto-reply with sync_ack on sync messages
         if (msg.type === "sync") {
-          const reply: ServerMessage = {
+          const reply: ServerMessage = opts?.syncAck ?? {
             type: "sync_ack",
             crewCode: "test-crew",
             todoIds: [],
@@ -704,6 +706,103 @@ describe("report method", () => {
       expect(receivedReport.event).toBe("pr_opened");
       expect(receivedReport.todoPath).toBe("test-item");
       expect(receivedReport.metadata.prNumber).toBe(42);
+      expect(receivedReport.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+      broker.disconnect();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("includes model and tokenUsage when broker telemetry settings allow it", async () => {
+    let receivedReport: any = null;
+    const { server, port } = startTestServer({
+      syncAck: {
+        type: "sync_ack",
+        crewCode: "test-crew",
+        todoIds: [],
+        telemetrySettings: { sendTokenUsage: true },
+      },
+      onMessage: (_ws, msg) => {
+        if (msg.type === "report") {
+          receivedReport = msg;
+        }
+      },
+    });
+
+    try {
+      const { log } = createLogCollector();
+      const broker = new WebSocketCrewBroker(
+        tempDir, `ws://localhost:${port}`, "ABCD-EFGH-IJKL-MNOP", "https://github.com/test/repo",
+        { log, heartbeatIntervalMs: 60_000 },
+        "test-daemon",
+        true,
+      );
+
+      const connectP = broker.connect();
+      await new Promise((r) => setTimeout(r, 50));
+      broker.sync([]);
+      await connectP;
+
+      broker.report(
+        "complete",
+        "test-item",
+        { state: "done" },
+        {
+          model: "claude-sonnet-4-6",
+          tokenUsage: { inputTokens: 100, outputTokens: 50, cacheTokens: 25 },
+        },
+      );
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(receivedReport.model).toBe("claude-sonnet-4-6");
+      expect(receivedReport.tokenUsage).toEqual({
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheTokens: 25,
+      });
+      broker.disconnect();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("omits tokenUsage when broker telemetry settings do not allow it", async () => {
+    let receivedReport: any = null;
+    const { server, port } = startTestServer({
+      onMessage: (_ws, msg) => {
+        if (msg.type === "report") {
+          receivedReport = msg;
+        }
+      },
+    });
+
+    try {
+      const { log } = createLogCollector();
+      const broker = new WebSocketCrewBroker(
+        tempDir, `ws://localhost:${port}`, "ABCD-EFGH-IJKL-MNOP", "https://github.com/test/repo",
+        { log, heartbeatIntervalMs: 60_000 },
+        "test-daemon",
+        true,
+      );
+
+      const connectP = broker.connect();
+      await new Promise((r) => setTimeout(r, 50));
+      broker.sync([]);
+      await connectP;
+
+      broker.report(
+        "complete",
+        "test-item",
+        { state: "done" },
+        {
+          model: "claude-sonnet-4-6",
+          tokenUsage: { inputTokens: 100, outputTokens: 50, cacheTokens: 25 },
+        },
+      );
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(receivedReport.model).toBe("claude-sonnet-4-6");
+      expect(receivedReport).not.toHaveProperty("tokenUsage");
       broker.disconnect();
     } finally {
       server.stop(true);
@@ -778,6 +877,50 @@ describe("report method", () => {
       expect(receivedReport).not.toBeNull();
       expect(receivedReport.event).toBe("pr_merged");
       broker.disconnect();
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("sends session_end before disconnecting", async () => {
+    const receivedEvents: string[] = [];
+    let sessionEndReport: any = null;
+    const { server, port } = startTestServer({
+      onMessage: (_ws, msg) => {
+        if (msg.type === "report") {
+          receivedEvents.push(msg.event);
+          if (msg.event === "session_end") {
+            sessionEndReport = msg;
+          }
+        }
+      },
+    });
+
+    try {
+      const { log } = createLogCollector();
+      const broker = new WebSocketCrewBroker(
+        tempDir, `ws://localhost:${port}`, "ABCD-EFGH-IJKL-MNOP", "https://github.com/test/repo",
+        { log, heartbeatIntervalMs: 60_000 },
+        "test-daemon",
+        true,
+      );
+
+      const connectP = broker.connect();
+      await new Promise((r) => setTimeout(r, 50));
+      broker.sync([]);
+      await connectP;
+
+      broker.report("session_started", "test-item", { model: "claude-sonnet-4-6" }, { model: "claude-sonnet-4-6" });
+      await new Promise((r) => setTimeout(r, 50));
+
+      broker.disconnect();
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(receivedEvents).toContain("session_end");
+      expect(sessionEndReport.model).toBe("claude-sonnet-4-6");
+      expect(sessionEndReport.todoPath).toBe("");
+      expect(sessionEndReport.metadata).toEqual({});
+      expect(sessionEndReport.sessionId).toBeDefined();
     } finally {
       server.stop(true);
     }

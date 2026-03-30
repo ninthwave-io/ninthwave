@@ -102,7 +102,12 @@ class StubCrewBroker implements CrewBroker {
     return null;
   }
 
-  report(_event: string, _todoPath: string, _metadata: Record<string, unknown>): void {
+  report(
+    _event: string,
+    _todoPath: string,
+    _metadata: Record<string, unknown>,
+    _opts?: { model?: string; tokenUsage?: { inputTokens: number; outputTokens: number; cacheTokens?: number } },
+  ): void {
     // no-op
   }
 

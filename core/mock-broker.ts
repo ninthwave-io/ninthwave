@@ -107,12 +107,27 @@ type InboundMessage =
   | { type: "claim"; requestId: string; daemonId: string }
   | { type: "complete"; todoId: string; daemonId: string }
   | { type: "heartbeat"; daemonId: string; ts: string }
+  | {
+    type: "report";
+    daemonId: string;
+    event: string;
+    todoPath: string;
+    metadata: Record<string, unknown>;
+    model?: string;
+    sessionId?: string;
+    tokenUsage?: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheTokens?: number;
+    };
+  }
   | { type: "schedule_claim"; requestId: string; daemonId: string; taskId: string; scheduleTime: string };
 
 type OutboundMessage =
   | { type: "sync_ack"; crewCode: string; todoIds: string[] }
   | { type: "claim_response"; requestId: string; todoId: string | null }
   | { type: "complete_ack"; todoId: string }
+  | { type: "report_ack"; event: string }
   | { type: "heartbeat_ack"; ts: string }
   | { type: "reconnect_state"; resumed: string[]; released: string[]; reclaimed: string[] }
   | { type: "schedule_claim_response"; requestId: string; taskId: string; granted: boolean }
