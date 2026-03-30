@@ -285,24 +285,24 @@ Choose the right PR title prefix based on the change type (`fix:`, `feat:`, `ref
 nw heartbeat --progress 1.0 --label "PR created"
 ```
 
-## 10. Dogfooding Friction Log (ninthwave projects only)
+## 10. Friction Log
 
 If you encountered friction during this work item's implementation, log it. **Skip this step entirely if you experienced no friction.**
 
-**Detection:** Check if `skills/work/SKILL.md` exists in the project root. If it does, this is a ninthwave project and friction logging is active. **Skip this step entirely for non-ninthwave projects.**
+Write the entry to `.ninthwave/friction/` in your current worktree so it is committed on your branch and included in the PR.
 
 ```bash
-if [ -f "${PROJECT_ROOT}/skills/work/SKILL.md" ]; then
-  mkdir -p "${PROJECT_ROOT}/.ninthwave/friction"
-  TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
-  cat > "${PROJECT_ROOT}/.ninthwave/friction/${TIMESTAMP}--YOUR_TODO_ID.md" <<ENTRY
+mkdir -p .ninthwave/friction
+TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+cat > ".ninthwave/friction/${TIMESTAMP}--YOUR_TODO_ID.md" <<ENTRY
 item: YOUR_TODO_ID
 date: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 severity: low|medium|high
 description: <brief description of friction encountered>
 ENTRY
-  git add "${PROJECT_ROOT}/.ninthwave/friction/" && git commit -m "chore: log friction for YOUR_TODO_ID"
-fi
+git add .ninthwave/friction/
+git commit -m "chore: log friction for YOUR_TODO_ID"
+git push
 ```
 
 When logging friction:

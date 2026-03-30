@@ -229,11 +229,9 @@ Then run `ninthwave list --ready` to see if any items were unblocked by the batc
 - If **ready items exist**, continue to Step 2.
 - If **no items remain**, skip to Step 3.
 
-#### Step 2: Dogfooding -- friction log review (ninthwave projects only)
+#### Step 2: Friction log review
 
-**Detection:** Check if `skills/work/SKILL.md` exists in the project root. If it does, this is a ninthwave project and dogfooding mode is active.
-
-If in dogfooding mode:
+Review any unprocessed friction entries in `.ninthwave/friction/`.
 
 1. Read friction files from `.ninthwave/friction/` directory (excluding the `processed/` subdirectory). Each file is an individual friction observation.
 2. Identify any **new actionable entries** -- friction items that don't already have corresponding work items in `.ninthwave/work/`.
@@ -268,8 +266,6 @@ If in dogfooding mode:
    ```
 
    > **Why commit here?** Without this step, friction files and newly decomposed work items accumulate uncommitted. If the session is interrupted or the orchestrator restarts, uncommitted friction work is lost. Committing ensures the friction-to-work-item pipeline is durable.
-
-If **not** in dogfooding mode, skip this step entirely.
 
 #### Step 3: Offer to continue
 
