@@ -21,7 +21,7 @@ import {
 } from "../output.ts";
 import { run } from "../shell.ts";
 import { resolveCmuxBinary } from "../cmux-resolve.ts";
-import type { RunResult, WorkItem } from "../types.ts";
+import type { WorkItem } from "../types.ts";
 import type { ProjectConfig } from "../config.ts";
 import { initProject } from "./init.ts";
 import { getBundleDir } from "../paths.ts";
@@ -71,19 +71,10 @@ export const MUX_OPTIONS: MuxOption[] = [
 
 export type CommandChecker = (cmd: string) => boolean;
 export type PromptFn = (question: string) => Promise<string>;
-export type ShellRunner = (
-  cmd: string,
-  args: string[],
-  opts?: { cwd?: string },
-) => RunResult;
-export type SleepFn = (ms: number) => void;
 
 export interface OnboardDeps {
   commandExists?: CommandChecker;
-  cmuxResolver?: () => string | null;
   prompt?: PromptFn;
-  runShell?: ShellRunner;
-  sleep?: SleepFn;
   getBundleDir?: () => string;
   widgetIO?: WidgetIO;
 }
@@ -115,10 +106,6 @@ const defaultPrompt: PromptFn = (question: string): Promise<string> => {
       resolve(answer.trim());
     });
   });
-};
-
-const defaultSleep: SleepFn = (ms: number): void => {
-  Bun.sleepSync(ms);
 };
 
 // ── Detection functions ─────────────────────────────────────────────
@@ -162,52 +149,13 @@ export async function promptChoice<T>(
   }
 }
 
-// ── Session launch helpers ──────────────────────────────────────────
-
-const WELCOME_MSG =
-  "You're set up with ninthwave. Try /decompose to break down a feature, or /work to process existing work items.";
-
-/**
- * Launch the AI tool inside the chosen multiplexer and pre-seed the welcome prompt.
- *
- * Returns a session reference string on success, or null on failure.
- */
-export function launchSession(
-  muxType: "cmux",
-  aiCommand: string,
-  cwd: string,
-  runShell: ShellRunner = run,
-  sleep: SleepFn = defaultSleep,
-): string | null {
-  const result = runShell("cmux", [
-    "new-workspace",
-    "--cwd",
-    cwd,
-    "--command",
-    aiCommand,
-  ]);
-  if (result.exitCode !== 0) return null;
-  const ref = result.stdout.match(/workspace:\d+/)?.[0] ?? null;
-  if (ref) {
-    // Best-effort: wait for tool to start, then send welcome message
-    sleep(3000);
-    runShell("cmux", [
-      "send",
-      "--workspace",
-      ref,
-      WELCOME_MSG + "\n",
-    ]);
-  }
-  return ref;
-}
-
 // ── Main onboarding flow ────────────────────────────────────────────
 
 /**
  * Interactive first-run onboarding flow.
  *
- * Guides the user through multiplexer detection, AI tool detection, project
- * setup, and session launch. All external I/O is injectable for testing.
+ * Detects AI coding tools, runs project setup, and shows next-step guidance.
+ * All external I/O is injectable for testing.
  */
 export async function onboard(
   projectDir: string,
@@ -215,8 +163,6 @@ export async function onboard(
 ): Promise<void> {
   const commandExists = deps.commandExists ?? defaultCommandExists;
   const prompt = deps.prompt ?? defaultPrompt;
-  const runShell = deps.runShell ?? run;
-  const sleep = deps.sleep ?? defaultSleep;
   let bundleDir: string;
   try {
     bundleDir = (deps.getBundleDir ?? getBundleDir)();
@@ -240,54 +186,7 @@ export async function onboard(
   );
   console.log();
 
-  // ── Step 2: Detect multiplexer ──────────────────────────────────
-  console.log(`${DIM}Detecting multiplexer...${RESET}`);
-  const installedMuxes = detectInstalledMuxes(commandExists, deps.cmuxResolver ?? resolveCmuxBinary);
-  let chosenMux: MuxOption;
-
-  if (installedMuxes.length === 0) {
-    console.log(`  ${YELLOW}No multiplexer found.${RESET}`);
-    console.log();
-    console.log(
-      "  ninthwave needs a terminal multiplexer for parallel sessions.",
-    );
-    console.log("  Install one of:");
-    for (const m of MUX_OPTIONS) {
-      console.log(
-        `    ${BOLD}${m.installCmd}${RESET} ${DIM}(${m.description})${RESET}`,
-      );
-    }
-    console.log();
-    console.log(`  ${DIM}cmux is recommended for the best experience.${RESET}`);
-    console.log();
-    console.log(
-      `Install a multiplexer and re-run ${BOLD}ninthwave${RESET}.`,
-    );
-    return;
-  } else if (installedMuxes.length === 1) {
-    chosenMux = installedMuxes[0]!;
-    console.log(
-      `  ${GREEN}✓${RESET} Found ${BOLD}${chosenMux.name}${RESET} ${DIM}(${chosenMux.description})${RESET}`,
-    );
-    const confirm = await prompt(`  Use ${chosenMux.name}? [Y/n]: `);
-    if (confirm.toLowerCase() === "n") {
-      console.log(
-        `  Install a different multiplexer and re-run ${BOLD}ninthwave${RESET}.`,
-      );
-      return;
-    }
-  } else {
-    console.log("  Found multiple multiplexers:");
-    const idx = await promptChoice(
-      installedMuxes,
-      (m) => `${m.name} ${DIM}(${m.description})${RESET}`,
-      prompt,
-    );
-    chosenMux = installedMuxes[idx]!;
-  }
-  console.log();
-
-  // ── Step 3: Detect AI tool ──────────────────────────────────────
+  // ── Step 2: Detect AI tool ──────────────────────────────────────
   console.log(`${DIM}Detecting AI coding tools...${RESET}`);
   const installedTools = detectInstalledAITools(commandExists);
   if (installedTools.length === 0) {
@@ -369,37 +268,11 @@ export async function onboard(
   }
   console.log();
 
-  // ── Step 5: Launch session ──────────────────────────────────────
-  console.log(
-    `${DIM}Launching ${chosenTool.displayName} in ${chosenMux.name}...${RESET}`,
-  );
-  const sessionRef = launchSession(
-    chosenMux.type,
-    chosenTool.command,
-    projectDir,
-    runShell,
-    sleep,
-  );
-
-  if (!sessionRef) {
-    console.log(`  ${RED}Failed to launch session.${RESET}`);
-    console.log(
-      `  Try manually: open ${chosenMux.name} and run ${BOLD}${chosenTool.command}${RESET}`,
-    );
-    return;
-  }
-
-  console.log(`  ${GREEN}✓${RESET} Session started`);
-  console.log();
-
-  // ── Step 6 & 7: Hand off ───────────────────────────────────────
   console.log(`${GREEN}You're all set!${RESET}`);
   console.log(
-    `${chosenTool.displayName} is running in ${chosenMux.name}.`,
+    `Add work items to ${BOLD}.ninthwave/work/${RESET} or use ${BOLD}/decompose${RESET} in ${chosenTool.displayName} to break down a feature.`,
   );
   console.log();
-
-  // cmux: GUI app, workspace is already visible -- no attach needed
 }
 
 // ── CLI entry point ─────────────────────────────────────────────────
@@ -458,9 +331,12 @@ export async function cmdNoArgs(
   }
 
   // State 2: No .ninthwave/ dir → first-run onboarding
-  if (!checkExists(join(projectRoot, ".ninthwave"))) {
+  const ninthwaveDir = join(projectRoot, ".ninthwave");
+  if (!checkExists(ninthwaveDir)) {
     await onboard(projectRoot, deps);
-    return;
+    // If onboarding was aborted (user cancelled, no AI tool, etc.), .ninthwave/ won't exist.
+    if (!checkExists(ninthwaveDir)) return;
+    // Fall through -- .ninthwave/ now exists; show no-work-items guidance below.
   }
 
   const workDir = join(projectRoot, ".ninthwave", "work");

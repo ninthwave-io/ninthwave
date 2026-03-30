@@ -12,7 +12,6 @@ import {
   detectInstalledMuxes,
   detectInstalledAITools,
   promptChoice,
-  launchSession,
   shouldOnboard,
   onboard,
   cmdNoArgs,
@@ -168,60 +167,6 @@ describe("shouldOnboard", () => {
   });
 });
 
-// ── launchSession ───────────────────────────────────────────────────
-
-describe("launchSession", () => {
-  it("launches cmux workspace and returns ref", () => {
-    const calls: Array<{ cmd: string; args: string[] }> = [];
-    const mockRun = (cmd: string, args: string[]) => {
-      calls.push({ cmd, args });
-      if (args[0] === "new-workspace") {
-        return { stdout: "workspace:1", stderr: "", exitCode: 0 };
-      }
-      return { stdout: "", stderr: "", exitCode: 0 };
-    };
-
-    const ref = launchSession("cmux", "claude", "/tmp/project", mockRun, () => {});
-
-    expect(ref).toBe("workspace:1");
-    expect(calls[0]!.cmd).toBe("cmux");
-    expect(calls[0]!.args).toContain("new-workspace");
-    expect(calls[0]!.args).toContain("claude");
-  });
-
-  it("sends pre-seed message to cmux workspace after delay", () => {
-    const calls: Array<{ cmd: string; args: string[] }> = [];
-    let sleptMs = 0;
-    const mockRun = (cmd: string, args: string[]) => {
-      calls.push({ cmd, args });
-      if (args[0] === "new-workspace") {
-        return { stdout: "workspace:5", stderr: "", exitCode: 0 };
-      }
-      return { stdout: "", stderr: "", exitCode: 0 };
-    };
-
-    launchSession("cmux", "claude", "/tmp/project", mockRun, (ms) => {
-      sleptMs += ms;
-    });
-
-    const sendCall = calls.find(
-      (c) => c.cmd === "cmux" && c.args.includes("send"),
-    );
-    expect(sendCall).toBeDefined();
-    expect(sendCall!.args).toContain("--workspace");
-    expect(sendCall!.args).toContain("workspace:5");
-    expect(sleptMs).toBeGreaterThan(0);
-  });
-
-  it("returns null when cmux workspace creation fails", () => {
-    const mockRun = () => ({ stdout: "", stderr: "error", exitCode: 1 });
-
-    const ref = launchSession("cmux", "claude", "/tmp/project", mockRun, () => {});
-
-    expect(ref).toBeNull();
-  });
-});
-
 // ── onboard (integration) ───────────────────────────────────────────
 
 describe("onboard", () => {
@@ -254,32 +199,6 @@ describe("onboard", () => {
     return bundleDir;
   }
 
-  it("exits early when no multiplexer is installed", async () => {
-    const projectDir = setupTempRepo();
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await onboard(projectDir, {
-        commandExists: () => false,
-        cmuxResolver: () => null,
-        prompt: async () => "",
-        runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
-        sleep: () => {},
-        getBundleDir: () => "/fake",
-      });
-    } finally {
-      console.log = origLog;
-    }
-
-    const output = logs.join("\n");
-    expect(output).toContain("No multiplexer found");
-    expect(output).toContain("Install a multiplexer");
-    // Should not reach AI tool detection
-    expect(output).not.toContain("AI coding tools");
-  });
-
   it("exits early when no AI tool is installed", async () => {
     const projectDir = setupTempRepo();
     const logs: string[] = [];
@@ -289,10 +208,7 @@ describe("onboard", () => {
     try {
       await onboard(projectDir, {
         commandExists: () => false,
-        cmuxResolver: () => "cmux",
-        prompt: async () => "", // accept default (Y)
-        runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
-        sleep: () => {},
+        prompt: async () => "",
         getBundleDir: () => "/fake",
       });
     } finally {
@@ -304,32 +220,18 @@ describe("onboard", () => {
     expect(output).toContain("Install an AI tool");
   });
 
-  it("runs full flow when one mux and one AI tool are found", async () => {
+  it("runs full flow when an AI tool is found", async () => {
     const projectDir = setupTempRepo();
     const bundleDir = createFakeBundle(projectDir + "-bundle");
     const logs: string[] = [];
     const origLog = console.log;
     console.log = (...args: unknown[]) => logs.push(args.join(" "));
-    const shellCalls: Array<{ cmd: string; args: string[] }> = [];
-    let attachCalled = false;
 
     try {
       await onboard(projectDir, {
         commandExists: (cmd) => cmd === "claude",
-        cmuxResolver: () => "cmux",
-        prompt: async () => "", // accept defaults
-        runShell: (cmd, args) => {
-          shellCalls.push({ cmd, args });
-          if (args[0] === "new-workspace") {
-            return { stdout: "workspace:1", stderr: "", exitCode: 0 };
-          }
-          return { stdout: "", stderr: "", exitCode: 0 };
-        },
-        sleep: () => {},
+        prompt: async () => "",
         getBundleDir: () => bundleDir,
-        execAttach: () => {
-          attachCalled = true;
-        },
       });
     } finally {
       console.log = origLog;
@@ -338,44 +240,16 @@ describe("onboard", () => {
     const output = logs.join("\n");
     // Should show welcome
     expect(output).toContain("Welcome to ninthwave");
-    // Should detect tools
-    expect(output).toContain("cmux");
+    // Should detect AI tool
     expect(output).toContain("Claude Code");
     // Should run setup
     expect(output).toContain("Setting up ninthwave");
-    // Should launch session
-    expect(output).toContain("Session started");
-    // Should complete
+    // Should complete with guidance (no session launch)
     expect(output).toContain("You're all set!");
-    // cmux doesn't need attach
-    expect(attachCalled).toBe(false);
+    expect(output).not.toContain("Launching");
+    expect(output).not.toContain("Session started");
     // .ninthwave/ should now exist from setup
     expect(existsSync(join(projectDir, ".ninthwave"))).toBe(true);
-  });
-
-  it("exits when user declines single detected mux", async () => {
-    const projectDir = setupTempRepo();
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await onboard(projectDir, {
-        commandExists: (cmd) => cmd === "claude",
-        cmuxResolver: () => "cmux",
-        prompt: async () => "n",
-        runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
-        sleep: () => {},
-        getBundleDir: () => "/fake",
-      });
-    } finally {
-      console.log = origLog;
-    }
-
-    const output = logs.join("\n");
-    expect(output).toContain("Install a different multiplexer");
-    // Should not reach AI tool detection
-    expect(output).not.toContain("AI coding tools");
   });
 
   it("auto-selects single detected AI tool without prompting", async () => {
@@ -388,10 +262,7 @@ describe("onboard", () => {
     try {
       await onboard(projectDir, {
         commandExists: (cmd) => cmd === "claude",
-        cmuxResolver: () => "cmux",
-        prompt: async () => "", // accept mux default
-        runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
-        sleep: () => {},
+        prompt: async () => "",
         getBundleDir: () => bundleDir,
       });
     } finally {
@@ -401,32 +272,7 @@ describe("onboard", () => {
     const output = logs.join("\n");
     // Single tool should be auto-selected -- no "Choose" prompt for AI tool
     expect(output).not.toContain("Choose [1-");
-    expect(output).toContain("Launching Claude Code");
-  });
-
-  it("handles session launch failure gracefully", async () => {
-    const projectDir = setupTempRepo();
-    const bundleDir = createFakeBundle(projectDir + "-bundle");
-    const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: unknown[]) => logs.push(args.join(" "));
-
-    try {
-      await onboard(projectDir, {
-        commandExists: (cmd) => cmd === "claude",
-        cmuxResolver: () => "cmux",
-        prompt: async () => "",
-        runShell: () => ({ stdout: "", stderr: "error", exitCode: 1 }),
-        sleep: () => {},
-        getBundleDir: () => bundleDir,
-      });
-    } finally {
-      console.log = origLog;
-    }
-
-    const output = logs.join("\n");
-    expect(output).toContain("Failed to launch session");
-    expect(output).toContain("Try manually");
+    expect(output).toContain("You're all set!");
   });
 });
 
@@ -478,10 +324,8 @@ describe("cmdNoArgs", () => {
       await cmdNoArgs(projectDir, {
         isTTY: true,
         existsSync: (p: string) => !p.includes(".ninthwave"),
-        commandExists: () => false, // Will exit early at mux detection
+        commandExists: () => false, // Will exit early at AI tool detection
         prompt: async () => "",
-        runShell: () => ({ stdout: "", stderr: "", exitCode: 0 }),
-        sleep: () => {},
         getBundleDir: () => "/fake",
       });
     } finally {

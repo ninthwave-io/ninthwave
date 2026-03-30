@@ -51,12 +51,7 @@ if (command === "--help" || command === "-h") {
 
 // No args: detect project state and route to the appropriate flow
 if (!command) {
-  // Only auto-launch on TTY -- non-TTY no-args prints help (handled by cmdNoArgs)
-  if (process.stdin.isTTY) {
-    await ensureMuxInteractiveOrDie(process.argv.slice(2));
-  }
-
-  // Try to detect project root without dying on failure
+  // Detect project root first so we can skip the mux check for uninitialized repos.
   const gitResult = run("git", [
     "rev-parse",
     "--path-format=absolute",
@@ -66,6 +61,14 @@ if (!command) {
     gitResult.exitCode === 0
       ? gitResult.stdout.replace(/\/.git$/, "")
       : null;
+
+  // Only enforce a mux session for already-initialized repos.
+  // First-run onboarding doesn't need a multiplexer.
+  const isInitialized =
+    projectRoot !== null && existsSync(join(projectRoot, ".ninthwave"));
+  if (process.stdin.isTTY && isInitialized) {
+    await ensureMuxInteractiveOrDie(process.argv.slice(2));
+  }
 
   await cmdNoArgs(projectRoot);
   process.exit(0);
