@@ -10,6 +10,13 @@ tasks:
     cmds:
       - bun test
 
+  setup:
+    desc: Install git hooks
+    cmds:
+      - cp scripts/hooks/pre-commit .git/hooks/pre-commit
+      - chmod +x .git/hooks/pre-commit
+      - echo "Installed pre-commit hook"
+
   bump:
     desc: Bump version and generate CHANGELOG entry
     cmds:

@@ -7,6 +7,7 @@ Parallel AI coding orchestration. TypeScript + Bun CLI.
 ## Development
 
 ```bash
+task setup            # install git hooks (run once after cloning)
 bun test              # run all tests
 bun run core/cli.ts   # run CLI directly
 ```
