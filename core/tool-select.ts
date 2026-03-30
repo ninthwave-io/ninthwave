@@ -27,8 +27,8 @@ export interface SelectAiToolOptions {
 export interface SelectAiToolDeps {
   commandExists?: CommandChecker;
   prompt?: PromptFn;
-  loadConfig?: (root: string) => { ai_tool?: string; ai_tools?: string[] };
-  saveConfig?: (root: string, updates: { ai_tool?: string; ai_tools?: string[] }) => void;
+  loadConfig?: (root: string) => { ai_tools?: string[] };
+  saveConfig?: (root: string, updates: { ai_tools?: string[] }) => void;
   loadUserConfig?: () => UserConfig;
 }
 
@@ -134,11 +134,6 @@ export async function selectAiTools(
   if (!options.isInteractive) {
     if (savedTools && savedTools.length > 0 && savedTools.every(t => installed.some(i => i.id === t))) {
       return savedTools;
-    }
-    // Fall back to single saved tool or first installed
-    const savedTool = config.ai_tool;
-    if (savedTool && installed.some(t => t.id === savedTool)) {
-      return [savedTool];
     }
     return [installed[0]!.id];
   }

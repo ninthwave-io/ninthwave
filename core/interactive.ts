@@ -49,8 +49,6 @@ export interface InteractiveDeps {
   defaultReviewMode?: "all" | "mine" | "off";
   /** Pre-detected installed AI tool profiles. Skip tool step if undefined or single entry. */
   installedTools?: AiToolProfile[];
-  /** Pre-selected tool ID from project config (last-used). */
-  savedToolId?: string;
   /** Pre-selected tool IDs from project config (multi-select). */
   savedToolIds?: string[];
   /** When true, skip the AI tool step (tool already determined by --tool or user config). */
@@ -478,7 +476,6 @@ export async function runTuiSelectionFlow(
       defaultReviewMode: deps.defaultReviewMode,
       showConnectionStep: deps.showConnectionStep,
       installedTools: deps.skipToolStep ? undefined : deps.installedTools,
-      savedToolId: deps.savedToolId,
       savedToolIds: deps.savedToolIds,
     });
     if (!result || result.cancelled) return null;
@@ -562,7 +559,7 @@ async function runReadlineFlow(
   let aiTools: string[] | undefined;
   const tools = deps.skipToolStep ? [] : (deps.installedTools ?? []);
   if (tools.length >= 2) {
-    const savedIds = deps.savedToolIds ?? (deps.savedToolId ? [deps.savedToolId] : []);
+    const savedIds = deps.savedToolIds ?? [];
     const selected = new Set<number>();
     // Pre-check saved tools or first if none saved
     if (savedIds.length > 0) {

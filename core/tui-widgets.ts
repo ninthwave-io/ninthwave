@@ -715,8 +715,6 @@ export async function runSelectionScreen(
     showConnectionStep?: boolean;
     /** Installed AI tools for the tool selection step. Empty/single = skip screen. */
     installedTools?: AiToolProfile[];
-    /** Pre-selected tool ID to mark as default in the picker. */
-    savedToolId?: string;
     /** Pre-selected tool IDs for multi-select (from saved config). */
     savedToolIds?: string[];
   } = {},
@@ -884,7 +882,7 @@ export async function runSelectionScreen(
 
   if (tools.length >= 2) {
     // Multi-select: pre-check saved tools or all if none saved
-    const savedIds = opts.savedToolIds ?? (opts.savedToolId ? [opts.savedToolId] : []);
+    const savedIds = opts.savedToolIds ?? [];
     const toolCheckboxItems: CheckboxItem[] = tools.map((t) => ({
       id: t.id,
       label: t.displayName,

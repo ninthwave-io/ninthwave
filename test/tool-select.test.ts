@@ -60,7 +60,7 @@ describe("selectAiTool", () => {
       { projectRoot: "/fake", isInteractive: false },
       stubDeps({
         commandExists: (cmd) => cmd === "claude" || cmd === "opencode",
-        loadConfig: () => ({ ai_tool: "opencode" }),
+        loadConfig: () => ({ ai_tools: ["opencode"] }),
       }),
     );
     expect(result).toBe("opencode");
@@ -82,7 +82,7 @@ describe("selectAiTool", () => {
       { projectRoot: "/fake", isInteractive: false },
       stubDeps({
         commandExists: (cmd) => cmd === "claude" || cmd === "copilot",
-        loadConfig: () => ({ ai_tool: "opencode" }), // opencode not installed
+        loadConfig: () => ({ ai_tools: ["opencode"] }), // opencode not installed
       }),
     );
     expect(result).toBe("claude");
@@ -152,25 +152,12 @@ describe("selectAiTool", () => {
     expect(save).toHaveBeenCalledWith("/fake", { ai_tools: ["opencode"] });
   });
 
-  it("uses user config ai_tool (legacy) when no ai_tools", async () => {
-    const save = vi.fn();
-    const result = await selectAiTool(
-      { projectRoot: "/fake", isInteractive: true },
-      stubDeps({
-        loadUserConfig: () => ({ ai_tool: "opencode", ai_tools: ["opencode"] }),
-        commandExists: (cmd) => cmd === "claude" || cmd === "opencode",
-        saveConfig: save,
-      }),
-    );
-    expect(result).toBe("opencode");
-  });
-
   it("--tool override takes precedence over user config", async () => {
     const save = vi.fn();
     const result = await selectAiTool(
       { toolOverride: "claude", projectRoot: "/fake", isInteractive: true },
       stubDeps({
-        loadUserConfig: () => ({ ai_tool: "opencode" }),
+        loadUserConfig: () => ({ ai_tools: ["opencode"] }),
         saveConfig: save,
       }),
     );
@@ -262,15 +249,15 @@ describe("selectAiTools", () => {
     expect(result).toEqual(["opencode", "claude"]);
   });
 
-  it("falls back to single saved ai_tool when ai_tools absent (non-interactive)", async () => {
+  it("falls back to first installed when no saved preference (non-interactive)", async () => {
     const result = await selectAiTools(
       { projectRoot: "/fake", isInteractive: false },
       stubDeps({
         commandExists: (cmd) => cmd === "claude" || cmd === "opencode",
-        loadConfig: () => ({ ai_tool: "opencode" }),
+        loadConfig: () => ({}),
       }),
     );
-    expect(result).toEqual(["opencode"]);
+    expect(result).toEqual(["claude"]);
   });
 
   it("interactive multi-select: toggle and confirm", async () => {

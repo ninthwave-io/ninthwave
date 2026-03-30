@@ -97,7 +97,7 @@ describe("loadConfig", () => {
     expect(config.review_external).toBe(true);
     expect(config.schedule_enabled).toBe(false);
     // Only known keys in the result
-    expect(Object.keys(config)).toEqual(["review_external", "schedule_enabled", "ai_tool", "ai_tools", "telemetry"]);
+    expect(Object.keys(config)).toEqual(["review_external", "schedule_enabled", "ai_tools", "telemetry"]);
   });
 
   it("treats non-boolean review_external as false", () => {
@@ -127,7 +127,20 @@ describe("loadConfig", () => {
     expect(config.schedule_enabled).toBe(false);
   });
 
-  it("reads ai_tool field", () => {
+  it("reads ai_tools field", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ ai_tools: ["opencode", "claude"] }),
+    );
+
+    const config = loadConfig(repo);
+    expect(config.ai_tools).toEqual(["opencode", "claude"]);
+  });
+
+  it("ignores legacy ai_tool field", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
@@ -137,35 +150,22 @@ describe("loadConfig", () => {
     );
 
     const config = loadConfig(repo);
-    expect(config.ai_tool).toBe("opencode");
-  });
-
-  it("ignores non-string ai_tool values", () => {
-    const repo = setupTempRepo();
-    const configDir = join(repo, ".ninthwave");
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(
-      join(configDir, "config.json"),
-      JSON.stringify({ ai_tool: 42 }),
-    );
-
-    const config = loadConfig(repo);
-    expect(config.ai_tool).toBeUndefined();
+    expect(config.ai_tools).toBeUndefined();
   });
 });
 
 describe("saveConfig", () => {
   it("creates config file when missing", () => {
     const repo = setupTempRepo();
-    saveConfig(repo, { ai_tool: "claude" });
+    saveConfig(repo, { ai_tools: ["claude"] });
 
     const configPath = join(repo, ".ninthwave", "config.json");
     expect(existsSync(configPath)).toBe(true);
     const content = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(content.ai_tool).toBe("claude");
+    expect(content.ai_tools).toEqual(["claude"]);
   });
 
-  it("merges ai_tool into existing config without clobbering", () => {
+  it("merges ai_tools into existing config without clobbering", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
@@ -174,11 +174,11 @@ describe("saveConfig", () => {
       JSON.stringify({ review_external: true }),
     );
 
-    saveConfig(repo, { ai_tool: "opencode" });
+    saveConfig(repo, { ai_tools: ["opencode"] });
 
     const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
     expect(content.review_external).toBe(true);
-    expect(content.ai_tool).toBe("opencode");
+    expect(content.ai_tools).toEqual(["opencode"]);
   });
 
   it("preserves unknown keys in config file", () => {
@@ -190,34 +190,34 @@ describe("saveConfig", () => {
       JSON.stringify({ custom_key: "hello", review_external: false }),
     );
 
-    saveConfig(repo, { ai_tool: "copilot" });
+    saveConfig(repo, { ai_tools: ["copilot"] });
 
     const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
     expect(content.custom_key).toBe("hello");
-    expect(content.ai_tool).toBe("copilot");
+    expect(content.ai_tools).toEqual(["copilot"]);
   });
 
-  it("overwrites existing ai_tool value", () => {
+  it("overwrites existing ai_tools value", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, "config.json"),
-      JSON.stringify({ ai_tool: "claude" }),
+      JSON.stringify({ ai_tools: ["claude"] }),
     );
 
-    saveConfig(repo, { ai_tool: "opencode" });
+    saveConfig(repo, { ai_tools: ["opencode"] });
 
     const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
-    expect(content.ai_tool).toBe("opencode");
+    expect(content.ai_tools).toEqual(["opencode"]);
   });
 
   it("round-trips with loadConfig", () => {
     const repo = setupTempRepo();
-    saveConfig(repo, { ai_tool: "copilot" });
+    saveConfig(repo, { ai_tools: ["copilot"] });
 
     const config = loadConfig(repo);
-    expect(config.ai_tool).toBe("copilot");
+    expect(config.ai_tools).toEqual(["copilot"]);
   });
 });
 
@@ -228,17 +228,17 @@ describe("loadUserConfig", () => {
     expect(config).toEqual({});
   });
 
-  it("returns ai_tool from valid JSON", () => {
+  it("returns ai_tools from valid JSON", () => {
     const tmpHome = setupTempRepo();
     const configDir = join(tmpHome, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, "config.json"),
-      JSON.stringify({ ai_tool: "opencode" }),
+      JSON.stringify({ ai_tools: ["opencode"] }),
     );
 
     const config = loadUserConfig(tmpHome);
-    expect(config.ai_tool).toBe("opencode");
+    expect(config.ai_tools).toEqual(["opencode"]);
   });
 
   it("returns {} for malformed JSON and warns", () => {
@@ -271,17 +271,17 @@ describe("loadUserConfig", () => {
     warnSpy.mockRestore();
   });
 
-  it("ignores non-string ai_tool values", () => {
+  it("ignores legacy ai_tool field", () => {
     const tmpHome = setupTempRepo();
     const configDir = join(tmpHome, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, "config.json"),
-      JSON.stringify({ ai_tool: 42 }),
+      JSON.stringify({ ai_tool: "opencode" }),
     );
 
     const config = loadUserConfig(tmpHome);
-    expect(config.ai_tool).toBeUndefined();
+    expect(config.ai_tools).toBeUndefined();
   });
 
   it("ignores unknown keys", () => {
@@ -290,11 +290,11 @@ describe("loadUserConfig", () => {
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, "config.json"),
-      JSON.stringify({ ai_tool: "claude", some_other_key: "ignored" }),
+      JSON.stringify({ ai_tools: ["claude"], some_other_key: "ignored" }),
     );
 
     const config = loadUserConfig(tmpHome);
-    expect(config.ai_tool).toBe("claude");
-    expect(Object.keys(config)).toEqual(["ai_tool", "ai_tools"]);
+    expect(config.ai_tools).toEqual(["claude"]);
+    expect(Object.keys(config)).toEqual(["ai_tools"]);
   });
 });

@@ -1957,13 +1957,12 @@ export async function cmdOrchestrate(
     const installedTools = detectInstalledAITools();
     const preConfig = loadConfig(projectRoot);
     const userCfg = loadUserConfig();
-    const skipToolStep = !!toolOverride || !!userCfg.ai_tool;
+    const skipToolStep = !!toolOverride || (userCfg.ai_tools?.length ?? 0) > 0;
     const defaultReviewMode = preConfig.review_external ? "all" as const : "mine" as const;
 
     const result = await runInteractiveFlow(workItems, wipLimit, {
       defaultReviewMode,
       installedTools,
-      savedToolId: preConfig.ai_tool,
       savedToolIds: preConfig.ai_tools,
       skipToolStep,
     });

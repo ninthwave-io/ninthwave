@@ -1,7 +1,6 @@
 {
   "review_external": false,
   "schedule_enabled": false,
-  "ai_tool": "opencode",
   "ai_tools": [
     "opencode"
   ],

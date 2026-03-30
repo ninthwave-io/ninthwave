@@ -456,7 +456,6 @@ export async function cmdNoArgs(
   const result = await doInteractive(todos, 4, {
     defaultReviewMode,
     installedTools,
-    savedToolId: projectConfig.ai_tool,
     savedToolIds: projectConfig.ai_tools,
   });
   if (!result) return; // User cancelled

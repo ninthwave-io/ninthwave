@@ -1674,13 +1674,13 @@ describe("runSelectionScreen -- AI tool step", () => {
     expect(result!.aiTool).toBeUndefined();
   });
 
-  it("pre-selects savedToolId", async () => {
+  it("pre-selects savedToolIds", async () => {
     const { io, sendKeyBatches } = createMockIO();
     const items = [makeWorkItem("A-1", "Task")];
 
     const resultPromise = runSelectionScreen(io, items, 4, {
       installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
-      savedToolId: "opencode",
+      savedToolIds: ["opencode"],
     });
 
     sendKeyBatches(
@@ -1689,7 +1689,7 @@ describe("runSelectionScreen -- AI tool step", () => {
       ["\r"],        // WIP
       ["\r"],        // review
       ["\r"],        // connection
-      ["\r"],        // tool (accept default = opencode since savedToolId)
+      ["\r"],        // tool (accept default = opencode since savedToolIds)
       ["\r"],        // confirm
     );
 
