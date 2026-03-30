@@ -166,10 +166,12 @@ export class TmuxAdapter implements Multiplexer {
     ]);
     if (result.exitCode !== 0) return "";
 
-    // Filter to nw_ prefixed windows (ninthwave workers)
+    // Filter to nw_ prefixed windows and return full session:window refs
+    // so isWorkerAliveWithCache can match against the ref format from launchWorkspace
     return result.stdout
       .split("\n")
       .filter((l) => l.startsWith("nw_"))
+      .map((l) => `${session}:${l}`)
       .join("\n");
   }
 

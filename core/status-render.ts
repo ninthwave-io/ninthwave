@@ -111,6 +111,8 @@ export interface StatusItem {
   remote?: boolean;
   /** Absolute path to preserved worktree directory (set for stuck items). */
   worktreePath?: string;
+  /** Multiplexer workspace reference (e.g., "nw-myproject:nw_H-TM-1" for tmux). */
+  workspaceRef?: string;
 }
 
 // ─── Dependency tree types ────────────────────────────────────────────────────
@@ -1028,6 +1030,7 @@ export function daemonStateToStatusItems(state: DaemonState): StatusItem[] {
     exitCode: item.exitCode,
     stderrTail: item.stderrTail,
     worktreePath: item.worktreePath,
+    workspaceRef: item.workspaceRef,
   }));
 }
 
@@ -1967,6 +1970,7 @@ export function renderHelpOverlay(
   termWidth: number,
   termRows: number,
   crewCode?: string,
+  tmuxSessionName?: string,
 ): string[] {
   // ── Build content lines (plain text, no padding yet) ──────────────
 
@@ -1978,6 +1982,14 @@ export function renderHelpOverlay(
       `${BOLD}Crew Code${RESET}`,
       `  ${CYAN}${crewCode}${RESET}`,
       `  ${DIM}View stats: ninthwave.sh/stats/${crewCode}${RESET}`,
+    ]);
+  }
+
+  // Tmux section (when running outside tmux)
+  if (tmuxSessionName) {
+    sections.push([
+      `${BOLD}Tmux${RESET}`,
+      `  Attach with: ${CYAN}tmux attach -t ${tmuxSessionName}${RESET}`,
     ]);
   }
 
@@ -2154,6 +2166,18 @@ export function renderDetailOverlay(
 
   if (item.worktreePath) {
     contentLines.push(`  ${DIM}Worktree:${RESET}  ${item.worktreePath}`);
+  }
+
+  if (item.workspaceRef) {
+    contentLines.push(`  ${DIM}Workspace:${RESET} ${item.workspaceRef}`);
+    // Show tmux attach hint for tmux-style refs (session:window, not cmux workspace:N)
+    if (!item.workspaceRef.startsWith("workspace:")) {
+      const colonIdx = item.workspaceRef.indexOf(":");
+      if (colonIdx > 0) {
+        const session = item.workspaceRef.slice(0, colonIdx);
+        contentLines.push(`  ${DIM}Attach:${RESET}    tmux attach -t ${session}`);
+      }
+    }
   }
 
   // ── Compute box dimensions ─────────────────────────────────────────

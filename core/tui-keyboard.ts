@@ -111,6 +111,8 @@ export interface TuiState {
   getItemCount?: () => number;
   /** Crew code (if in crew mode). Shown in help overlay. */
   crewCode?: string;
+  /** Tmux session name (when running outside tmux). Shown in help overlay. */
+  tmuxSessionName?: string;
 }
 
 /**

@@ -348,7 +348,7 @@ describe("TmuxAdapter", () => {
       const deps = makeDeps({ runner });
       const adapter = new TmuxAdapter(deps);
 
-      expect(adapter.listWorkspaces()).toBe("nw_H-TM-1\nnw_H-TM-2");
+      expect(adapter.listWorkspaces()).toBe("nw-myproject:nw_H-TM-1\nnw-myproject:nw_H-TM-2");
     });
 
     it("returns empty string when no nw_ windows exist", () => {

@@ -216,6 +216,7 @@ export function orchestratorItemsToStatusItems(
     exitCode: item.exitCode,
     stderrTail: item.stderrTail,
     remote: remoteItemIds?.has(item.id) ?? false,
+    workspaceRef: item.workspaceRef,
   }));
 }
 
@@ -245,7 +246,7 @@ export function renderTuiFrame(
 
   if (viewOptions?.showHelp) {
     // Render help overlay instead of the normal frame
-    const helpLines = renderHelpOverlay(termWidth, termRows, crewCode);
+    const helpLines = renderHelpOverlay(termWidth, termRows, crewCode, undefined);
     const content = helpLines.join("\n");
     write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
   } else if (termRows >= MIN_FULLSCREEN_ROWS) {
@@ -282,7 +283,7 @@ export function renderTuiPanelFrame(
 
   if (tuiState.viewOptions.showHelp) {
     // Render help overlay instead of the panel frame
-    const helpLines = renderHelpOverlay(termWidth, termRows, tuiState.crewCode);
+    const helpLines = renderHelpOverlay(termWidth, termRows, tuiState.crewCode, tuiState.tmuxSessionName);
     const content = helpLines.join("\n");
     write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
   } else if (tuiState.detailItemId) {
@@ -424,7 +425,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     write("\x1B[H");
 
     if (tuiState.viewOptions.showHelp) {
-      const helpLines = renderHelpOverlay(termWidth, termRows, tuiState.crewCode);
+      const helpLines = renderHelpOverlay(termWidth, termRows, tuiState.crewCode, tuiState.tmuxSessionName);
       const content = helpLines.join("\n");
       write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
     } else if (tuiState.detailItemId) {
@@ -2028,8 +2029,12 @@ export async function cmdOrchestrate(
     die(mux.diagnoseUnavailable());
   }
 
+  let tmuxSessionName: string | undefined;
+  let tmuxOutsideSession = false;
   if (mux.type === "tmux") {
     const tmuxInfo = getTmuxStartupInfo(projectRoot);
+    tmuxSessionName = tmuxInfo.sessionName;
+    tmuxOutsideSession = tmuxInfo.outsideTmuxSession;
     log({
       ts: new Date().toISOString(),
       level: "info",
@@ -2363,6 +2368,7 @@ export async function cmdOrchestrate(
       }
     },
     crewCode: crewCode ?? undefined,
+    tmuxSessionName: tmuxOutsideSession ? tmuxSessionName : undefined,
   };
 
   const onPollComplete = (items: OrchestratorItem[], _pollIntervalMs?: number) => {
@@ -2577,6 +2583,32 @@ export async function cmdOrchestrate(
     process.stdout.write("\x1B[H" + lines.join("\x1B[K\n") + "\x1B[J");
 
     // Wait for any keypress to dismiss
+    await new Promise<void>((resolve) => {
+      const onData = () => {
+        process.stdin.removeListener("data", onData);
+        resolve();
+      };
+      process.stdin.on("data", onData);
+    });
+  }
+
+  // Show tmux attach splash screen on startup (dismissed by any keypress)
+  if (tuiMode && tmuxOutsideSession && tmuxSessionName) {
+    const termWidth = getTerminalWidth();
+    const termRows = getTerminalHeight();
+    const lines: string[] = [];
+    const centerLine = (text: string, plainLen: number) => {
+      const pad = Math.max(0, Math.floor((termWidth - plainLen) / 2));
+      return " ".repeat(pad) + text;
+    };
+    const attachCmd = `tmux attach -t ${tmuxSessionName}`;
+    const midRow = Math.floor(termRows / 2) - 2;
+    for (let i = 0; i < midRow; i++) lines.push("");
+    lines.push(centerLine(`\x1B[1m\x1B[36m${attachCmd}\x1B[0m`, attachCmd.length));
+    lines.push("");
+    lines.push(centerLine("\x1B[2mPress ? for help  |  Press any key to continue\x1B[0m", 47));
+    process.stdout.write("\x1B[H" + lines.join("\x1B[K\n") + "\x1B[J");
+
     await new Promise<void>((resolve) => {
       const onData = () => {
         process.stdin.removeListener("data", onData);
