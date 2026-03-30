@@ -206,17 +206,34 @@ export const CI_FAILURE_STATES = new Set([
   "ACTION_REQUIRED",
 ]);
 
+/** Grace period after PR creation before treating zero checks as "no CI configured". */
+export const CI_GRACE_PERIOD_MS = 2 * 60 * 1000; // 2 minutes
+
 /**
  * Shared CI status processing. Determines ciStatus and event time from a set
  * of GitHub check runs/status checks. Used by both sync and async check paths
  * so bug fixes apply to both.
+ *
+ * prCreatedAt: ISO timestamp from the PR. When no non-skipped checks exist,
+ * if the PR was opened within CI_GRACE_PERIOD_MS, returns "unknown" (wait for
+ * CI to register). After the grace period, returns "pass" (no CI configured).
  */
 export function processChecks(
   checks: { state: string; name: string; completedAt?: string }[],
+  prCreatedAt?: string,
+  now: Date = new Date(),
 ): { ciStatus: string; eventTime: string | undefined } {
   const nonSkipped = checks.filter((c) => c.state !== "SKIPPED");
-  let ciStatus = "unknown";
-  if (nonSkipped.length > 0) {
+  let ciStatus: string;
+  if (nonSkipped.length === 0) {
+    // No checks registered. If the PR was recently opened, CI may not have started yet.
+    const inGrace =
+      prCreatedAt !== undefined &&
+      prCreatedAt !== "" &&
+      now.getTime() - new Date(prCreatedAt).getTime() < CI_GRACE_PERIOD_MS;
+    ciStatus = inGrace ? "unknown" : "pass";
+  } else {
+    ciStatus = "unknown";
     if (nonSkipped.every((c) => c.state === "SUCCESS")) {
       ciStatus = "pass";
     } else if (nonSkipped.some((c) => CI_FAILURE_STATES.has(c.state))) {
@@ -273,18 +290,19 @@ export function checkPrStatus(id: string, repoRoot: string, deps: PrMonitorDeps 
 
   const prNumber = openPrs[0]!.number;
 
-  // Check CI and review status (include updatedAt for detection latency)
-  const prViewResult = deps.prView(repoRoot, prNumber, ["reviewDecision", "mergeable", "updatedAt"]);
+  // Check CI and review status (include updatedAt for detection latency, createdAt for CI grace period)
+  const prViewResult = deps.prView(repoRoot, prNumber, ["reviewDecision", "mergeable", "updatedAt", "createdAt"]);
   if (!prViewResult.ok) return ""; // API error: hold state
   const prData = prViewResult.data;
   const reviewDecision = (prData.reviewDecision as string) ?? "";
   const isMergeable = (prData.mergeable as string) ?? "";
   const prUpdatedAt = (prData.updatedAt as string) ?? "";
+  const prCreatedAt = (prData.createdAt as string) ?? "";
 
   const checksResult = deps.prChecks(repoRoot, prNumber);
   if (!checksResult.ok) return ""; // API error: hold state
 
-  const { ciStatus, eventTime: ciEventTime } = processChecks(checksResult.data);
+  const { ciStatus, eventTime: ciEventTime } = processChecks(checksResult.data, prCreatedAt);
   const status = derivePrStatus(ciStatus, isMergeable, reviewDecision);
   const eventTime = ciEventTime ?? prUpdatedAt;
 
@@ -319,17 +337,18 @@ export async function checkPrStatusAsync(id: string, repoRoot: string, deps: PrM
 
   const prNumber = openPrs[0]!.number;
 
-  const prViewResult = await deps.prViewAsync(repoRoot, prNumber, ["reviewDecision", "mergeable", "updatedAt"]);
+  const prViewResult = await deps.prViewAsync(repoRoot, prNumber, ["reviewDecision", "mergeable", "updatedAt", "createdAt"]);
   if (!prViewResult.ok) return ""; // API error: hold state
   const prData = prViewResult.data;
   const reviewDecision = (prData.reviewDecision as string) ?? "";
   const isMergeable = (prData.mergeable as string) ?? "";
   const prUpdatedAt = (prData.updatedAt as string) ?? "";
+  const prCreatedAt = (prData.createdAt as string) ?? "";
 
   const checksResult = await deps.prChecksAsync(repoRoot, prNumber);
   if (!checksResult.ok) return ""; // API error: hold state
 
-  const { ciStatus, eventTime: ciEventTime } = processChecks(checksResult.data);
+  const { ciStatus, eventTime: ciEventTime } = processChecks(checksResult.data, prCreatedAt);
   const status = derivePrStatus(ciStatus, isMergeable, reviewDecision);
   const eventTime = ciEventTime ?? prUpdatedAt;
 

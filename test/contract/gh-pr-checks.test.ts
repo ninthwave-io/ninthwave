@@ -41,6 +41,7 @@ function stubCheckPrStatus(opts: {
   checks: { state: string; name: string; url?: string; completedAt?: string }[];
   reviewDecision?: string;
   mergeable?: string;
+  createdAt?: string;
 }): void {
   prListSpy.mockImplementation((_root: string, _branch: string, state: string) => {
     if (state === "open") return { ok: true, data: [{ number: 100, title: "Test PR" }] };
@@ -50,6 +51,7 @@ function stubCheckPrStatus(opts: {
     reviewDecision: opts.reviewDecision ?? "",
     mergeable: opts.mergeable ?? "UNKNOWN",
     updatedAt: "2026-03-29T12:00:00Z",
+    ...(opts.createdAt !== undefined ? { createdAt: opts.createdAt } : {}),
   } });
   prChecksSpy.mockReturnValue({ ok: true, data:
     opts.checks.map((c) => ({
@@ -312,13 +314,24 @@ describe("checkPrStatus classification", () => {
 
   // ── SKIPPED checks exclusion ────────────────────────────────────
 
-  it("SKIPPED checks are excluded: only SKIPPED = pending (no relevant checks)", () => {
+  it("SKIPPED checks are excluded: only SKIPPED with no createdAt = ci-passed (no CI configured)", () => {
     stubCheckPrStatus({
       checks: [{ state: "SKIPPED", name: "optional-check" }],
     });
 
     const result = parseStatus(checkPrStatus("TEST-1", "/repo"));
-    // nonSkipped is empty, ciStatus stays "unknown", status = "pending"
+    // nonSkipped is empty, no createdAt grace period → treat as no CI → ci-passed
+    expect(result.status).toBe("ci-passed");
+  });
+
+  it("SKIPPED checks are excluded: only SKIPPED with recent createdAt = pending (CI not yet registered)", () => {
+    stubCheckPrStatus({
+      checks: [{ state: "SKIPPED", name: "optional-check" }],
+      createdAt: new Date(Date.now() - 30_000).toISOString(),
+    });
+
+    const result = parseStatus(checkPrStatus("TEST-1", "/repo"));
+    // nonSkipped is empty, within grace period → wait for CI to register
     expect(result.status).toBe("pending");
   });
 

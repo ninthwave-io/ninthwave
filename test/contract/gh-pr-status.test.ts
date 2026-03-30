@@ -345,18 +345,42 @@ describe("checkPrStatus format contract", () => {
       expect(checkPrStatus("T-6", "/repo")).toBe("");
     });
 
-    it("empty checks array produces pending (unknown CI)", () => {
+    it("empty checks array with no createdAt produces ci-passed (no CI configured)", () => {
+      // No createdAt → no grace period → treat as no CI configured → ci-passed
       setupOpenPr(VIEW_PENDING, { ok: true, data: [] });
 
       const parsed = parseFields(checkPrStatus("T-7", "/repo"));
+      expect(parsed.status).toBe("ci-passed");
+    });
+
+    it("empty checks array with recent createdAt produces pending (CI not yet registered)", () => {
+      // PR just opened within grace period → CI may not have registered yet
+      const recentView = { ok: true as const, data: {
+        ...VIEW_PENDING.data,
+        createdAt: new Date(Date.now() - 30_000).toISOString(),
+      } };
+      setupOpenPr(recentView, { ok: true, data: [] });
+
+      const parsed = parseFields(checkPrStatus("T-7b", "/repo"));
       expect(parsed.status).toBe("pending");
     });
 
-    it("all-SKIPPED checks produce pending (unknown CI)", () => {
+    it("all-SKIPPED checks with no createdAt produce ci-passed (no CI configured)", () => {
+      // SKIPPED checks are filtered out -- 0 non-skipped + no createdAt → ci-passed
       setupOpenPr(VIEW_PENDING, CHECKS_ALL_SKIPPED);
 
       const parsed = parseFields(checkPrStatus("T-8", "/repo"));
-      // SKIPPED checks are filtered out -- 0 non-skipped --> unknown --> pending
+      expect(parsed.status).toBe("ci-passed");
+    });
+
+    it("all-SKIPPED checks with recent createdAt produce pending (CI not yet registered)", () => {
+      const recentView = { ok: true as const, data: {
+        ...VIEW_PENDING.data,
+        createdAt: new Date(Date.now() - 30_000).toISOString(),
+      } };
+      setupOpenPr(recentView, CHECKS_ALL_SKIPPED);
+
+      const parsed = parseFields(checkPrStatus("T-8b", "/repo"));
       expect(parsed.status).toBe("pending");
     });
 

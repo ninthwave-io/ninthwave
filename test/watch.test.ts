@@ -647,17 +647,43 @@ describe("processChecks", () => {
     expect(result.eventTime).toBeUndefined();
   });
 
-  it("returns unknown when all checks are skipped", () => {
-    const result = processChecks([
-      { state: "SKIPPED", name: "optional-check" },
-    ]);
+  it("returns pass when all checks are skipped and PR is not in grace period", () => {
+    const result = processChecks(
+      [{ state: "SKIPPED", name: "optional-check" }],
+      "2026-01-01T00:00:00Z",
+      new Date("2026-01-01T01:00:00Z"),
+    );
+    expect(result.ciStatus).toBe("pass");
+    expect(result.eventTime).toBeUndefined();
+  });
+
+  it("returns unknown when all checks are skipped and PR is within grace period", () => {
+    const now = new Date("2026-01-01T01:00:00Z");
+    const prCreatedAt = new Date(now.getTime() - 30_000).toISOString(); // 30s ago
+    const result = processChecks([{ state: "SKIPPED", name: "optional-check" }], prCreatedAt, now);
     expect(result.ciStatus).toBe("unknown");
     expect(result.eventTime).toBeUndefined();
   });
 
-  it("returns unknown when no checks exist", () => {
+  it("returns pass when no checks exist and no prCreatedAt provided", () => {
     const result = processChecks([]);
+    expect(result.ciStatus).toBe("pass");
+    expect(result.eventTime).toBeUndefined();
+  });
+
+  it("returns unknown when no checks exist and PR is within grace period", () => {
+    const now = new Date("2026-01-01T01:00:00Z");
+    const prCreatedAt = new Date(now.getTime() - 30_000).toISOString(); // 30s ago
+    const result = processChecks([], prCreatedAt, now);
     expect(result.ciStatus).toBe("unknown");
+    expect(result.eventTime).toBeUndefined();
+  });
+
+  it("returns pass when no checks exist and PR is older than grace period", () => {
+    const now = new Date("2026-01-01T01:00:00Z");
+    const prCreatedAt = new Date(now.getTime() - 3 * 60_000).toISOString(); // 3 minutes ago
+    const result = processChecks([], prCreatedAt, now);
+    expect(result.ciStatus).toBe("pass");
     expect(result.eventTime).toBeUndefined();
   });
 
