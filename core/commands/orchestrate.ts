@@ -26,7 +26,7 @@ import { resolveRepo, bootstrapRepo } from "../cross-repo.ts";
 import { scanExternalPRs } from "./pr-monitor.ts";
 import { launchSingleItem, launchReviewWorker, launchRebaserWorker, launchForwardFixerWorker } from "./launch.ts";
 import { cleanStaleBranchForReuse } from "../branch-cleanup.ts";
-import { selectAiTool } from "../tool-select.ts";
+import { selectAiTool, detectInstalledAITools } from "../tool-select.ts";
 import { cleanSingleWorktree } from "./clean.ts";
 import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, ensureDomainLabels } from "../gh.ts";
 import { fetchOrigin, ffMerge, gitAdd, gitCommit, gitPush, daemonRebase } from "../git.ts";
@@ -38,7 +38,7 @@ import { confirmPrompt } from "../prompt.ts";
 import { shouldEnterInteractive, runInteractiveFlow } from "../interactive.ts";
 import type { WorkItem, LogEntry } from "../types.ts";
 import { ID_IN_FILENAME, PRIORITY_NUM } from "../types.ts";
-import { loadConfig, saveConfig } from "../config.ts";
+import { loadConfig, saveConfig, loadUserConfig } from "../config.ts";
 import { preflight } from "../preflight.ts";
 import {
   collectRunMetrics,
@@ -1717,8 +1717,9 @@ export async function cmdOrchestrate(
     reviewAutoFix, reviewExternal, reviewWipLimit,
     fixForward, skipReview: cliSkipReview, noWatch, watchIntervalSecs,
     jsonFlag, skipPreflight, crewName,
-    bypassEnabled, toolOverride,
+    bypassEnabled, toolOverride: parsedToolOverride,
   } = parsed;
+  let toolOverride = parsedToolOverride;
   let watchMode = parsed.watchMode;
   let crewCode = parsed.crewCode;
   let crewUrl = parsed.crewUrl;
@@ -1844,7 +1845,21 @@ export async function cmdOrchestrate(
   // Interactive mode: no --items and stdin is a TTY
   let interactiveSkipReview = false;
   if (shouldEnterInteractive(itemIds.length > 0)) {
-    const result = await runInteractiveFlow(workItems, wipLimit);
+    // Pre-detect tools and config for TUI flow
+    const installedTools = detectInstalledAITools();
+    const preConfig = loadConfig(projectRoot);
+    const userCfg = loadUserConfig();
+    const skipToolStep = !!toolOverride || !!userCfg.ai_tool;
+    const skipTelemetryStep = preConfig.telemetry !== undefined || process.env.NW_TELEMETRY === "1";
+    const defaultReviewMode = preConfig.review_external ? "all" as const : "mine" as const;
+
+    const result = await runInteractiveFlow(workItems, wipLimit, {
+      defaultReviewMode,
+      installedTools,
+      savedToolId: preConfig.ai_tool,
+      skipToolStep,
+      skipTelemetryStep,
+    });
     if (!result) {
       process.exit(0);
     }
@@ -1861,6 +1876,14 @@ export async function cmdOrchestrate(
       } else if (result.crewAction.type === "join") {
         crewCode = result.crewAction.code;
       }
+    }
+    // Capture AI tool choice from TUI -- flows to selectAiTool via toolOverride
+    if (result.aiTool) {
+      toolOverride = result.aiTool;
+    }
+    // Capture telemetry choice from TUI -- persist to config
+    if (result.telemetryOptIn !== undefined) {
+      saveConfig(projectRoot, { telemetry: result.telemetryOptIn });
     }
   }
 
@@ -2519,7 +2542,11 @@ export async function cmdOrchestrate(
         // Widgets render in the same alt-screen buffer -- no screen switch needed
         // showCrewStep: false because crew is session-scoped (already established)
         const freshItems = parseWorkItems(workDir, worktreeDir, projectRoot);
-        const interactiveResult = await runInteractiveFlow(freshItems, wipLimit, { showCrewStep: false });
+        const interactiveResult = await runInteractiveFlow(freshItems, wipLimit, {
+          showCrewStep: false,
+          skipToolStep: true,
+          skipTelemetryStep: true,
+        });
         if (!interactiveResult) {
           // User cancelled selection -- restore keyboard and exit loop
           cleanupKeyboard = setupKeyboardShortcuts(abortController, log, process.stdin, tuiState);

@@ -9,6 +9,7 @@ import { PRIORITY_NUM } from "./types.ts";
 import type { MergeStrategy } from "./orchestrator.ts";
 import type { CrewAction } from "./commands/crew.ts";
 import { CREW_CODE_PATTERN, normalizeCrewCode } from "./commands/crew.ts";
+import type { AiToolProfile } from "./ai-tools.ts";
 
 // ── ANSI escape helpers ─────────────────────────────────────────────
 
@@ -79,6 +80,10 @@ export interface SelectionScreenResult {
   reviewMode: "all" | "mine" | "off";
   crewAction: CrewAction | null;
   cancelled: boolean;
+  /** Selected AI tool ID, undefined when the step was skipped. */
+  aiTool?: string;
+  /** Telemetry opt-in choice, undefined when the step was skipped. */
+  telemetryOptIn?: boolean;
 }
 
 // ── Checkbox List Widget ────────────────────────────────────────────
@@ -694,7 +699,16 @@ export async function runSelectionScreen(
   io: WidgetIO,
   items: WorkItem[],
   defaultWipLimit: number,
-  opts: { defaultReviewMode?: "all" | "mine" | "off"; showCrewStep?: boolean } = {},
+  opts: {
+    defaultReviewMode?: "all" | "mine" | "off";
+    showCrewStep?: boolean;
+    /** Installed AI tools for the tool selection step. Empty/single = skip screen. */
+    installedTools?: AiToolProfile[];
+    /** Pre-selected tool ID to mark as default in the picker. */
+    savedToolId?: string;
+    /** Set to false to show the telemetry step. Defaults to skipping (undefined/true). */
+    skipTelemetryStep?: boolean;
+  } = {},
 ): Promise<SelectionScreenResult | null> {
   if (items.length === 0) {
     return null;
@@ -843,7 +857,60 @@ export async function runSelectionScreen(
     // "solo" => crewAction remains null
   }
 
-  // Step 6: Confirmation summary
+  // Step 6: AI coding tool (conditional -- only when 2+ tools detected)
+  let aiTool: string | undefined;
+  const tools = opts.installedTools ?? [];
+
+  if (tools.length >= 2) {
+    const toolOptions: SingleSelectOption<string>[] = tools.map((t) => ({
+      value: t.id,
+      label: t.displayName,
+      description: `Model defined in ${t.targetDir}/ agent files`,
+      isDefault: t.id === opts.savedToolId,
+    }));
+    // If no saved tool matches, mark first as default
+    if (!toolOptions.some((o) => o.isDefault)) {
+      toolOptions[0]!.isDefault = true;
+    }
+
+    io.write(CLEAR_SCREEN);
+    const toolResult = await runSingleSelect<string>(
+      io,
+      toolOptions,
+      { title: "Ninthwave \u00b7 AI coding tool" },
+    );
+
+    if (toolResult.cancelled) {
+      io.write(SHOW_CURSOR);
+      return null;
+    }
+
+    aiTool = toolResult.value;
+  } else if (tools.length === 1) {
+    aiTool = tools[0]!.id; // auto-select single tool
+  }
+
+  // Step 7: Telemetry opt-in (conditional -- only when not already configured)
+  let telemetryOptIn: boolean | undefined;
+
+  if (opts.skipTelemetryStep === false) {
+    io.write(CLEAR_SCREEN);
+    const telemetryConfirmed = await runConfirm(io, {
+      title: "Ninthwave \u00b7 Anonymous usage stats",
+      lines: [
+        "Send anonymous usage stats to help improve ninthwave?",
+        "",
+        `${DIM}What's collected: session duration, item count, AI tool used,${RESET}`,
+        `${DIM}merge strategy, error rates. No code or repo data.${RESET}`,
+        "",
+        `${DIM}Your crew stats will be viewable at ninthwave.sh/stats/{code}${RESET}`,
+      ],
+    });
+
+    telemetryOptIn = telemetryConfirmed;
+  }
+
+  // Step 8: Confirmation summary
   // Items summary
   let itemLines: string[];
   if (itemResult.allSelected) {
@@ -872,6 +939,16 @@ export async function runSelectionScreen(
     : crewAction.type === "create" ? "Creating new crew"
     : `Joining crew ${crewAction.code}`;
 
+  // AI tool label (only shown when the tool step was visible)
+  const toolLabel = (tools.length >= 2 && aiTool)
+    ? (tools.find((t) => t.id === aiTool)?.displayName ?? aiTool)
+    : undefined;
+
+  // Telemetry label (only shown when the telemetry step was visible)
+  const telemetryLabel = telemetryOptIn === undefined ? undefined
+    : telemetryOptIn ? "Enabled"
+    : "Disabled";
+
   const summaryLines = [
     ...itemLines,
     "",
@@ -879,6 +956,8 @@ export async function runSelectionScreen(
     `${BOLD}WIP limit:${RESET}       ${wipResult.value}`,
     `${BOLD}AI reviews:${RESET}      ${reviewLabel}`,
     `${BOLD}Crew:${RESET}            ${crewLabel}`,
+    ...(toolLabel ? [`${BOLD}AI tool:${RESET}         ${toolLabel}`] : []),
+    ...(telemetryLabel ? [`${BOLD}Telemetry:${RESET}       ${telemetryLabel}`] : []),
   ];
 
   io.write(CLEAR_SCREEN);
@@ -901,6 +980,8 @@ export async function runSelectionScreen(
     reviewMode: reviewResult.value,
     crewAction,
     cancelled: false,
+    aiTool,
+    telemetryOptIn,
   };
 }
 

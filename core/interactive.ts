@@ -11,6 +11,7 @@ import { PRIORITY_NUM } from "./types.ts";
 import type { MergeStrategy } from "./orchestrator.ts";
 import type { CrewAction } from "./commands/crew.ts";
 import { isCrewCode } from "./commands/crew.ts";
+import type { AiToolProfile } from "./ai-tools.ts";
 import {
   runSelectionScreen,
   createProcessIO,
@@ -29,6 +30,10 @@ export interface InteractiveResult {
   allSelected: boolean;
   reviewMode: "all" | "mine" | "off";
   crewAction: CrewAction | null;
+  /** Selected AI tool ID, undefined when the step was skipped. */
+  aiTool?: string;
+  /** Telemetry opt-in choice, undefined when the step was skipped. */
+  telemetryOptIn?: boolean;
 }
 
 export interface InteractiveDeps {
@@ -42,6 +47,14 @@ export interface InteractiveDeps {
   showCrewStep?: boolean;
   /** Default review mode from project config. */
   defaultReviewMode?: "all" | "mine" | "off";
+  /** Pre-detected installed AI tool profiles. Skip tool step if undefined or single entry. */
+  installedTools?: AiToolProfile[];
+  /** Pre-selected tool ID from project config (last-used). */
+  savedToolId?: string;
+  /** When true, skip the AI tool step (tool already determined by --tool or user config). */
+  skipToolStep?: boolean;
+  /** Set to false to show the telemetry step. Defaults to skipping (undefined/true). */
+  skipTelemetryStep?: boolean;
 }
 
 // ── Default prompt using readline ────────────────────────────────────
@@ -424,6 +437,12 @@ export async function confirmSummary(
   } else {
     console.log(`  ${BOLD}Crew:${RESET}            solo`);
   }
+  if (result.aiTool) {
+    console.log(`  ${BOLD}AI tool:${RESET}         ${result.aiTool}`);
+  }
+  if (result.telemetryOptIn !== undefined) {
+    console.log(`  ${BOLD}Telemetry:${RESET}       ${result.telemetryOptIn ? "Enabled" : "Disabled"}`);
+  }
   console.log();
 
   const answer = await prompt(
@@ -459,6 +478,9 @@ export async function runTuiSelectionFlow(
     const result = await runSelectionScreen(io, todos, defaultWipLimit, {
       defaultReviewMode: deps.defaultReviewMode,
       showCrewStep: deps.showCrewStep,
+      installedTools: deps.skipToolStep ? undefined : deps.installedTools,
+      savedToolId: deps.savedToolId,
+      skipTelemetryStep: deps.skipTelemetryStep,
     });
     if (!result || result.cancelled) return null;
 
@@ -469,6 +491,8 @@ export async function runTuiSelectionFlow(
       allSelected: result.allSelected,
       reviewMode: result.reviewMode,
       crewAction: result.crewAction,
+      aiTool: result.aiTool,
+      telemetryOptIn: result.telemetryOptIn,
     };
   } finally {
     // Restore terminal state
@@ -534,7 +558,51 @@ async function runReadlineFlow(
     crewAction = await promptCrewMode(prompt);
   }
 
-  // Step 6: Summary + confirmation
+  // Step 6: AI tool (conditional)
+  let aiTool: string | undefined;
+  const tools = deps.skipToolStep ? [] : (deps.installedTools ?? []);
+  if (tools.length >= 2) {
+    console.log();
+    console.log(`${BOLD}AI coding tool:${RESET}`);
+    for (let i = 0; i < tools.length; i++) {
+      const t = tools[i]!;
+      const defaultTag = t.id === deps.savedToolId ? ` ${GREEN}(current)${RESET}` : "";
+      console.log(`  ${BOLD}${i + 1}${RESET}. ${t.displayName}${defaultTag}`);
+      console.log(`     ${DIM}Model defined in ${t.targetDir}/ agent files${RESET}`);
+    }
+    const defaultIdx = deps.savedToolId
+      ? tools.findIndex((t) => t.id === deps.savedToolId)
+      : 0;
+    const effectiveDefault = defaultIdx >= 0 ? defaultIdx : 0;
+
+    while (true) {
+      const answer = await prompt(`Choose [1-${tools.length}] (Enter for ${effectiveDefault + 1}): `);
+      if (answer === "") {
+        aiTool = tools[effectiveDefault]!.id;
+        break;
+      }
+      const idx = parseInt(answer, 10) - 1;
+      if (idx >= 0 && idx < tools.length) {
+        aiTool = tools[idx]!.id;
+        break;
+      }
+      console.log(`  ${YELLOW}Enter 1-${tools.length}.${RESET}`);
+    }
+  } else if (tools.length === 1) {
+    aiTool = tools[0]!.id;
+  }
+
+  // Step 7: Telemetry (conditional)
+  let telemetryOptIn: boolean | undefined;
+  if (deps.skipTelemetryStep === false) {
+    console.log();
+    const answer = await prompt(
+      `Send anonymous usage stats to help improve ninthwave? (y/N) `,
+    );
+    telemetryOptIn = answer.toLowerCase() === "y" || answer.toLowerCase() === "yes";
+  }
+
+  // Step 8: Summary + confirmation
   const result: InteractiveResult = {
     itemIds: itemResult.ids,
     mergeStrategy,
@@ -542,6 +610,8 @@ async function runReadlineFlow(
     allSelected: itemResult.allSelected,
     reviewMode,
     crewAction,
+    aiTool,
+    telemetryOptIn,
   };
 
   const confirmed = await confirmSummary(result, todos, prompt);

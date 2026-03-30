@@ -433,13 +433,20 @@ export async function cmdNoArgs(
   }
 
   // State 5: Work items exist, no daemon → TUI selection → cmdWatch
-  // Load project config to determine review default
+  // Load project config to determine review default + tool/telemetry state
   const doLoadConfig = deps.loadConfig ?? loadConfig;
   const projectConfig = doLoadConfig(projectRoot);
   const defaultReviewMode = projectConfig.review_external ? "all" as const : "mine" as const;
+  const installedTools = detectInstalledAITools();
+  const skipTelemetryStep = projectConfig.telemetry !== undefined || process.env.NW_TELEMETRY === "1";
 
   const doInteractive = deps.runInteractiveFlow ?? runInteractiveFlow;
-  const result = await doInteractive(todos, 4, { defaultReviewMode });
+  const result = await doInteractive(todos, 4, {
+    defaultReviewMode,
+    installedTools,
+    savedToolId: projectConfig.ai_tool,
+    skipTelemetryStep,
+  });
   if (!result) return; // User cancelled
 
   // Build watch args from interactive result
@@ -469,6 +476,17 @@ export async function cmdNoArgs(
     } else if (result.crewAction.type === "create") {
       watchArgs.push("--crew-create");
     }
+  }
+
+  // AI tool → --tool flag
+  if (result.aiTool) {
+    watchArgs.push("--tool", result.aiTool);
+  }
+
+  // Telemetry → save to config (cmdWatch reads from config)
+  if (result.telemetryOptIn !== undefined) {
+    const { saveConfig } = await import("../config.ts");
+    saveConfig(projectRoot, { telemetry: result.telemetryOptIn });
   }
 
   if (deps.runWatch) {

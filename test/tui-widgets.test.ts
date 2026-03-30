@@ -17,6 +17,7 @@ import {
 } from "../core/tui-widgets.ts";
 import type { WorkItem } from "../core/types.ts";
 import type { MergeStrategy } from "../core/orchestrator.ts";
+import type { AiToolProfile } from "../core/ai-tools.ts";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -1582,6 +1583,318 @@ describe("runSelectionScreen -- updated confirmation", () => {
     const result = await resultPromise;
     expect(result).not.toBeNull();
     expect(getOutput()).toContain("Start orchestration");
+  });
+});
+
+// ── AI tool step ────────────────────────────────────────────────────
+
+/** Minimal AiToolProfile stubs for testing. */
+function makeToolProfile(id: string, displayName: string, targetDir: string): AiToolProfile {
+  return {
+    id: id as any,
+    displayName,
+    command: id,
+    description: `${displayName} desc`,
+    installCmd: `install ${id}`,
+    targetDir,
+    suffix: ".md",
+    projectIndicators: [],
+    processNames: [],
+    buildLaunchCmd: () => ({ cmd: "", initialPrompt: "" }),
+  };
+}
+
+const TOOL_CLAUDE = makeToolProfile("claude", "Claude Code", ".claude/agents");
+const TOOL_OPENCODE = makeToolProfile("opencode", "OpenCode", ".opencode/agents");
+
+describe("runSelectionScreen -- AI tool step", () => {
+  it("shows tool step when 2+ tools provided, result includes aiTool", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
+    });
+
+    sendKeyBatches(
+      ["\r"],        // Step 1: items
+      ["\r"],        // Step 2: strategy
+      ["\r"],        // Step 3: WIP
+      ["\r"],        // Step 4: review
+      ["\r"],        // Step 5: crew
+      ["\r"],        // Step 6: tool (accept default = Claude Code)
+      ["\r"],        // Step 7: confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.aiTool).toBe("claude");
+    expect(getOutput()).toContain("AI coding tool");
+    expect(getOutput()).toContain("Claude Code");
+    expect(getOutput()).toContain("OpenCode");
+  });
+
+  it("auto-selects single installed tool without showing screen", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE],
+    });
+
+    // Same 6 batches as default -- no extra step for single tool
+    sendKeyBatches(
+      ["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"],
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.aiTool).toBe("claude");
+    expect(getOutput()).not.toContain("AI coding tool");
+  });
+
+  it("aiTool is undefined when installedTools not provided", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4);
+
+    sendKeyBatches(["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"]);
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.aiTool).toBeUndefined();
+  });
+
+  it("pre-selects savedToolId", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
+      savedToolId: "opencode",
+    });
+
+    sendKeyBatches(
+      ["\r"],        // items
+      ["\r"],        // strategy
+      ["\r"],        // WIP
+      ["\r"],        // review
+      ["\r"],        // crew
+      ["\r"],        // tool (accept default = opencode since savedToolId)
+      ["\r"],        // confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.aiTool).toBe("opencode");
+  });
+
+  it("returns null when cancelled at tool step", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
+    });
+
+    sendKeyBatches(
+      ["\r"],        // items
+      ["\r"],        // strategy
+      ["\r"],        // WIP
+      ["\r"],        // review
+      ["\r"],        // crew
+      ["\x1B"],      // Escape at tool step
+    );
+
+    const result = await resultPromise;
+    expect(result).toBeNull();
+  });
+
+  it("shows tool description referencing agent files directory", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
+    });
+
+    sendKeyBatches(
+      ["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"],
+    );
+
+    await resultPromise;
+    expect(getOutput()).toContain(".claude/agents/");
+    expect(getOutput()).toContain(".opencode/agents/");
+  });
+
+  it("confirmation summary shows selected tool name", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
+    });
+
+    sendKeyBatches(
+      ["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"],
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(getOutput()).toContain("AI tool:");
+    expect(getOutput()).toContain("Claude Code");
+  });
+});
+
+// ── Telemetry step ──────────────────────────────────────────────────
+
+describe("runSelectionScreen -- telemetry step", () => {
+  it("shows telemetry step when skipTelemetryStep is false", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      skipTelemetryStep: false,
+    });
+
+    sendKeyBatches(
+      ["\r"],        // items
+      ["\r"],        // strategy
+      ["\r"],        // WIP
+      ["\r"],        // review
+      ["\r"],        // crew
+      ["\r"],        // telemetry: accept (Enter = yes)
+      ["\r"],        // confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.telemetryOptIn).toBe(true);
+    expect(getOutput()).toContain("Anonymous usage stats");
+  });
+
+  it("telemetry decline (n) sets telemetryOptIn to false", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      skipTelemetryStep: false,
+    });
+
+    sendKeyBatches(
+      ["\r"],        // items
+      ["\r"],        // strategy
+      ["\r"],        // WIP
+      ["\r"],        // review
+      ["\r"],        // crew
+      ["n"],         // telemetry: decline
+      ["\r"],        // confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.telemetryOptIn).toBe(false);
+  });
+
+  it("telemetryOptIn is undefined when step is skipped (default)", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4);
+
+    sendKeyBatches(["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"]);
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.telemetryOptIn).toBeUndefined();
+  });
+
+  it("telemetryOptIn is undefined when skipTelemetryStep is true", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      skipTelemetryStep: true,
+    });
+
+    sendKeyBatches(["\r"], ["\r"], ["\r"], ["\r"], ["\r"], ["\r"]);
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.telemetryOptIn).toBeUndefined();
+  });
+
+  it("confirmation summary shows telemetry status when prompted", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      skipTelemetryStep: false,
+    });
+
+    sendKeyBatches(
+      ["\r"], ["\r"], ["\r"], ["\r"], ["\r"],
+      ["\r"],        // telemetry: accept
+      ["\r"],        // confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(getOutput()).toContain("Telemetry:");
+    expect(getOutput()).toContain("Enabled");
+  });
+
+  it("confirmation shows Disabled when telemetry declined", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      skipTelemetryStep: false,
+    });
+
+    sendKeyBatches(
+      ["\r"], ["\r"], ["\r"], ["\r"], ["\r"],
+      ["n"],         // telemetry: decline
+      ["\r"],        // confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(getOutput()).toContain("Telemetry:");
+    expect(getOutput()).toContain("Disabled");
+  });
+});
+
+// ── Both new steps together ─────────────────────────────────────────
+
+describe("runSelectionScreen -- tool + telemetry combined", () => {
+  it("full flow with both tool and telemetry steps", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4, {
+      installedTools: [TOOL_CLAUDE, TOOL_OPENCODE],
+      skipTelemetryStep: false,
+    });
+
+    sendKeyBatches(
+      ["\r"],        // Step 1: items
+      ["\r"],        // Step 2: strategy
+      ["\r"],        // Step 3: WIP
+      ["\r"],        // Step 4: review
+      ["\r"],        // Step 5: crew
+      ["\r"],        // Step 6: tool
+      ["n"],         // Step 7: telemetry decline
+      ["\r"],        // Step 8: confirm
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.aiTool).toBe("claude");
+    expect(result!.telemetryOptIn).toBe(false);
+    expect(getOutput()).toContain("AI tool:");
+    expect(getOutput()).toContain("Telemetry:");
   });
 });
 
