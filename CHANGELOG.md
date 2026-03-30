@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.4] - 2026-03-30
+
+### Added
+- interactive multiplexer install prompt: when no mux is available, `nw` now offers to install tmux or cmux via brew (macOS), auto-relaunches after tmux install, opens cmux app after cmux install
+- tmux added to multiplexer options in onboarding alongside cmux
+
+### Changed
+- "no work items" message reframed: now directs users to `.ninthwave/work/` and clarifies `/decompose` is an AI tool skill, not a CLI command
+- cmux-not-in-session error now offers to open cmux interactively instead of just printing a static message
+
 ## [0.3.3] - 2026-03-30
 
 ### Added

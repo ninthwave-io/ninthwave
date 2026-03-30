@@ -1,6 +1,7 @@
 // Multiplexer interface: abstracts terminal multiplexer operations.
 // Decouples command modules from the concrete cmux/tmux implementation.
 
+import { createInterface } from "readline";
 import * as cmux from "./cmux.ts";
 import { TmuxAdapter } from "./tmux.ts";
 import { die, warn as defaultWarn } from "./output.ts";
@@ -182,7 +183,7 @@ export interface AutoLaunchDeps {
 /** Possible outcomes from auto-launch detection. */
 export type AutoLaunchResult =
   | { action: "proceed" }
-  | { action: "error"; message: string };
+  | { action: "error"; message: string; reason: "cmux-not-in-session" | "nothing-installed" };
 
 /**
  * Pure detection logic: determine whether to proceed or error.
@@ -230,6 +231,7 @@ export function checkAutoLaunch(deps: AutoLaunchDeps): AutoLaunchResult {
     return {
       action: "error",
       message: "Not inside a cmux session. Open cmux and run nw there.",
+      reason: "cmux-not-in-session",
     };
   }
 
@@ -238,6 +240,7 @@ export function checkAutoLaunch(deps: AutoLaunchDeps): AutoLaunchResult {
     action: "error",
     message:
       "No multiplexer available. Install tmux (brew install tmux) or cmux (brew install --cask manaflow-ai/cmux/cmux).",
+    reason: "nothing-installed",
   };
 }
 
@@ -263,6 +266,163 @@ export function ensureMuxOrAutoLaunch(
   const result = checkAutoLaunch(deps);
   if (result.action === "proceed") return;
   die(result.message);
+}
+
+// ── Interactive mux install ──────────────────────────────────────────
+
+/** Injectable deps for interactive mux install (extends AutoLaunchDeps). */
+export interface InteractiveMuxDeps extends AutoLaunchDeps {
+  isTTY?: boolean;
+  platform?: string;
+  prompt?: (question: string) => Promise<string>;
+  runInstall?: (cmd: string, args: string[]) => { exitCode: number };
+  relaunch?: (args: string[]) => void;
+  openApp?: (app: string) => void;
+}
+
+function defaultPromptFn(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+function defaultRunInstall(cmd: string, args: string[]): { exitCode: number } {
+  const result = Bun.spawnSync([cmd, ...args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  return { exitCode: result.exitCode ?? 1 };
+}
+
+function defaultRelaunch(args: string[]): void {
+  Bun.spawnSync(["nw", ...args], {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  process.exit(0);
+}
+
+function defaultOpenApp(app: string): void {
+  Bun.spawnSync(["open", "-a", app], { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+}
+
+/**
+ * Ensure we're inside a mux session, or offer an interactive install flow (TTY only).
+ *
+ * On TTY: prompts the user to install a multiplexer when none is available, or to
+ * open cmux when installed but not in a session. On non-TTY: falls back to die().
+ *
+ * Use this in place of ensureMuxOrAutoLaunch for all CLI entry points.
+ */
+export async function ensureMuxInteractiveOrDie(
+  originalArgs: string[],
+  deps: InteractiveMuxDeps = {},
+): Promise<void> {
+  const autoLaunchDeps: AutoLaunchDeps = {
+    env: deps.env ?? process.env,
+    checkBinary: deps.checkBinary ?? defaultAutoLaunchDeps.checkBinary,
+    warn: deps.warn ?? defaultAutoLaunchDeps.warn,
+  };
+  const result = checkAutoLaunch(autoLaunchDeps);
+  if (result.action === "proceed") return;
+
+  const isTTY = deps.isTTY ?? (process.stdin.isTTY === true);
+  if (!isTTY) {
+    die(result.message);
+    return;
+  }
+
+  const platform = deps.platform ?? process.platform;
+  const prompt = deps.prompt ?? defaultPromptFn;
+  const runInstall = deps.runInstall ?? defaultRunInstall;
+  const relaunch = deps.relaunch ?? defaultRelaunch;
+  const openApp = deps.openApp ?? defaultOpenApp;
+  const isMac = platform === "darwin";
+
+  if (result.reason === "cmux-not-in-session") {
+    process.stdout.write("\ncmux is installed but you're not inside a session.\n\n");
+    const answer = await prompt("Open cmux now? [Y/n]: ");
+    if (answer.toLowerCase() !== "n") {
+      if (isMac) {
+        openApp("cmux");
+        process.stdout.write("\ncmux is open. Run `nw` in a new workspace.\n\n");
+      } else {
+        process.stdout.write("\nOpen cmux and run `nw` in a new workspace.\n\n");
+      }
+      process.exit(0);
+    } else {
+      die(result.message);
+    }
+    return;
+  }
+
+  // nothing-installed
+  process.stdout.write("\nA terminal multiplexer is required to run ninthwave.\n\n");
+
+  const options: Array<{ name: string; description: string; installCmd: string; installArgs: string[] }> = [
+    {
+      name: "tmux",
+      description: "battle-hardened, runs in your existing terminal",
+      installCmd: "brew",
+      installArgs: ["install", "tmux"],
+    },
+  ];
+  if (isMac) {
+    options.push({
+      name: "cmux",
+      description: "visual macOS sidebar",
+      installCmd: "brew",
+      installArgs: ["install", "--cask", "manaflow-ai/cmux/cmux"],
+    });
+  }
+
+  for (let i = 0; i < options.length; i++) {
+    const o = options[i]!;
+    process.stdout.write(`  ${i + 1}. ${o.name}  -- ${o.description}\n`);
+  }
+  process.stdout.write("\n");
+
+  if (!isMac) {
+    process.stdout.write("On Linux, install tmux via your package manager:\n");
+    process.stdout.write("  sudo apt install tmux   # Debian/Ubuntu\n");
+    process.stdout.write("  brew install tmux        # Homebrew\n\n");
+    process.stdout.write("Then re-run `nw`.\n\n");
+    process.exit(1);
+    return;
+  }
+
+  const rangeLabel = options.length > 1 ? `1-${options.length}` : "1";
+  const raw = await prompt(`Install [${rangeLabel}]: `);
+  const idx = parseInt(raw, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= options.length) {
+    die("No valid selection. Install a multiplexer and re-run nw.");
+    return;
+  }
+
+  const chosen = options[idx]!;
+  process.stdout.write(`\nInstalling ${chosen.name}...\n\n`);
+  const installResult = runInstall(chosen.installCmd, chosen.installArgs);
+  if (installResult.exitCode !== 0) {
+    die(`Installation failed (exit ${installResult.exitCode}). Install manually and re-run nw.`);
+    return;
+  }
+
+  if (chosen.name === "tmux") {
+    process.stdout.write("\ntmux installed. Relaunching nw...\n\n");
+    relaunch(originalArgs);
+    process.exit(0);
+  } else {
+    process.stdout.write("\ncmux installed. Opening cmux...\n");
+    openApp("cmux");
+    process.stdout.write("Run `nw` in a new cmux workspace.\n\n");
+    process.exit(0);
+  }
 }
 
 /**

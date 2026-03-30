@@ -8,7 +8,7 @@ import { run } from "./shell.ts";
 import { lookupCommand, printHelp, printHelpAll, printCommandHelp } from "./help.ts";
 import { cmdNoArgs } from "./commands/onboard.ts";
 import { WORK_ITEM_ID_CLI_PATTERN, cmdRunItems } from "./commands/run-items.ts";
-import { ensureMuxOrAutoLaunch } from "./mux.ts";
+import { ensureMuxInteractiveOrDie } from "./mux.ts";
 
 /** Commands that require a multiplexer and should auto-launch cmux. */
 const COMMANDS_NEEDING_MUX = new Set(["watch", "start"]);
@@ -53,7 +53,7 @@ if (command === "--help" || command === "-h") {
 if (!command) {
   // Only auto-launch on TTY -- non-TTY no-args prints help (handled by cmdNoArgs)
   if (process.stdin.isTTY) {
-    ensureMuxOrAutoLaunch(process.argv.slice(2));
+    await ensureMuxInteractiveOrDie(process.argv.slice(2));
   }
 
   // Try to detect project root without dying on failure
@@ -82,7 +82,7 @@ const allAreIds = allPositional.length > 0 && allPositional.every(
 );
 
 if (allAreIds) {
-  ensureMuxOrAutoLaunch(process.argv.slice(2));
+  await ensureMuxInteractiveOrDie(process.argv.slice(2));
 
   const projectRoot = getProjectRoot();
   const workDir = join(projectRoot, ".ninthwave", "work");
@@ -134,7 +134,7 @@ if (args.includes("--help") || args.includes("-h")) {
 
 // Auto-launch cmux for commands that need a multiplexer
 if (COMMANDS_NEEDING_MUX.has(command)) {
-  ensureMuxOrAutoLaunch(process.argv.slice(2));
+  await ensureMuxInteractiveOrDie(process.argv.slice(2));
 }
 
 if (!entry.needsRoot) {

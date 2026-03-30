@@ -45,7 +45,7 @@ import type { WidgetIO, CheckboxItem } from "../tui-widgets.ts";
 // ── Multiplexer descriptors ─────────────────────────────────────────
 
 export interface MuxOption {
-  type: "cmux";
+  type: "cmux" | "tmux";
   name: string;
   description: string;
   installCmd: string;
@@ -53,9 +53,15 @@ export interface MuxOption {
 
 export const MUX_OPTIONS: MuxOption[] = [
   {
+    type: "tmux",
+    name: "tmux",
+    description: "battle-hardened, runs in your existing terminal",
+    installCmd: "brew install tmux",
+  },
+  {
     type: "cmux",
     name: "cmux",
-    description: "Visual sidebar (recommended)",
+    description: "visual macOS sidebar",
     installCmd: "brew install --cask manaflow-ai/cmux/cmux",
   },
 ];
@@ -462,7 +468,10 @@ export async function cmdNoArgs(
 
   if (todos.length === 0) {
     console.log();
-    console.log(`No work items found. Run ${BOLD}/decompose${RESET} to get started.`);
+    console.log(
+      `No work items found. Create work items in ${BOLD}.ninthwave/work/${RESET}` +
+        ` or use the ${BOLD}/decompose${RESET} skill in your AI tool to break down your plan.`,
+    );
     console.log();
     return;
   }
