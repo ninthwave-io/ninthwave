@@ -36,6 +36,7 @@ import type { AiToolProfile } from "../ai-tools.ts";
 import { detectInstalledAITools } from "../tool-select.ts";
 import { ensureMuxInteractiveOrDie } from "../mux.ts";
 import { requireCrewCode } from "./crew.ts";
+import { resolveTuiSettingsDefaults } from "../tui-settings.ts";
 import {
   runCheckboxList,
   createProcessIO,
@@ -379,10 +380,15 @@ export async function cmdNoArgs(
   const projectConfig = doLoadConfig(projectRoot);
   const userConfig = doLoadUserConfig();
   const defaultReviewMode = projectConfig.review_external ? "all" as const : "mine" as const;
+  const defaultSettings = resolveTuiSettingsDefaults(userConfig);
+  if (userConfig.review_mode === undefined) {
+    defaultSettings.reviewMode = defaultReviewMode;
+  }
   const installedTools = detectInstalledAITools();
   const doInteractive = deps.runInteractiveFlow ?? runInteractiveFlow;
   const result = await doInteractive(todos, 4, {
     defaultReviewMode,
+    defaultSettings,
     installedTools,
     savedToolIds: userConfig.ai_tools,
   });

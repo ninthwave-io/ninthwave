@@ -368,8 +368,7 @@ describe("runInteractiveFlow", () => {
   ];
 
   it("returns complete result with local-first defaults for valid legacy flow", async () => {
-    // Local-first: only prompts for items + confirmation (no merge/wip/review/connection)
-    const prompt = makePrompt(["1 2", ""]);
+    const prompt = makePrompt(["1 2", "", ""]);
     const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
 
     expect(result).not.toBeNull();
@@ -388,8 +387,7 @@ describe("runInteractiveFlow", () => {
   });
 
   it("returns null when user cancels at confirmation", async () => {
-    // Local-first: items + cancel at confirmation
-    const prompt = makePrompt(["1", "n"]);
+    const prompt = makePrompt(["1", "", "n"]);
     const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
     expect(result).toBeNull();
   });
@@ -401,8 +399,7 @@ describe("runInteractiveFlow", () => {
   });
 
   it("uses precomputed WIP limit as default without prompting", async () => {
-    // Items "all" + confirm
-    const prompt = makePrompt(["all", ""]);
+    const prompt = makePrompt(["all", "", ""]);
     const result = await runInteractiveFlow(items, 7, { prompt, useLegacyPrompts: true });
 
     expect(result).not.toBeNull();
@@ -410,7 +407,7 @@ describe("runInteractiveFlow", () => {
   });
 
   it("always returns manual merge strategy", async () => {
-    const prompt = makePrompt(["1", ""]);
+    const prompt = makePrompt(["1", "", ""]);
     const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
 
     expect(result).not.toBeNull();
@@ -418,7 +415,7 @@ describe("runInteractiveFlow", () => {
   });
 
   it("always returns reviews off", async () => {
-    const prompt = makePrompt(["1", ""]);
+    const prompt = makePrompt(["1", "", ""]);
     const result = await runInteractiveFlow(items, 3, {
       prompt,
       useLegacyPrompts: true,
@@ -429,8 +426,32 @@ describe("runInteractiveFlow", () => {
     expect(result!.reviewMode).toBe("off");
   });
 
-  it("always returns null connectionAction (Local)", async () => {
-    const prompt = makePrompt(["1", ""]);
+  it("defaults to local connectionAction on empty collaboration choice", async () => {
+    const prompt = makePrompt(["1", "", ""]);
+    const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
+
+    expect(result).not.toBeNull();
+    expect(result!.connectionAction).toBeNull();
+  });
+
+  it("returns connect when share is explicitly chosen in legacy flow", async () => {
+    const prompt = makePrompt(["1", "share", ""]);
+    const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
+
+    expect(result).not.toBeNull();
+    expect(result!.connectionAction).toEqual({ type: "connect" });
+  });
+
+  it("returns join when join is explicitly chosen in legacy flow", async () => {
+    const prompt = makePrompt(["1", "join", "k2f9ab3x7yplqm4n", ""]);
+    const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
+
+    expect(result).not.toBeNull();
+    expect(result!.connectionAction).toEqual({ type: "join", code: "K2F9-AB3X-7YPL-QM4N" });
+  });
+
+  it("falls back to local when join code entry is cancelled in legacy flow", async () => {
+    const prompt = makePrompt(["1", "join", "q", ""]);
     const result = await runInteractiveFlow(items, 3, { prompt, useLegacyPrompts: true });
 
     expect(result).not.toBeNull();
@@ -633,6 +654,16 @@ describe("promptConnectionMode", () => {
   it('returns connect on text "share"', async () => {
     const result = await promptConnectionMode(makePrompt(["share"]));
     expect(result).toEqual({ type: "connect" });
+  });
+
+  it("uses share as the default when configured", async () => {
+    const result = await promptConnectionMode(makePrompt([""]), "share");
+    expect(result).toEqual({ type: "connect" });
+  });
+
+  it("uses join as the default when configured", async () => {
+    const result = await promptConnectionMode(makePrompt(["", "k2f9ab3x7yplqm4n"]), "join");
+    expect(result).toEqual({ type: "join", code: "K2F9-AB3X-7YPL-QM4N" });
   });
 
   it('returns null (local) on input "local"', async () => {

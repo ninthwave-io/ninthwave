@@ -352,30 +352,31 @@ export async function promptReviewMode(
  */
 export async function promptConnectionMode(
   prompt: PromptFn,
+  defaultMode: "local" | "share" | "join" = "local",
 ): Promise<ConnectionAction | null> {
   console.log();
   console.log(`${BOLD}Collaborate via ninthwave.sh:${RESET}`);
   console.log();
   for (let i = 0; i < STARTUP_COLLABORATION_MODE_OPTIONS.length; i++) {
     const option = STARTUP_COLLABORATION_MODE_OPTIONS[i]!;
-    const defaultTag = option.persistedValue === "local" ? ` ${GREEN}(default)${RESET}` : "";
+    const defaultTag = option.persistedValue === defaultMode ? ` ${GREEN}(default)${RESET}` : "";
     console.log(`  ${BOLD}${i + 1}${RESET}. ${CYAN}${option.startupLabel}${RESET}    ${DIM}-- ${option.startupDescription}${RESET}${defaultTag}`);
   }
   console.log();
 
   while (true) {
-    const answer = await prompt(`${BOLD}Choose [1-3]: ${RESET}`);
+    const answer = (await prompt(`${BOLD}Choose [1-3]: ${RESET}`)).trim();
+    const selection = answer === "" ? defaultMode : answer.toLowerCase();
 
-    // Default to local on empty input
-    if (answer === "" || answer === "1" || answer.toLowerCase() === "local") {
+    if (selection === "1" || selection === "local") {
       return null;
     }
 
-    if (answer === "2" || answer.toLowerCase() === "share" || answer.toLowerCase() === "connect") {
+    if (selection === "2" || selection === "share" || selection === "connect") {
       return { type: "connect" };
     }
 
-    if (answer === "3" || answer.toLowerCase() === "join") {
+    if (selection === "3" || selection === "join") {
       while (true) {
         const code = await prompt(`${BOLD}Session code: ${RESET}`);
         if (code === "" || code.toLowerCase() === "q") return null;
@@ -516,8 +517,8 @@ export async function runInteractiveFlow(
 
 /**
  * Legacy readline-based interactive flow (local-first).
- * Only prompts for item selection and AI tool. Merge strategy, WIP,
- * review mode, and connection default to local-first values.
+ * Merge strategy, WIP, and review mode stay on local-first defaults.
+ * Collaboration only changes when the user explicitly chooses share/join.
  */
 async function runReadlineFlow(
   todos: WorkItem[],
@@ -534,7 +535,7 @@ async function runReadlineFlow(
   const mergeStrategy: MergeStrategy = "manual";
   const wipLimit = defaultWipLimit;
   const reviewMode: ReviewMode = "off";
-  const connectionAction: ConnectionAction | null = null;
+  let connectionAction: ConnectionAction | null = null;
 
   // Step 2: AI tool (conditional, multi-select)
   let aiTool: string | undefined;
@@ -591,6 +592,13 @@ async function runReadlineFlow(
   } else if (tools.length === 1) {
     aiTool = tools[0]!.id;
     aiTools = [aiTool];
+  }
+
+  if (deps.showConnectionStep !== false) {
+    connectionAction = await promptConnectionMode(
+      prompt,
+      deps.defaultSettings?.collaborationMode ?? "local",
+    );
   }
 
   // Step 3: Summary + confirmation

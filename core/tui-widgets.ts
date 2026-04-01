@@ -1042,10 +1042,10 @@ export async function runSelectionScreen(
       io.write(SHOW_CURSOR);
 
       if (joinCode.cancelled) {
-        return null;
+        connectionAction = null;
+      } else {
+        connectionAction = { type: "join", code: parseCrewCode(joinCode.value.trim())! };
       }
-
-      connectionAction = { type: "join", code: parseCrewCode(joinCode.value.trim())! };
     } else {
       connectionAction = null;
     }
