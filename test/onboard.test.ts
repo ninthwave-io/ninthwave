@@ -742,6 +742,7 @@ describe("cmdNoArgs", () => {
         interactiveCalled = true;
         // Verify that the deps include the correct defaultReviewMode
         expect(deps?.defaultReviewMode).toBe("all");
+        expect(deps?.defaultSettings?.reviewMode).toBe("all");
         return {
           itemIds: ["H-1"],
           mergeStrategy: "auto" as MergeStrategy,
@@ -757,7 +758,7 @@ describe("cmdNoArgs", () => {
     expect(interactiveCalled).toBe(true);
   });
 
-  it("reads saved tool IDs from user config while keeping review defaults in project config", async () => {
+  it("reads saved tool IDs and startup collaboration defaults from user config", async () => {
     const projectDir = setupTempRepo();
     mkdirSync(join(projectDir, ".ninthwave", "work"), { recursive: true });
 
@@ -766,9 +767,14 @@ describe("cmdNoArgs", () => {
       parseWorkItems: () => [fakeWorkItem("H-1", "Task")],
       isDaemonRunning: () => null,
       loadConfig: () => ({ review_external: true, schedule_enabled: false, ai_tools: ["claude"] }),
-      loadUserConfig: () => ({ ai_tools: ["opencode", "copilot"] }),
+      loadUserConfig: () => ({ ai_tools: ["opencode", "copilot"], merge_strategy: "auto", collaboration_mode: "share" }),
       runInteractiveFlow: async (_todos, _wip, deps) => {
         expect(deps?.defaultReviewMode).toBe("all");
+        expect(deps?.defaultSettings).toEqual({
+          mergeStrategy: "auto",
+          reviewMode: "all",
+          collaborationMode: "share",
+        });
         expect(deps?.savedToolIds).toEqual(["opencode", "copilot"]);
         return null;
       },

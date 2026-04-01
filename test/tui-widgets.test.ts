@@ -1275,6 +1275,81 @@ describe("runSelectionScreen -- startup defaults", () => {
     expect(result!.wipLimit).toBe(5);
   });
 
+  it("returns join connectionAction when join is selected", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4);
+    sendKeyBatches(
+      ["\r"],
+      [
+        "\x1B[B",
+        "\x1B[B",
+        "\x1B[C",
+        "\x1B[C",
+        "\r",
+      ],
+      [
+        "k", "2", "f", "9", "a", "b", "3", "x",
+        "7", "y", "p", "l", "q", "m", "4", "n", "\r",
+      ],
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.connectionAction).toEqual({ type: "join", code: "K2F9-AB3X-7YPL-QM4N" });
+  });
+
+  it("falls back to local when join code entry is cancelled", async () => {
+    const { io, sendKeyBatches } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4);
+    sendKeyBatches(
+      ["\r"],
+      [
+        "\x1B[B",
+        "\x1B[B",
+        "\x1B[C",
+        "\x1B[C",
+        "\r",
+      ],
+      ["\x1B"],
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.connectionAction).toBeNull();
+  });
+
+  it("re-prompts for a valid join code before returning join", async () => {
+    const { io, sendKeyBatches, getOutput } = createMockIO();
+    const items = [makeWorkItem("A-1", "Task")];
+
+    const resultPromise = runSelectionScreen(io, items, 4);
+    sendKeyBatches(
+      ["\r"],
+      [
+        "\x1B[B",
+        "\x1B[B",
+        "\x1B[C",
+        "\x1B[C",
+        "\r",
+      ],
+      [
+        "b", "a", "d", "\r",
+        "\x7f", "\x7f", "\x7f",
+        "k", "2", "f", "9", "a", "b", "3", "x",
+        "7", "y", "p", "l", "q", "m", "4", "n", "\r",
+      ],
+    );
+
+    const result = await resultPromise;
+    expect(result).not.toBeNull();
+    expect(result!.connectionAction).toEqual({ type: "join", code: "K2F9-AB3X-7YPL-QM4N" });
+    expect(getOutput()).toContain("Invalid session code: bad");
+  });
+
   it("falls back to defaultReviewMode when defaultSettings are omitted", async () => {
     const { io, sendKeyBatches } = createMockIO();
     const items = [makeWorkItem("A-1", "Task")];
@@ -1593,7 +1668,7 @@ describe("runTuiSelectionFlow (via interactive.ts)", () => {
 
     const resultPromise = runInteractiveFlow(items, 4, { widgetIO: io });
 
-    // Local-first: only items and confirm (no strategy/WIP/review/connection)
+    // Items followed by startup settings confirmation.
     sendKeyBatches(
       ["\r"], // Confirm all items (pre-checked)
       ["\r"], // Confirm summary
@@ -1620,8 +1695,7 @@ describe("runTuiSelectionFlow (via interactive.ts)", () => {
     ];
 
     let promptIdx = 0;
-    // Local-first: only items + confirmation (no merge/wip/review/connection prompts)
-    const answers = ["1 2", ""];
+    const answers = ["1 2", "", ""];
     const mockPrompt = async (_q: string) => answers[promptIdx++] ?? "";
 
     const result = await runInteractiveFlow(items, 3, {

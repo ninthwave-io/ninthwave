@@ -4639,7 +4639,7 @@ describe("crew remote state: last broker update replaces stale snapshots", () =>
 // ── parseWatchArgs (passthrough path) ──────────────────────────────────
 
 describe("resolveInteractiveStartupConfig", () => {
-  it("keeps persisted merge and review defaults but resets collaboration to local", () => {
+  it("keeps persisted merge, review, and collaboration defaults", () => {
     const result = resolveInteractiveStartupConfig(
       { review_external: false, schedule_enabled: false, ai_tools: ["claude"] },
       {
@@ -4653,7 +4653,7 @@ describe("resolveInteractiveStartupConfig", () => {
     expect(result.defaults).toEqual({
       mergeStrategy: "auto",
       reviewMode: "all",
-      collaborationMode: "local",
+      collaborationMode: "share",
     });
     expect(result.savedToolIds).toEqual(["opencode", "copilot"]);
     expect(result.skipToolStep).toBe(true);

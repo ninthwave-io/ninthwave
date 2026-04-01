@@ -263,7 +263,9 @@ export function resolveTuiSettingsDefaults(userConfig: {
     reviewMode: isPersistedReviewMode(userConfig.review_mode)
       ? userConfig.review_mode
       : TUI_SETTINGS_DEFAULTS.reviewMode,
-    collaborationMode: TUI_SETTINGS_DEFAULTS.collaborationMode,
+    collaborationMode: isPersistedCollaborationMode(userConfig.collaboration_mode)
+      ? userConfig.collaboration_mode
+      : TUI_SETTINGS_DEFAULTS.collaborationMode,
   };
 }
 
