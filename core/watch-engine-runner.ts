@@ -38,7 +38,9 @@ export type WatchEngineControlCommand =
   | { type: "set-merge-strategy"; strategy: MergeStrategy; source?: string }
   | { type: "set-wip-limit"; limit: number; source?: string }
   | { type: "set-review-mode"; mode: ReviewMode; source?: string }
-  | { type: "set-collaboration-mode"; mode: CollaborationMode; code?: string; source?: string };
+  | { type: "set-collaboration-mode"; mode: CollaborationMode; code?: string; source?: string }
+  | { type: "extend-timeout"; itemId: string; source?: string }
+  | { type: "shutdown"; source?: string };
 
 export interface RuntimeControlHandlers {
   onStrategyChange?: (strategy: MergeStrategy) => void;
@@ -48,6 +50,8 @@ export interface RuntimeControlHandlers {
   onCollaborationLocal?: () => { mode: "local" };
   onCollaborationShare?: () => { mode: "shared" };
   onCollaborationJoinSubmit?: (code: string) => { mode: "joined" };
+  onExtendTimeout?: (itemId: string) => boolean;
+  onShutdown?: () => void;
 }
 
 export interface RuntimeControlHandlerDeps {
@@ -107,6 +111,13 @@ export function createRuntimeControlHandlers(
       deps.sendControl({ type: "set-collaboration-mode", mode: "joined", code, source: "keyboard" });
       return { mode: "joined" };
     },
+    onExtendTimeout: (itemId) => {
+      deps.sendControl({ type: "extend-timeout", itemId, source: "keyboard" });
+      return true;
+    },
+    onShutdown: () => {
+      deps.sendControl({ type: "shutdown", source: "keyboard" });
+    },
   };
 }
 
@@ -157,6 +168,7 @@ export function createWatchEngineRunner(
 ): WatchEngineRunner {
   let reviewMode = deps.initialReviewMode;
   let collaborationMode = deps.initialCollaborationMode;
+  let activeAbortController: AbortController | undefined;
 
   const emitLog = (entry: LogEntry) => {
     deps.emitLog(entry);
@@ -210,35 +222,69 @@ export function createWatchEngineRunner(
         });
         return;
       }
+      case "extend-timeout": {
+        const extended = deps.orch.extendTimeout(command.itemId);
+        emitLog({
+          ts: new Date().toISOString(),
+          level: extended ? "info" : "warn",
+          event: extended ? "timeout_extended" : "timeout_extend_rejected",
+          itemId: command.itemId,
+          source: command.source ?? "runtime-control",
+        });
+        return;
+      }
+      case "shutdown": {
+        emitLog({
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "shutdown_requested",
+          source: command.source ?? "runtime-control",
+        });
+        activeAbortController?.abort();
+        return;
+      }
     }
   };
 
   return {
-    run: (signal) => deps.runLoop(
-      deps.orch,
-      deps.ctx,
-      {
-        ...deps.loopDeps,
-        log: emitLog,
-        onPollComplete: (items, snapshot, pollIntervalMs, interactiveTiming) => {
-          const heartbeats = snapshotToHeartbeatMap(snapshot);
-          deps.emitSnapshot({
-            state: deps.buildState(items, heartbeats, snapshot),
-            pollSnapshot: snapshot,
-            ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
-            ...(interactiveTiming ? { interactiveTiming } : {}),
-            runtime: {
-              mergeStrategy: deps.orch.config.mergeStrategy,
-              wipLimit: deps.getWipLimit(),
-              reviewMode,
-              collaborationMode,
+    run: async (signal) => {
+      const runAbortController = new AbortController();
+      activeAbortController = runAbortController;
+      const forwardAbort = () => runAbortController.abort();
+      signal?.addEventListener("abort", forwardAbort, { once: true });
+      try {
+        return await deps.runLoop(
+          deps.orch,
+          deps.ctx,
+          {
+            ...deps.loopDeps,
+            log: emitLog,
+            onPollComplete: (items, snapshot, pollIntervalMs, interactiveTiming) => {
+              const heartbeats = snapshotToHeartbeatMap(snapshot);
+              deps.emitSnapshot({
+                state: deps.buildState(items, heartbeats, snapshot),
+                pollSnapshot: snapshot,
+                ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
+                ...(interactiveTiming ? { interactiveTiming } : {}),
+                runtime: {
+                  mergeStrategy: deps.orch.config.mergeStrategy,
+                  wipLimit: deps.getWipLimit(),
+                  reviewMode,
+                  collaborationMode,
+                },
+              });
             },
-          });
-        },
-      },
-      deps.loopConfig,
-      signal,
-    ),
+          },
+          deps.loopConfig,
+          runAbortController.signal,
+        );
+      } finally {
+        signal?.removeEventListener("abort", forwardAbort);
+        if (activeAbortController === runAbortController) {
+          activeAbortController = undefined;
+        }
+      }
+    },
     sendControl,
     createRuntimeControlHandlers: (saveUserConfigFn) => createRuntimeControlHandlers({
       sendControl,

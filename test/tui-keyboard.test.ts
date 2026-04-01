@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   setupKeyboardShortcuts,
+  applyRuntimeSnapshotToTuiState,
   pushLogBuffer,
   filterLogsByLevel,
   LOG_BUFFER_MAX,
@@ -43,6 +44,7 @@ function makeTuiState(overrides: Partial<TuiState> = {}): TuiState {
   return {
     scrollOffset: 0,
     viewOptions: { showBlockerDetail: true },
+    wipLimit: 3,
     mergeStrategy: "manual" as MergeStrategy,
     pendingStrategy: undefined,
     pendingStrategyDeadlineMs: undefined,
@@ -172,6 +174,20 @@ describe("setupKeyboardShortcuts", () => {
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any);
     stdin.emit("data", "q");
     expect(ac.signal.aborted).toBe(true);
+    cleanup();
+  });
+
+  it("q routes shutdown through onShutdown when provided", () => {
+    const ac = new AbortController();
+    const stdin = makeFakeStdin();
+    const onShutdown = vi.fn();
+    const state = makeTuiState({ onShutdown });
+    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
+
+    stdin.emit("data", "q");
+
+    expect(onShutdown).toHaveBeenCalledTimes(1);
+    expect(ac.signal.aborted).toBe(false);
     cleanup();
   });
 
@@ -500,10 +516,20 @@ describe("controls overlay row navigation", () => {
     expect(onCollaborationShare).not.toHaveBeenCalled();
 
     stdin.emit("data", "\r");
-    expect(state.collaborationMode).toBe("shared");
-    expect(state.viewOptions.collaborationMode).toBe("shared");
+    expect(state.collaborationMode).toBe("local");
+    expect(state.pendingCollaborationMode).toBe("shared");
+    expect(state.viewOptions.collaborationMode).toBe("local");
     expect(onCollaborationShare).toHaveBeenCalledTimes(1);
     expect(onUpdate).toHaveBeenCalled();
+
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: state.mergeStrategy,
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: "shared",
+    });
+    expect(state.collaborationMode).toBe("shared");
+    expect(state.pendingCollaborationMode).toBeUndefined();
 
     stdin.emit("data", "\x1b[D");
     expect(state.collaborationIntent).toBe("local");
@@ -511,9 +537,19 @@ describe("controls overlay row navigation", () => {
     expect(onCollaborationLocal).not.toHaveBeenCalled();
 
     stdin.emit("data", "\r");
-    expect(state.collaborationMode).toBe("local");
+    expect(state.collaborationMode).toBe("shared");
+    expect(state.pendingCollaborationMode).toBe("local");
     expect(state.collaborationIntent).toBe("local");
     expect(onCollaborationLocal).toHaveBeenCalledTimes(1);
+
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: state.mergeStrategy,
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: "local",
+    });
+    expect(state.collaborationMode).toBe("local");
+    expect(state.pendingCollaborationMode).toBeUndefined();
     cleanup();
   });
 
@@ -575,9 +611,19 @@ describe("controls overlay row navigation", () => {
     stdin.emit("data", "2");
     stdin.emit("data", "\r");
     expect(onCollaborationJoinSubmit).toHaveBeenCalledWith("AB12");
-    expect(state.collaborationMode).toBe("joined");
+    expect(state.collaborationMode).toBe("local");
+    expect(state.pendingCollaborationMode).toBe("joined");
     expect(state.collaborationIntent).toBe("join");
     expect(state.collaborationJoinInputActive).toBe(false);
+
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: state.mergeStrategy,
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: "joined",
+    });
+    expect(state.collaborationMode).toBe("joined");
+    expect(state.pendingCollaborationMode).toBeUndefined();
 
     stdin.emit("data", "\x1b[C");
     expect(state.collaborationJoinInputActive).toBe(false);
@@ -614,16 +660,27 @@ describe("controls overlay row navigation", () => {
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
     stdin.emit("data", "\x1b[C");
-    expect(state.reviewMode).toBe("ninthwave-prs");
-    expect(state.viewOptions.reviewMode).toBe("ninthwave-prs");
+    expect(state.reviewMode).toBe("off");
+    expect(state.pendingReviewMode).toBe("ninthwave-prs");
+    expect(state.viewOptions.reviewMode).toBe("off");
     expect(onReviewChange).toHaveBeenCalledWith("ninthwave-prs");
 
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: state.mergeStrategy,
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: "ninthwave-prs",
+      collaborationMode: state.collaborationMode,
+    });
+    expect(state.reviewMode).toBe("ninthwave-prs");
+    expect(state.pendingReviewMode).toBeUndefined();
+
     stdin.emit("data", "\x1b[C");
-    expect(state.reviewMode).toBe("all-prs");
+    expect(state.reviewMode).toBe("ninthwave-prs");
+    expect(state.pendingReviewMode).toBe("all-prs");
     expect(onReviewChange).toHaveBeenCalledWith("all-prs");
 
     stdin.emit("data", "\x1b[D");
-    expect(state.reviewMode).toBe("ninthwave-prs");
+    expect(state.pendingReviewMode).toBeUndefined();
     cleanup();
   });
 
@@ -647,9 +704,18 @@ describe("controls overlay row navigation", () => {
     expect(onStrategyChange).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(STRATEGY_DEBOUNCE_MS + 1);
+    expect(state.mergeStrategy).toBe("manual");
+    expect(state.pendingStrategy).toBe("auto");
+    expect(onStrategyChange).toHaveBeenCalledWith("auto");
+
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: "auto",
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: state.collaborationMode,
+    });
     expect(state.mergeStrategy).toBe("auto");
     expect(state.pendingStrategy).toBeUndefined();
-    expect(onStrategyChange).toHaveBeenCalledWith("auto");
 
     cleanup();
     vi.useRealTimers();
@@ -668,9 +734,11 @@ describe("controls overlay row navigation", () => {
 
     stdin.emit("data", "\x1b[C");
     expect(onWipChange).toHaveBeenCalledWith(1);
+    expect(state.pendingWipLimit).toBe(4);
 
     stdin.emit("data", "\x1b[D");
     expect(onWipChange).toHaveBeenCalledWith(-1);
+    expect(state.pendingWipLimit).toBeUndefined();
     cleanup();
   });
 
@@ -775,8 +843,8 @@ describe("Shift+Tab merge strategy cycle", () => {
     expect(state.pendingStrategy).toBe("bypass");
 
     vi.advanceTimersByTime(STRATEGY_DEBOUNCE_MS + 1);
-    expect(state.mergeStrategy).toBe("bypass");
-    expect(state.pendingStrategy).toBeUndefined();
+    expect(state.mergeStrategy).toBe("auto");
+    expect(state.pendingStrategy).toBe("bypass");
     expect(onStrategyChange).toHaveBeenCalledTimes(1);
     expect(onStrategyChange).toHaveBeenCalledWith("bypass");
 
@@ -816,19 +884,23 @@ describe("Shift+Tab merge strategy cycle", () => {
     expect(state.viewOptions.pendingStrategyCountdownSeconds).toBe(1);
     vi.advanceTimersByTime(1000);
 
-    expect(countdowns).toContain(0);
+    expect(countdowns).toContain(undefined);
     expect(state.mergeStrategy).toBe("auto");
     expect(state.pendingStrategy).toBe("manual");
     expect(state.viewOptions.pendingStrategy).toBe("manual");
-    expect(state.viewOptions.pendingStrategyCountdownSeconds).toBe(0);
+    expect(state.viewOptions.pendingStrategyCountdownSeconds).toBeUndefined();
+    expect(onStrategyChange).toHaveBeenCalledWith("manual");
 
-    vi.advanceTimersByTime(1);
-
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: "manual",
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: state.collaborationMode,
+    });
     expect(state.mergeStrategy).toBe("manual");
     expect(state.pendingStrategy).toBeUndefined();
     expect(state.viewOptions.pendingStrategy).toBeUndefined();
     expect(state.viewOptions.pendingStrategyCountdownSeconds).toBeUndefined();
-    expect(onStrategyChange).toHaveBeenCalledWith("manual");
 
     cleanup();
     vi.useRealTimers();
@@ -847,10 +919,22 @@ describe("Shift+Tab merge strategy cycle", () => {
     stdin.emit("data", "\x1B[Z");
     expect(state.pendingStrategy).toBe("bypass");
     vi.advanceTimersByTime(STRATEGY_DEBOUNCE_MS + 1);
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: "bypass",
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: state.collaborationMode,
+    });
     expect(state.mergeStrategy).toBe("bypass");
 
     stdin.emit("data", "\x1B[Z");
     vi.advanceTimersByTime(STRATEGY_DEBOUNCE_MS + 1);
+    applyRuntimeSnapshotToTuiState(state, {
+      mergeStrategy: "auto",
+      wipLimit: state.wipLimit ?? 3,
+      reviewMode: state.reviewMode,
+      collaborationMode: state.collaborationMode,
+    });
     expect(state.mergeStrategy).toBe("auto");
     cleanup();
     vi.useRealTimers();

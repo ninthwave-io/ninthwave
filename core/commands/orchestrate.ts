@@ -36,7 +36,7 @@ import { run } from "../shell.ts";
 import { type Multiplexer, getMux } from "../mux.ts";
 import { resolveSessionName } from "../tmux.ts";
 import { reconcile } from "./reconcile.ts";
-import { die, warn, info, ALT_SCREEN_ON, ALT_SCREEN_OFF } from "../output.ts";
+import { die, warn, info, ALT_SCREEN_ON, ALT_SCREEN_OFF, BOLD, RED, RESET } from "../output.ts";
 import { confirmPrompt } from "../prompt.ts";
 import { shouldEnterInteractive, runInteractiveFlow } from "../interactive.ts";
 import type { WorkItem, LogEntry } from "../types.ts";
@@ -127,6 +127,7 @@ import { reconstructState } from "../reconstruct.ts";
 import { parseWatchArgs, validateItemIds, type ParsedWatchArgs } from "./watch-args.ts";
 import {
   setupKeyboardShortcuts,
+  applyRuntimeSnapshotToTuiState,
   filterLogsByLevel,
   pushLogBuffer,
   LOG_BUFFER_MAX,
@@ -151,7 +152,7 @@ export { buildSnapshotAsync, isWorkerAlive, isWorkerAliveWithCache, getWorktreeL
 export { buildSnapshot } from "../snapshot.ts";
 export { reconstructState } from "../reconstruct.ts";
 export { parseWatchArgs, validateItemIds, type ParsedWatchArgs } from "./watch-args.ts";
-export { setupKeyboardShortcuts, filterLogsByLevel, pushLogBuffer, LOG_BUFFER_MAX, REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE, type TuiState, type LogLevelFilter, type CollaborationMode, type ReviewMode } from "../tui-keyboard.ts";
+export { setupKeyboardShortcuts, applyRuntimeSnapshotToTuiState, filterLogsByLevel, pushLogBuffer, LOG_BUFFER_MAX, REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE, type TuiState, type TuiRuntimeSnapshot, type LogLevelFilter, type CollaborationMode, type ReviewMode } from "../tui-keyboard.ts";
 export { processExternalReviews, type ExternalReviewDeps } from "../external-review.ts";
 export { processScheduledTasks, type ScheduleLoopDeps } from "../schedule-processing.ts";
 export { forkDaemon } from "../daemon.ts";
@@ -745,6 +746,47 @@ export interface TuiDetailSnapshot {
   descriptionBody?: string;
 }
 
+function renderEngineRecoveryOverlay(
+  termWidth: number,
+  termRows: number,
+  reason?: string,
+): string[] {
+  const title = "Engine disconnected";
+  const detail = reason?.trim() || "The watch engine exited before acknowledging all controls.";
+  const hint = "Press r to restart or q to quit";
+  const contentLines = [
+    "",
+    `  ${detail}`,
+    "",
+    `  ${hint}`,
+    "",
+  ];
+  const maxContentWidth = Math.max(title.length, ...contentLines.map((line) => line.length));
+  const innerWidth = Math.min(maxContentWidth + 4, termWidth - 4);
+  const boxWidth = innerWidth + 2;
+  const leftMargin = Math.max(0, Math.floor((termWidth - boxWidth) / 2));
+  const marginPad = " ".repeat(leftMargin);
+  const boxLines: string[] = [];
+
+  boxLines.push(`${marginPad}┌${"─".repeat(innerWidth)}┐`);
+  const titlePad = Math.max(0, Math.floor((innerWidth - title.length) / 2));
+  boxLines.push(`${marginPad}│${" ".repeat(titlePad)}${BOLD}${RED}${title}${RESET}${" ".repeat(Math.max(0, innerWidth - titlePad - title.length))}│`);
+  boxLines.push(`${marginPad}│${" ".repeat(innerWidth)}│`);
+  for (const line of contentLines) {
+    const visible = line.length > innerWidth - 2 ? `${line.slice(0, Math.max(0, innerWidth - 5))}...` : line;
+    const rightPad = Math.max(0, innerWidth - 2 - visible.length);
+    boxLines.push(`${marginPad}│  ${visible}${" ".repeat(rightPad)}│`);
+  }
+  boxLines.push(`${marginPad}└${"─".repeat(innerWidth)}┘`);
+
+  const topPad = Math.max(0, Math.floor((termRows - boxLines.length) / 2));
+  const output: string[] = [];
+  for (let i = 0; i < topPad; i++) output.push("");
+  output.push(...boxLines);
+  while (output.length < termRows) output.push("");
+  return output.slice(0, termRows);
+}
+
 export function renderTuiPanelFrameFromStatusItems(
   statusItems: StatusItem[],
   wipLimit: number | undefined,
@@ -760,13 +802,18 @@ export function renderTuiPanelFrameFromStatusItems(
 
   write("\x1B[H");
 
-  if (tuiState.viewOptions.showHelp) {
+  if (tuiState.engineDisconnected) {
+    const overlayLines = renderEngineRecoveryOverlay(termWidth, termRows, tuiState.engineDisconnectReason);
+    const content = overlayLines.join("\n");
+    write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
+  } else if (tuiState.viewOptions.showHelp) {
     const helpLines = renderHelpOverlay(termWidth, termRows, tuiState.sessionCode, tuiState.tmuxSessionName);
     const content = helpLines.join("\n");
     write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
   } else if (tuiState.showControls) {
     const controlsLines = renderControlsOverlay(termWidth, termRows, {
       collaborationMode: tuiState.collaborationMode,
+      pendingCollaborationMode: tuiState.pendingCollaborationMode,
       collaborationIntent: tuiState.collaborationIntent,
       sessionCode: tuiState.sessionCode,
       collaborationJoinInputActive: tuiState.collaborationJoinInputActive,
@@ -774,9 +821,12 @@ export function renderTuiPanelFrameFromStatusItems(
       collaborationBusy: tuiState.collaborationBusy,
       collaborationError: tuiState.collaborationError,
       reviewMode: tuiState.reviewMode,
-      mergeStrategy: tuiState.pendingStrategy ?? tuiState.mergeStrategy,
+      pendingReviewMode: tuiState.pendingReviewMode,
+      mergeStrategy: tuiState.mergeStrategy,
+      pendingMergeStrategy: tuiState.pendingStrategy,
       bypassEnabled: tuiState.bypassEnabled,
       wipLimit,
+      pendingWipLimit: tuiState.pendingWipLimit,
       activeRowIndex: tuiState.controlsRowIndex,
     });
     const content = controlsLines.join("\n");
@@ -940,10 +990,12 @@ export interface InteractiveWatchOperatorSessionOptions {
   initialSnapshot: InteractiveEngineSnapshotRenderState;
   watchMode: boolean;
   manageTerminal?: boolean;
+  manageKeyboard?: boolean;
   abortController?: AbortController;
   stdin?: NodeJS.ReadStream;
   stdout?: NodeJS.WriteStream;
   spawnChild?: (childArgs: string[], projectRoot: string) => InteractiveEngineChildProcess;
+  bindControlSender?: (sender: (command: WatchEngineControlCommand) => void) => void;
   setupKeyboardShortcutsFn?: typeof setupKeyboardShortcuts;
   waitForCompletionKeyFn?: typeof waitForCompletionKey;
   renderFrame?: typeof renderTuiPanelFrameFromStatusItems;
@@ -960,13 +1012,14 @@ export async function runInteractiveWatchOperatorSession(
   const stdin = opts.stdin ?? process.stdin;
   const stdout = opts.stdout ?? process.stdout;
   const spawnChild = opts.spawnChild ?? spawnInteractiveEngineChild;
+  const bindControlSender = opts.bindControlSender ?? (() => {});
   const setupKeyboardShortcutsFn = opts.setupKeyboardShortcutsFn ?? setupKeyboardShortcuts;
   const waitForCompletionKeyFn = opts.waitForCompletionKeyFn ?? waitForCompletionKey;
   const renderFrame = opts.renderFrame ?? renderTuiPanelFrameFromStatusItems;
   const manageTerminal = opts.manageTerminal ?? true;
+  const manageKeyboard = opts.manageKeyboard ?? manageTerminal;
 
   let lastSnapshot = opts.initialSnapshot;
-  let childResult: OrchestrateLoopResult | undefined;
 
   const write = (chunk: string) => stdout.write(chunk);
   const render = () => {
@@ -978,6 +1031,8 @@ export async function runInteractiveWatchOperatorSession(
       daemonStateToDetailSnapshots(lastSnapshot.daemonState),
     );
   };
+
+  applyRuntimeSnapshotToTuiState(opts.tuiState, lastSnapshot.runtime);
 
   opts.tuiState.onUpdate = () => {
     try {
@@ -991,112 +1046,158 @@ export async function runInteractiveWatchOperatorSession(
   let cleanupKeyboard = () => {};
   let altScreenActive = false;
 
-  const child = spawnChild(opts.childArgs, opts.projectRoot);
-  const closePromise = new Promise<void>((resolve, reject) => {
-    child.on("close", () => resolve());
-    child.on("error", reject);
-  });
-
-  let stdoutBuffer = "";
-  const onChildData = (chunk: Buffer | string) => {
-    stdoutBuffer += chunk.toString();
-    const lines = stdoutBuffer.split("\n");
-    stdoutBuffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      let message: InteractiveEngineTransportMessage;
-      try {
-        message = JSON.parse(trimmed) as InteractiveEngineTransportMessage;
-      } catch {
-        continue;
-      }
-      if (message.type === "snapshot") {
-        lastSnapshot = {
-          daemonState: message.event.state,
-          runtime: message.event.runtime,
-          ...(message.event.pollIntervalMs !== undefined ? { pollIntervalMs: message.event.pollIntervalMs } : {}),
-          ...(message.event.interactiveTiming ? { interactiveTiming: message.event.interactiveTiming } : {}),
-        };
-        opts.tuiState.mergeStrategy = message.event.runtime.mergeStrategy;
-        opts.tuiState.viewOptions.mergeStrategy = message.event.runtime.mergeStrategy;
-        opts.tuiState.reviewMode = message.event.runtime.reviewMode;
-        opts.tuiState.viewOptions.reviewMode = message.event.runtime.reviewMode;
-        opts.tuiState.collaborationMode = message.event.runtime.collaborationMode;
-        opts.tuiState.viewOptions.collaborationMode = message.event.runtime.collaborationMode;
-        render();
-        continue;
-      }
-      if (message.type === "log") {
-        opts.log(message.entry);
-        continue;
-      }
-      if (message.type === "result") {
-        childResult = message.result;
-        continue;
-      }
-      if (message.type === "fatal") {
-        throw new Error(message.error);
-      }
-    }
-  };
-
-  if (child.stdout) {
-    child.stdout.setEncoding?.("utf8");
-    child.stdout.on("data", onChildData);
-  }
-
   try {
     if (manageTerminal) {
       write(ALT_SCREEN_ON);
       altScreenActive = true;
+    }
+    if (manageKeyboard) {
       cleanupKeyboard = setupKeyboardShortcutsFn(abortController, opts.log, stdin, opts.tuiState);
     }
     render();
 
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = async () => {
-        try {
-          await terminateInteractiveEngineChild(child);
+    while (true) {
+      opts.tuiState.engineDisconnected = false;
+      opts.tuiState.engineDisconnectReason = undefined;
+
+      let childResult: OrchestrateLoopResult | undefined;
+      let childCloseCode: number | null = null;
+      let childCloseSignal: NodeJS.Signals | null = null;
+      let childError: Error | undefined;
+      let stdoutBuffer = "";
+
+      const child = spawnChild(opts.childArgs, opts.projectRoot);
+      bindControlSender((command) => writeInteractiveEngineControl(child.stdin, command));
+
+      const closePromise = new Promise<void>((resolve) => {
+        child.on("close", (code, signal) => {
+          childCloseCode = code;
+          childCloseSignal = signal;
           resolve();
-        } catch (error) {
-          reject(error);
+        });
+        child.on("error", (error) => {
+          childError = error;
+          resolve();
+        });
+      });
+
+      const onChildData = (chunk: Buffer | string) => {
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split("\n");
+        stdoutBuffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let message: InteractiveEngineTransportMessage;
+          try {
+            message = JSON.parse(trimmed) as InteractiveEngineTransportMessage;
+          } catch {
+            continue;
+          }
+          if (message.type === "snapshot") {
+            lastSnapshot = {
+              daemonState: message.event.state,
+              runtime: message.event.runtime,
+              ...(message.event.pollIntervalMs !== undefined ? { pollIntervalMs: message.event.pollIntervalMs } : {}),
+              ...(message.event.interactiveTiming ? { interactiveTiming: message.event.interactiveTiming } : {}),
+            };
+            applyRuntimeSnapshotToTuiState(opts.tuiState, message.event.runtime);
+            render();
+            continue;
+          }
+          if (message.type === "log") {
+            opts.log(message.entry);
+            continue;
+          }
+          if (message.type === "result") {
+            childResult = message.result;
+            continue;
+          }
+          if (message.type === "fatal") {
+            childError = new Error(message.error);
+          }
         }
       };
 
-      abortController.signal.addEventListener("abort", () => {
-        void onAbort();
-      }, { once: true });
-
-      void closePromise.then(resolve, reject);
-    });
-
-    if (abortController.signal.aborted) {
-      return { completionAction: "quit", lastSnapshot };
-    }
-
-    if (!opts.watchMode && childResult) {
-      const bannerLines = formatCompletionBanner(lastSnapshot.daemonState.items, lastSnapshot.daemonState.startedAt);
-      write("\x1B[H");
-      render();
-      const termRows = getTerminalHeight();
-      const startRow = Math.max(1, termRows - bannerLines.length);
-      write(`\x1B[${startRow};1H`);
-      for (const line of bannerLines) {
-        write(line + "\x1B[K\n");
+      if (child.stdout) {
+        child.stdout.setEncoding?.("utf8");
+        child.stdout.on("data", onChildData);
       }
-      return {
-        completionAction: await waitForCompletionKeyFn(stdin, abortController.signal),
-        lastSnapshot,
-      };
-    }
 
-    return { completionAction: childResult?.completionAction, lastSnapshot };
-  } finally {
-    if (child.stdout) {
-      child.stdout.removeListener("data", onChildData);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = async () => {
+            try {
+              await terminateInteractiveEngineChild(child);
+              resolve();
+            } catch (error) {
+              reject(error);
+            }
+          };
+
+          abortController.signal.addEventListener("abort", () => {
+            void onAbort();
+          }, { once: true });
+
+          void closePromise.then(resolve, reject);
+        });
+      } finally {
+        bindControlSender(() => {});
+        if (child.stdout) {
+          child.stdout.removeListener("data", onChildData);
+        }
+      }
+
+      if (abortController.signal.aborted) {
+        return { completionAction: "quit", lastSnapshot };
+      }
+
+      if (!opts.watchMode && childResult) {
+        const bannerLines = formatCompletionBanner(lastSnapshot.daemonState.items, lastSnapshot.daemonState.startedAt);
+        write("\x1B[H");
+        render();
+        const termRows = getTerminalHeight();
+        const startRow = Math.max(1, termRows - bannerLines.length);
+        write(`\x1B[${startRow};1H`);
+        for (const line of bannerLines) {
+          write(line + "\x1B[K\n");
+        }
+        return {
+          completionAction: await waitForCompletionKeyFn(stdin, abortController.signal),
+          lastSnapshot,
+        };
+      }
+
+      if (childResult) {
+        return { completionAction: childResult.completionAction, lastSnapshot };
+      }
+
+      opts.tuiState.engineDisconnected = true;
+      opts.tuiState.engineDisconnectReason = childError?.message
+        ?? (childCloseSignal
+          ? `Engine exited via ${childCloseSignal}.`
+          : childCloseCode !== null
+            ? `Engine exited with code ${childCloseCode}.`
+            : "The watch engine closed unexpectedly.");
+
+      if (!manageKeyboard) {
+        render();
+        return { lastSnapshot };
+      }
+
+      cleanupKeyboard();
+      cleanupKeyboard = () => {};
+      render();
+      const recoveryAction = await waitForEngineRecoveryKey(stdin, abortController.signal);
+      if (recoveryAction === "quit") {
+        return { completionAction: "quit", lastSnapshot };
+      }
+      cleanupKeyboard = setupKeyboardShortcutsFn(abortController, opts.log, stdin, opts.tuiState);
+      render();
     }
-    if (manageTerminal) cleanupKeyboard();
+  } finally {
+    bindControlSender(() => {});
+    if (manageKeyboard) cleanupKeyboard();
     if (altScreenActive) {
       write(ALT_SCREEN_OFF);
     }
@@ -1142,6 +1243,8 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
   const tuiState: TuiState = {
     scrollOffset: 0,
     viewOptions: { showBlockerDetail: true },
+    wipLimit: 1,
+    pendingWipLimit: undefined,
     mergeStrategy: "auto",
     bypassEnabled: false,
     ctrlCPending: false,
@@ -1149,11 +1252,13 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     showHelp: false,
     showControls: false,
     collaborationMode: "local",
+    pendingCollaborationMode: undefined,
     collaborationIntent: "local",
     collaborationJoinInputActive: false,
     collaborationJoinInputValue: "",
     collaborationBusy: false,
     reviewMode: "ninthwave-prs",
+    pendingReviewMode: undefined,
     panelMode,
     logBuffer,
     logScrollOffset: 0,
@@ -1168,6 +1273,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     onUpdate: () => {
       try { render(); } catch { /* non-fatal */ }
     },
+    engineDisconnected: false,
   };
 
   // Noop log for keyboard shortcuts (read-only mode has no orchestrator log)
@@ -1178,6 +1284,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     if (data.sessionStartedAt) {
       tuiState.viewOptions.sessionStartedAt = data.sessionStartedAt;
     }
+    tuiState.wipLimit = data.wipLimit ?? tuiState.wipLimit;
     tuiState.viewOptions.emptyState = data.viewOptions?.emptyState;
     // Refresh log entries from provider
     if (getLogEntries) {
@@ -1200,6 +1307,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     } else if (tuiState.showControls) {
       const controlsLines = renderControlsOverlay(termWidth, termRows, {
         collaborationMode: tuiState.collaborationMode,
+        pendingCollaborationMode: tuiState.pendingCollaborationMode,
         collaborationIntent: tuiState.collaborationIntent,
         sessionCode: tuiState.sessionCode,
         collaborationJoinInputActive: tuiState.collaborationJoinInputActive,
@@ -1207,9 +1315,12 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
         collaborationBusy: tuiState.collaborationBusy,
         collaborationError: tuiState.collaborationError,
         reviewMode: tuiState.reviewMode,
+        pendingReviewMode: tuiState.pendingReviewMode,
         mergeStrategy: tuiState.mergeStrategy,
+        pendingMergeStrategy: tuiState.pendingStrategy,
         bypassEnabled: tuiState.bypassEnabled,
         wipLimit: data.wipLimit,
+        pendingWipLimit: tuiState.pendingWipLimit,
       });
       const content = controlsLines.join("\n");
       write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
@@ -1695,6 +1806,47 @@ export function waitForCompletionKey(
           resolve("quit");
           break;
         // Ignore other keys
+      }
+    };
+
+    function cleanup() {
+      stdin.removeListener("data", onData);
+      signal?.removeEventListener("abort", onAbort);
+    }
+
+    stdin.on("data", onData);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export type EngineRecoveryAction = "restart" | "quit";
+
+export function waitForEngineRecoveryKey(
+  stdin: NodeJS.ReadStream,
+  signal?: AbortSignal,
+): Promise<EngineRecoveryAction> {
+  return new Promise<EngineRecoveryAction>((resolve) => {
+    if (signal?.aborted) {
+      resolve("quit");
+      return;
+    }
+
+    const onAbort = () => {
+      cleanup();
+      resolve("quit");
+    };
+
+    const onData = (key: string) => {
+      switch (key.toLowerCase()) {
+        case "r":
+          cleanup();
+          resolve("restart");
+          break;
+        case "q":
+        case "\x03":
+          cleanup();
+          resolve("quit");
+          break;
       }
     };
 
@@ -3424,7 +3576,7 @@ export async function cmdOrchestrate(
     sendControl: (command) => {
       sendRuntimeControl(command);
     },
-    getWipLimit: () => wipLimit,
+    getWipLimit: () => tuiState.pendingWipLimit ?? wipLimit,
   });
   const tuiState: TuiState = {
     scrollOffset: 0,
@@ -3437,9 +3589,11 @@ export async function cmdOrchestrate(
       collaborationJoinInputActive: false,
       collaborationJoinInputValue: "",
       collaborationBusy: false,
-      reviewMode: initialReviewMode,
-      ...(futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
+        reviewMode: initialReviewMode,
+        ...(futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
     },
+    wipLimit,
+    pendingWipLimit: undefined,
     mergeStrategy: orch.config.mergeStrategy,
     pendingStrategy: undefined,
     pendingStrategyTimer: undefined,
@@ -3450,11 +3604,13 @@ export async function cmdOrchestrate(
     showControls: false,
     controlsRowIndex: 0,
     collaborationMode: initialCollaborationMode,
+    pendingCollaborationMode: undefined,
     collaborationIntent: "local",
     collaborationJoinInputActive: false,
     collaborationJoinInputValue: "",
     collaborationBusy: false,
     reviewMode: initialReviewMode,
+    pendingReviewMode: undefined,
     panelMode: savedPanelMode,
     logBuffer,
     logScrollOffset: 0,
@@ -3466,7 +3622,6 @@ export async function cmdOrchestrate(
     detailContentLines: 0,
     savedLogScrollOffset: 0,
     statusLayout: null,
-    onExtendTimeout: (itemId) => orch.extendTimeout(itemId),
     ...runtimeControlHandlers,
     onPanelModeChange: (mode) => {
       writeLayoutPreference(projectRoot, mode);
@@ -3483,6 +3638,7 @@ export async function cmdOrchestrate(
     },
     sessionCode: crewCode ?? undefined,
     tmuxSessionName: tmuxOutsideSession ? tmuxSessionName : undefined,
+    engineDisconnected: false,
   };
 
   const handleEngineSnapshot = ({ state, pollSnapshot: snapshot, runtime, pollIntervalMs, interactiveTiming }: WatchEngineSnapshotEvent) => {
@@ -3519,12 +3675,7 @@ export async function cmdOrchestrate(
           },
         ]),
     );
-    tuiState.mergeStrategy = runtime.mergeStrategy;
-    tuiState.viewOptions.mergeStrategy = runtime.mergeStrategy;
-    tuiState.reviewMode = runtime.reviewMode;
-    tuiState.viewOptions.reviewMode = runtime.reviewMode;
-    tuiState.collaborationMode = runtime.collaborationMode;
-    tuiState.viewOptions.collaborationMode = runtime.collaborationMode;
+    applyRuntimeSnapshotToTuiState(tuiState, runtime);
     // Update crew status from broker
     if (crewBroker && crewCode) {
       const cs = crewBroker.getCrewStatus();
@@ -3964,6 +4115,8 @@ export async function cmdOrchestrate(
     let keepRunning = true;
     while (keepRunning) {
       if (tuiMode) {
+        cleanupKeyboard();
+        cleanupKeyboard = () => {};
         const childArgs = buildInteractiveEngineChildArgs(parsed, {
           itemIds: orch.getAllItems().map((item) => item.id),
           mergeStrategy: operatorLastSnapshot.runtime.mergeStrategy,
@@ -3987,7 +4140,11 @@ export async function cmdOrchestrate(
           initialSnapshot: operatorLastSnapshot,
           watchMode,
           manageTerminal: false,
+          manageKeyboard: true,
           abortController,
+          bindControlSender: (sender) => {
+            sendRuntimeControl = sender;
+          },
         });
         operatorLastSnapshot = operatorResult.lastSnapshot;
 

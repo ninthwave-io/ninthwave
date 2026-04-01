@@ -101,6 +101,10 @@ type CollaborationJoinSubmitHandler = (code: string) => void | CollaborationActi
 export interface TuiState {
   scrollOffset: number;
   viewOptions: ViewOptions;
+  /** Engine-confirmed WIP limit from the latest snapshot. */
+  wipLimit?: number;
+  /** Pending WIP limit request awaiting engine acknowledgement. */
+  pendingWipLimit?: number;
   /** Current merge strategy (per-daemon, cycled via Shift+Tab). */
   mergeStrategy: MergeStrategy;
   /** Pending merge strategy selection waiting for debounce to settle. */
@@ -125,6 +129,8 @@ export interface TuiState {
   controlsRowIndex?: number;
   /** Current collaboration mode (per-run, not persisted). */
   collaborationMode: CollaborationMode;
+  /** Pending collaboration mode awaiting engine acknowledgement. */
+  pendingCollaborationMode?: CollaborationMode;
   /** Active collaboration intent shown in the controls overlay. */
   collaborationIntent?: CollaborationIntent;
   /** Whether the controls overlay is capturing join-session text input. */
@@ -137,6 +143,8 @@ export interface TuiState {
   collaborationError?: string;
   /** Current AI review mode (per-run, not persisted). */
   reviewMode: ReviewMode;
+  /** Pending review mode awaiting engine acknowledgement. */
+  pendingReviewMode?: ReviewMode;
   /** Active page mode: status-only or logs-only. */
   panelMode: PanelMode;
   /** Ring buffer of log entries for the TUI log panel (max LOG_BUFFER_MAX). */
@@ -179,10 +187,59 @@ export interface TuiState {
   onUpdate?: () => void;
   /** Extend timeout for the currently selected item in grace period. */
   onExtendTimeout?: (itemId: string) => boolean;
+  /** Graceful shutdown request routed through the engine protocol. */
+  onShutdown?: () => void;
   /** Session code (if sharing via ninthwave.sh). Shown in help overlay. */
   sessionCode?: string;
   /** Tmux session name (when running outside tmux). Shown in help overlay. */
   tmuxSessionName?: string;
+  /** True when the operator lost its child engine and is showing recovery UI. */
+  engineDisconnected?: boolean;
+  /** Human-readable disconnect reason shown in the recovery overlay. */
+  engineDisconnectReason?: string;
+}
+
+export interface TuiRuntimeSnapshot {
+  mergeStrategy: MergeStrategy;
+  wipLimit: number;
+  reviewMode: ReviewMode;
+  collaborationMode: CollaborationMode;
+}
+
+export function applyRuntimeSnapshotToTuiState(
+  tuiState: TuiState,
+  runtime: TuiRuntimeSnapshot,
+): void {
+  tuiState.wipLimit = runtime.wipLimit;
+  tuiState.mergeStrategy = runtime.mergeStrategy;
+  tuiState.viewOptions.mergeStrategy = runtime.mergeStrategy;
+  tuiState.reviewMode = runtime.reviewMode;
+  tuiState.viewOptions.reviewMode = runtime.reviewMode;
+  tuiState.collaborationMode = runtime.collaborationMode;
+  tuiState.viewOptions.collaborationMode = runtime.collaborationMode;
+
+  if (tuiState.pendingStrategy === runtime.mergeStrategy) {
+    tuiState.pendingStrategy = undefined;
+    tuiState.pendingStrategyDeadlineMs = undefined;
+    tuiState.viewOptions.pendingStrategy = undefined;
+    tuiState.viewOptions.pendingStrategyCountdownSeconds = undefined;
+  }
+  if (tuiState.pendingReviewMode === runtime.reviewMode) {
+    tuiState.pendingReviewMode = undefined;
+  }
+  if (tuiState.pendingCollaborationMode === runtime.collaborationMode) {
+    tuiState.pendingCollaborationMode = undefined;
+  }
+  if (tuiState.pendingWipLimit === runtime.wipLimit) {
+    tuiState.pendingWipLimit = undefined;
+  }
+
+  if (!tuiState.collaborationJoinInputActive) {
+    tuiState.collaborationIntent = collaborationIntentFromMode(
+      tuiState.pendingCollaborationMode ?? runtime.collaborationMode,
+    );
+    tuiState.viewOptions.collaborationIntent = tuiState.collaborationIntent;
+  }
 }
 
 /**
@@ -270,20 +327,16 @@ export function setupKeyboardShortcuts(
       clearPendingStrategyTimer();
       clearPendingStrategyCountdownTimer();
       tuiState.pendingStrategyDeadlineMs = undefined;
-      tuiState.viewOptions.pendingStrategyCountdownSeconds = 0;
+      tuiState.viewOptions.pendingStrategyCountdownSeconds = undefined;
       tuiState.onUpdate?.();
-      tuiState.pendingStrategyTimer = setTimeout(() => {
-        const pendingStrategy = tuiState.pendingStrategy;
+      const pendingStrategy = tuiState.pendingStrategy;
+      if (!pendingStrategy || pendingStrategy === tuiState.mergeStrategy) {
         clearPendingStrategy();
-        if (!pendingStrategy || pendingStrategy === tuiState.mergeStrategy) {
-          tuiState.onUpdate?.();
-          return;
-        }
-        tuiState.mergeStrategy = pendingStrategy;
-        tuiState.viewOptions.mergeStrategy = pendingStrategy;
-        tuiState.onStrategyChange?.(pendingStrategy);
         tuiState.onUpdate?.();
-      }, 1);
+        return;
+      }
+      tuiState.onStrategyChange?.(pendingStrategy);
+      tuiState.onUpdate?.();
     }, STRATEGY_DEBOUNCE_MS);
   };
 
@@ -365,13 +418,13 @@ export function setupKeyboardShortcuts(
     }
 
     const nextMode = result?.mode ?? fallbackMode;
-    setCollaborationMode(nextMode);
+    tuiState.pendingCollaborationMode = nextMode;
     tuiState.collaborationBusy = false;
     tuiState.collaborationError = undefined;
     if (nextMode === "joined") {
       exitJoinInput(true);
     } else {
-      exitJoinInput();
+      exitJoinInput(true);
     }
     syncCollaborationView();
     tuiState.onUpdate?.();
@@ -467,15 +520,19 @@ export function setupKeyboardShortcuts(
     clampControlsRowIndex();
     const row = TUI_SETTINGS_ROWS[tuiState.controlsRowIndex ?? 0] ?? TUI_SETTINGS_ROWS[0]!;
     if (row.kind === "number") {
+      const baseLimit = tuiState.pendingWipLimit ?? tuiState.wipLimit ?? 1;
+      const nextLimit = Math.max(1, baseLimit + delta);
+      tuiState.pendingWipLimit = nextLimit === (tuiState.wipLimit ?? 1) ? undefined : nextLimit;
       tuiState.onWipChange?.(delta);
       return;
     }
 
     const options = runtimeOptionsForSettingsRow(row, tuiState.bypassEnabled);
     const currentValue = row.id === "collaboration_mode"
-      ? collaborationIntentToMode(tuiState.collaborationIntent ?? collaborationIntentFromMode(tuiState.collaborationMode))
+      ? (tuiState.pendingCollaborationMode
+        ?? collaborationIntentToMode(tuiState.collaborationIntent ?? collaborationIntentFromMode(tuiState.collaborationMode)))
       : row.id === "review_mode"
-        ? tuiState.reviewMode
+        ? (tuiState.pendingReviewMode ?? tuiState.reviewMode)
         : (tuiState.pendingStrategy ?? tuiState.mergeStrategy);
     const currentIdx = options.findIndex((option) => option.runtimeValue === currentValue);
     if (currentIdx < 0) return;
@@ -492,8 +549,7 @@ export function setupKeyboardShortcuts(
     if (row.id === "review_mode") {
       const oldMode = tuiState.reviewMode;
       const newMode = nextOption.runtimeValue as ReviewMode;
-      tuiState.reviewMode = newMode;
-      tuiState.viewOptions.reviewMode = newMode;
+      tuiState.pendingReviewMode = newMode === tuiState.reviewMode ? undefined : newMode;
       log({
         ts: new Date().toISOString(),
         level: "info",
@@ -559,7 +615,11 @@ export function setupKeyboardShortcuts(
     // q still exits immediately (discoverable via ? help overlay)
     if (key === "q") {
       log({ ts: new Date().toISOString(), level: "info", event: "keyboard_quit", key: "q" });
-      abortController.abort();
+      if (tuiState?.onShutdown) {
+        tuiState.onShutdown();
+      } else {
+        abortController.abort();
+      }
       return;
     }
 
@@ -569,7 +629,11 @@ export function setupKeyboardShortcuts(
         // Second press within 2s -- exit
         if (ctrlCTimer) clearTimeout(ctrlCTimer);
         log({ ts: new Date().toISOString(), level: "info", event: "keyboard_quit", key: "ctrl-c" });
-        abortController.abort();
+        if (tuiState?.onShutdown) {
+          tuiState.onShutdown();
+        } else {
+          abortController.abort();
+        }
         return;
       }
       if (tuiState) {
@@ -829,11 +893,17 @@ export function setupKeyboardShortcuts(
       }
       case "+":
       case "=": { // + (or = without shift) -- increase WIP limit
+        const baseLimit = tuiState.pendingWipLimit ?? tuiState.wipLimit ?? 1;
+        const nextLimit = Math.max(1, baseLimit + 1);
+        tuiState.pendingWipLimit = nextLimit === (tuiState.wipLimit ?? 1) ? undefined : nextLimit;
         tuiState.onWipChange?.(1);
         break;
       }
       case "-":
       case "_": { // - (or _ with shift) -- decrease WIP limit
+        const baseLimit = tuiState.pendingWipLimit ?? tuiState.wipLimit ?? 1;
+        const nextLimit = Math.max(1, baseLimit - 1);
+        tuiState.pendingWipLimit = nextLimit === (tuiState.wipLimit ?? 1) ? undefined : nextLimit;
         tuiState.onWipChange?.(-1);
         break;
       }
