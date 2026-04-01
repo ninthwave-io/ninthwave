@@ -45,7 +45,7 @@ function createMockMux(type: Multiplexer["type"] = "cmux"): MockMux {
     type,
     isAvailable: vi.fn(() => true),
     diagnoseUnavailable: vi.fn(() => "not available"),
-    launchWorkspace: vi.fn(() => "workspace:1"),
+    launchWorkspace: vi.fn(() => type === "headless" ? "headless:test" : "workspace:1"),
     splitPane: vi.fn(() => "pane:1"),
     sendMessage: vi.fn(() => true),
     writeInbox: vi.fn(),
@@ -288,6 +288,74 @@ describe("launchSingleItem", () => {
 
     expect(mockMux.launchWorkspace).toHaveBeenCalled();
     expect(result).toContain("Creating worktree for M-CI-1");
+  });
+
+  it("uses the runtime-resolved tmux backend instead of the ambient mux", async () => {
+    const ambientMux = createMockMux("cmux");
+    const resolvedMux = createMockMux("tmux");
+    const deps = createMockLaunchDeps();
+    const repo = setupTempRepo();
+    const workDir = setupWorkItemsDir(repo);
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+    const items = parseWorkItems(workDir, worktreeDir);
+    const item = items.find((i) => i.id === "M-CI-1")!;
+
+    const output = await captureOutput(() => {
+      const res = launchSingleItem(item, workDir, worktreeDir, repo, "claude", ambientMux, {
+        resolveMux: () => resolvedMux,
+      }, deps);
+      expect(res).not.toBeNull();
+    });
+
+    expect(ambientMux.launchWorkspace).not.toHaveBeenCalled();
+    expect(resolvedMux.launchWorkspace).toHaveBeenCalled();
+    expect(output).toContain("backend tmux");
+    expect(output).toContain("overriding cmux");
+  });
+
+  it("uses the runtime-resolved cmux backend inside a tmux session", async () => {
+    const ambientMux = createMockMux("tmux");
+    const resolvedMux = createMockMux("cmux");
+    const deps = createMockLaunchDeps();
+    const repo = setupTempRepo();
+    const workDir = setupWorkItemsDir(repo);
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+    const items = parseWorkItems(workDir, worktreeDir);
+    const item = items.find((i) => i.id === "M-CI-1")!;
+
+    await captureOutput(() => {
+      const res = launchSingleItem(item, workDir, worktreeDir, repo, "claude", ambientMux, {
+        resolveMux: () => resolvedMux,
+      }, deps);
+      expect(res).not.toBeNull();
+    });
+
+    expect(ambientMux.launchWorkspace).not.toHaveBeenCalled();
+    expect(resolvedMux.launchWorkspace).toHaveBeenCalled();
+  });
+
+  it("logs detached headless workers with their log path", async () => {
+    const ambientMux = createMockMux("cmux");
+    const resolvedMux = createMockMux("headless");
+    resolvedMux.launchWorkspace.mockReturnValue("headless:M-CI-1");
+    const deps = createMockLaunchDeps();
+    const repo = setupTempRepo();
+    const workDir = setupWorkItemsDir(repo);
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+    const items = parseWorkItems(workDir, worktreeDir);
+    const item = items.find((i) => i.id === "M-CI-1")!;
+
+    const output = await captureOutput(() => {
+      const res = launchSingleItem(item, workDir, worktreeDir, repo, "claude", ambientMux, {
+        resolveMux: () => resolvedMux,
+      }, deps);
+      expect(res).not.toBeNull();
+      expect(res!.workspaceRef).toBe("headless:M-CI-1");
+    });
+
+    expect(output).toContain("backend headless");
+    expect(output).toContain("Headless worker detached for M-CI-1");
+    expect(output).toContain("Logs:");
   });
 
   it("clears stale inbox messages before launching a worker", async () => {

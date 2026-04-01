@@ -12,6 +12,8 @@ import { join } from "path";
 import { userStateDir } from "./daemon.ts";
 import type { Multiplexer, MuxType } from "./mux.ts";
 
+export const HEADLESS_WORKSPACE_PREFIX = "headless:";
+
 export interface HeadlessIO {
   existsSync: typeof existsSync;
   mkdirSync: typeof mkdirSync;
@@ -73,6 +75,22 @@ function isPidAlive(killFn: typeof process.kill, pid: number): boolean {
   }
 }
 
+export function formatHeadlessWorkspaceRef(ref: string): string {
+  return ref.startsWith(HEADLESS_WORKSPACE_PREFIX)
+    ? ref
+    : `${HEADLESS_WORKSPACE_PREFIX}${ref}`;
+}
+
+export function isHeadlessWorkspaceRef(ref: string): boolean {
+  return ref.startsWith(HEADLESS_WORKSPACE_PREFIX);
+}
+
+export function stripHeadlessWorkspaceRef(ref: string): string {
+  return isHeadlessWorkspaceRef(ref)
+    ? ref.slice(HEADLESS_WORKSPACE_PREFIX.length)
+    : ref;
+}
+
 export function headlessLogDir(projectRoot: string): string {
   return join(userStateDir(projectRoot), "logs");
 }
@@ -82,11 +100,11 @@ export function headlessPidDir(projectRoot: string): string {
 }
 
 export function headlessLogFilePath(projectRoot: string, ref: string): string {
-  return join(headlessLogDir(projectRoot), `${encodeRef(ref)}.log`);
+  return join(headlessLogDir(projectRoot), `${encodeRef(stripHeadlessWorkspaceRef(ref))}.log`);
 }
 
 export function headlessPidFilePath(projectRoot: string, ref: string): string {
-  return join(headlessPidDir(projectRoot), `${encodeRef(ref)}.pid`);
+  return join(headlessPidDir(projectRoot), `${encodeRef(stripHeadlessWorkspaceRef(ref))}.pid`);
 }
 
 export class HeadlessAdapter implements Multiplexer {
@@ -110,7 +128,7 @@ export class HeadlessAdapter implements Multiplexer {
   }
 
   launchWorkspace(cwd: string, command: string, todoId?: string): string | null {
-    const ref = todoId?.trim() || `headless-${Date.now()}`;
+    const ref = formatHeadlessWorkspaceRef(todoId?.trim() || `headless-${Date.now()}`);
     const logDir = headlessLogDir(this.projectRoot);
     const pidDir = headlessPidDir(this.projectRoot);
     const logPath = headlessLogFilePath(this.projectRoot, ref);
@@ -168,7 +186,7 @@ export class HeadlessAdapter implements Multiplexer {
             this.deps.io.unlinkSync(pidPath);
             continue;
           }
-          refs.push(decodeRef(entry.slice(0, -4)));
+          refs.push(formatHeadlessWorkspaceRef(decodeRef(entry.slice(0, -4))));
         } catch {
           try { this.deps.io.unlinkSync(pidPath); } catch { /* best-effort */ }
         }

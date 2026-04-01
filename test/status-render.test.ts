@@ -582,6 +582,14 @@ describe("formatItemRow", () => {
     expect(row).not.toContain("40%");
     expect(row).not.toContain("Writing tests");
   });
+
+  it("labels headless workers clearly in the row", () => {
+    const item = makeStatusItem({
+      workspaceRef: "headless:H-BES-3",
+    });
+    const row = stripAnsi(formatItemRow(item, 40));
+    expect(row).toContain("[headless]");
+  });
 });
 
 describe("formatInlineProgress", () => {
@@ -3688,6 +3696,18 @@ describe("formatItemDetail", () => {
     const text = lines.map(stripAnsi).join("\n");
     expect(text).not.toContain("Cost:");
   });
+
+  it("surfaces detached headless runtime in the detail panel", () => {
+    const item = makeStatusItem({
+      id: "H-HL-1",
+      state: "implementing",
+      workspaceRef: "headless:H-HL-1",
+    });
+    const lines = formatItemDetail(item);
+    const text = lines.map(stripAnsi).join("\n");
+    expect(text).toContain("Runtime:");
+    expect(text).toContain("detached headless worker");
+  });
 });
 
 // ── Item detail overlay ─────────────────────────────────────────────
@@ -3786,6 +3806,21 @@ describe("renderDetailOverlay", () => {
     const lines = renderDetailOverlay(item, 100, 40);
     const text = lines.map(stripAnsi).join("\n");
     expect(text).toContain("/tmp/worktrees/H-WT-1");
+  });
+
+  it("shows headless mode instead of a tmux attach hint", () => {
+    const item = makeStatusItem({
+      id: "H-HL-2",
+      state: "implementing",
+      workspaceRef: "headless:H-HL-2",
+    });
+    const lines = renderDetailOverlay(item, 80, 40);
+    const text = lines.map(stripAnsi).join("\n");
+    expect(text).toContain("Workspace:");
+    expect(text).toContain("headless:H-HL-2");
+    expect(text).toContain("Mode:");
+    expect(text).toContain("detached headless worker");
+    expect(text).not.toContain("tmux attach -t");
   });
 
   it("fills terminal height with blank lines", () => {

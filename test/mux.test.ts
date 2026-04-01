@@ -22,6 +22,7 @@ import {
   createMux,
   detectMuxType,
   getMux,
+  muxTypeForWorkspaceRef,
   resolveBackend,
   type DetectMuxDeps,
   type Multiplexer,
@@ -383,5 +384,20 @@ describe("createMux", () => {
     const mux = createMux("cmux");
     expect(mux).toBeInstanceOf(CmuxAdapter);
     expect(mux.type).toBe("cmux");
+  });
+});
+
+describe("muxTypeForWorkspaceRef", () => {
+  it("classifies cmux refs", () => {
+    expect(muxTypeForWorkspaceRef("workspace:7")).toBe("cmux");
+  });
+
+  it("classifies tmux refs", () => {
+    expect(muxTypeForWorkspaceRef("nw-dev:1")).toBe("tmux");
+  });
+
+  it("classifies headless refs", () => {
+    expect(muxTypeForWorkspaceRef("headless:H-BES-3")).toBe("headless");
+    expect(muxTypeForWorkspaceRef("H-BES-3")).toBe("headless");
   });
 });

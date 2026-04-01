@@ -38,9 +38,9 @@ describe("HeadlessAdapter", () => {
 
     const ref = adapter.launchWorkspace("/tmp/worktree", "bun run worker", "H-RSH-4");
 
-    expect(ref).toBe("H-RSH-4");
+    expect(ref).toBe("headless:H-RSH-4");
     expect(child.unref).toHaveBeenCalled();
-    expect(readFileSync(headlessPidFilePath(projectRoot, "H-RSH-4"), "utf-8")).toBe("4242");
+    expect(readFileSync(headlessPidFilePath(projectRoot, ref!), "utf-8")).toBe("4242");
     expect(existsSync(headlessLogDir(projectRoot))).toBe(true);
     expect(existsSync(headlessPidDir(projectRoot))).toBe(true);
 
@@ -71,7 +71,7 @@ describe("HeadlessAdapter", () => {
     mkdirSync(headlessLogDir(projectRoot), { recursive: true });
     writeFileSync(headlessLogFilePath(projectRoot, "H-RSH-4"), "one\ntwo\nthree\nfour\n");
 
-    expect(adapter.readScreen("H-RSH-4", 2)).toBe("three\nfour");
+    expect(adapter.readScreen("headless:H-RSH-4", 2)).toBe("three\nfour");
     expect(adapter.readScreen("missing", 2)).toBe("");
   });
 
@@ -90,7 +90,7 @@ describe("HeadlessAdapter", () => {
     writeFileSync(headlessPidFilePath(projectRoot, "H-ALIVE-1"), "101");
     writeFileSync(headlessPidFilePath(projectRoot, "H-DEAD-1"), "202");
 
-    expect(adapter.listWorkspaces()).toBe("H-ALIVE-1");
+    expect(adapter.listWorkspaces()).toBe("headless:H-ALIVE-1");
     expect(existsSync(headlessPidFilePath(projectRoot, "H-ALIVE-1"))).toBe(true);
     expect(existsSync(headlessPidFilePath(projectRoot, "H-DEAD-1"))).toBe(false);
   });
@@ -118,7 +118,7 @@ describe("HeadlessAdapter", () => {
     mkdirSync(headlessPidDir(projectRoot), { recursive: true });
     writeFileSync(headlessPidFilePath(projectRoot, "H-RSH-4"), "101");
 
-    expect(adapter.closeWorkspace("H-RSH-4")).toBe(true);
+    expect(adapter.closeWorkspace("headless:H-RSH-4")).toBe(true);
     expect(kill).toHaveBeenCalledWith(101, "SIGTERM");
     expect(kill).not.toHaveBeenCalledWith(101, "SIGKILL");
     expect(sleep).toHaveBeenCalledWith(5_000);
@@ -139,7 +139,7 @@ describe("HeadlessAdapter", () => {
     mkdirSync(headlessPidDir(projectRoot), { recursive: true });
     writeFileSync(headlessPidFilePath(projectRoot, "H-RSH-4"), "101");
 
-    expect(adapter.closeWorkspace("H-RSH-4")).toBe(true);
+    expect(adapter.closeWorkspace("headless:H-RSH-4")).toBe(true);
     expect(kill).not.toHaveBeenCalledWith(101, "SIGTERM");
     expect(existsSync(headlessPidFilePath(projectRoot, "H-RSH-4"))).toBe(false);
   });

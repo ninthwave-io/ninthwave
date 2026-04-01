@@ -35,7 +35,7 @@ import { writeInbox } from "./inbox.ts";
 import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, getDefaultBranch as ghGetDefaultBranch, ensureDomainLabels, listPrComments, updatePrComment, ghFailureKindLabel } from "../gh.ts";
 import { fetchOrigin, ffMerge, gitAdd, gitCommit, gitPush, daemonRebase } from "../git.ts";
 import { run } from "../shell.ts";
-import { type Multiplexer, createMux, resolveBackend } from "../mux.ts";
+import { type Multiplexer, createMux, muxTypeForWorkspaceRef, resolveBackend } from "../mux.ts";
 import { resolveCmuxBinary } from "../cmux-resolve.ts";
 import { resolveSessionName } from "../tmux.ts";
 import { reconcile } from "./reconcile.ts";
@@ -937,6 +937,10 @@ export function orchestratorItemsToStatusItems(
   });
 }
 
+function muxForWorkspaceRef(workspaceRef: string, projectRoot: string): Multiplexer {
+  return createMux(muxTypeForWorkspaceRef(workspaceRef), projectRoot);
+}
+
 export function getVisibleSelectableItemIds(items: StatusItem[]): string[] {
   return buildVisibleStatusLayoutMetadata(items).selectableItemIds;
 }
@@ -1723,6 +1727,7 @@ export function syncWorkerDisplay(
   orch: Orchestrator,
   snapshot: PollSnapshot,
   mux: Multiplexer,
+  projectRoot: string,
 ): void {
   const heartbeatMap = new Map<string, ItemSnapshot>();
   for (const snap of snapshot.items) {
@@ -1746,10 +1751,13 @@ export function syncWorkerDisplay(
 
     const display = statusDisplayForState(item.state, { rebaseRequested: item.rebaseRequested, reviewRound: item.reviewRound });
     const statusKey = `ninthwave-${item.id}`;
+    const workspaceMux = muxTypeForWorkspaceRef(item.workspaceRef) === mux.type
+      ? mux
+      : muxForWorkspaceRef(item.workspaceRef, projectRoot);
 
     // Set status pill (best-effort)
     try {
-      mux.setStatus(item.workspaceRef, statusKey, display.text, display.icon, display.color);
+      workspaceMux.setStatus(item.workspaceRef, statusKey, display.text, display.icon, display.color);
     } catch { /* best-effort */ }
 
     // Set progress bar
@@ -1760,13 +1768,13 @@ export function syncWorkerDisplay(
       if (workerActiveStates.has(item.state)) {
         // Worker is active: use heartbeat progress/label, default to 0 with no label
         if (heartbeat) {
-          mux.setProgress(item.workspaceRef, heartbeat.progress, heartbeat.label);
+          workspaceMux.setProgress(item.workspaceRef, heartbeat.progress, heartbeat.label);
         } else {
-          mux.setProgress(item.workspaceRef, 0);
+          workspaceMux.setProgress(item.workspaceRef, 0);
         }
       } else {
         // Worker is idle: 1.0 (complete), no label -- status pill carries the message
-        mux.setProgress(item.workspaceRef, 1);
+        workspaceMux.setProgress(item.workspaceRef, 1);
       }
     } catch { /* best-effort */ }
   }
@@ -3528,6 +3536,19 @@ export async function cmdOrchestrate(
       info(`Tip: ${resolvedBackend.fallback.reason}`);
     }
   }
+  const muxForWorkspaceRef = (workspaceRef: string): Multiplexer =>
+    createMux(muxTypeForWorkspaceRef(workspaceRef), projectRoot);
+  const resolveLaunchMux = (): Multiplexer => {
+    const runtimeResolvedBackend = resolveBackend({
+      env: process.env,
+      checkBinary: (name: string): boolean => {
+        if (name === "cmux") return resolveCmuxBinary() !== null;
+        return Bun.which(name) !== null;
+      },
+      savedBackendMode: startupBackendMode,
+    });
+    return createMux(runtimeResolvedBackend.effective, projectRoot);
+  };
 
   // Pre-flight: fail fast if the mux backend is not usable (binary missing
   // or no active session). Without this, workers launch and immediately fail
@@ -3628,8 +3649,8 @@ export async function cmdOrchestrate(
     upsertOrchestratorComment: (repoRoot, prNumber, itemId, eventLine) =>
       upsertOrchestratorComment(repoRoot, prNumber, itemId, eventLine),
     writeInbox: (targetRoot, itemId, msg) => writeInbox(targetRoot, itemId, msg),
-    closeWorkspace: (ref) => mux.closeWorkspace(ref),
-    readScreen: (ref, lines) => mux.readScreen(ref, lines),
+    closeWorkspace: (ref) => muxForWorkspaceRef(ref).closeWorkspace(ref),
+    readScreen: (ref, lines) => muxForWorkspaceRef(ref).readScreen(ref, lines),
     fetchOrigin,
     ffMerge,
     checkPrMergeable,
@@ -3638,14 +3659,19 @@ export async function cmdOrchestrate(
       log({ ts: new Date().toISOString(), level: "warn", event: "orchestrator_warning", message }),
     launchReview: (itemId, prNumber, repoRoot, implementerWorktreePath, itemAiTool) => {
       const autoFix = orch.config.reviewAutoFix;
-      const result = launchReviewWorker(prNumber, itemId, autoFix, repoRoot, itemAiTool ?? aiTool, mux, { implementerWorktreePath, hubRepoNwo });
+      const result = launchReviewWorker(prNumber, itemId, autoFix, repoRoot, itemAiTool ?? aiTool, mux, {
+        implementerWorktreePath,
+        hubRepoNwo,
+        projectRoot,
+        resolveMux: resolveLaunchMux,
+      });
       if (!result) return null;
       return { workspaceRef: result.workspaceRef, verdictPath: result.verdictPath };
     },
     bootstrapRepo: (alias, projRoot) => bootstrapRepo(alias, projRoot),
     cleanReview: (itemId, reviewWorkspaceRef) => {
       // Close the review workspace
-      try { mux.closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
+      try { muxForWorkspaceRef(reviewWorkspaceRef).closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
       // Clean the review worktree if it exists (only for direct/pr modes)
       try {
         cleanSingleWorktree(`review-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
@@ -3653,12 +3679,16 @@ export async function cmdOrchestrate(
       return true;
     },
     launchRebaser: (itemId, prNumber, repoRoot, itemAiTool) => {
-      const result = launchRebaserWorker(prNumber, itemId, repoRoot, itemAiTool ?? aiTool, mux, { hubRepoNwo });
+      const result = launchRebaserWorker(prNumber, itemId, repoRoot, itemAiTool ?? aiTool, mux, {
+        hubRepoNwo,
+        projectRoot,
+        resolveMux: resolveLaunchMux,
+      });
       if (!result) return null;
       return { workspaceRef: result.workspaceRef };
     },
     cleanRebaser: (itemId, rebaserWorkspaceRef) => {
-      try { mux.closeWorkspace(rebaserWorkspaceRef); } catch { /* best-effort */ }
+      try { muxForWorkspaceRef(rebaserWorkspaceRef).closeWorkspace(rebaserWorkspaceRef); } catch { /* best-effort */ }
       return true;
     },
     setCommitStatus: (repoRoot, prNumber, state, context, description) => {
@@ -3673,12 +3703,14 @@ export async function cmdOrchestrate(
       const result = launchForwardFixerWorker(itemId, mergeCommitSha, repoRoot, itemAiTool ?? aiTool, mux, {
         hubRepoNwo,
         defaultBranch,
+        projectRoot,
+        resolveMux: resolveLaunchMux,
       });
       if (!result) return null;
       return { worktreePath: result.worktreePath, workspaceRef: result.workspaceRef };
     },
     cleanForwardFixer: (itemId, fixForwardWorkspaceRef) => {
-      try { mux.closeWorkspace(fixForwardWorkspaceRef); } catch { /* best-effort */ }
+      try { muxForWorkspaceRef(fixForwardWorkspaceRef).closeWorkspace(fixForwardWorkspaceRef); } catch { /* best-effort */ }
       try {
         cleanSingleWorktree(`ninthwave-fix-forward-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
       } catch { /* best-effort -- forward-fixer worktree may already be cleaned */ }
@@ -4047,12 +4079,14 @@ export async function cmdOrchestrate(
           const result = launchReviewWorker(prNumber, extItemId, autoFix, repoRoot, aiTool, mux, {
             reviewType: "external",
             hubRepoNwo,
+            projectRoot,
+            resolveMux: resolveLaunchMux,
           });
           if (!result) return null;
           return { workspaceRef: result.workspaceRef };
         },
         cleanReview: (reviewWorkspaceRef) => {
-          try { mux.closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
+          try { muxForWorkspaceRef(reviewWorkspaceRef).closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
           return true;
         },
         log,
@@ -4079,7 +4113,7 @@ export async function cmdOrchestrate(
         }),
         monitorDeps: {
           listWorkspaces: () => mux.listWorkspaces(),
-          closeWorkspace: (ref) => mux.closeWorkspace(ref),
+          closeWorkspace: (ref) => muxForWorkspaceRef(ref).closeWorkspace(ref),
         },
         aiTool,
         triggerDir: scheduleTriggerDir(projectRoot),
@@ -4102,9 +4136,9 @@ export async function cmdOrchestrate(
     actionDeps,
     getFreeMem: getAvailableMemory,
     reconcile,
-    readScreen: (ref, lines) => mux.readScreen(ref, lines),
+    readScreen: (ref, lines) => muxForWorkspaceRef(ref).readScreen(ref, lines),
     syncDisplay: (o, snap) => {
-      syncWorkerDisplay(o, snap, mux);
+      syncWorkerDisplay(o, snap, mux, projectRoot);
       tuiState.viewOptions.apiErrorCount = snap.apiErrorCount ?? 0;
       tuiState.viewOptions.apiErrorSummary = snap.apiErrorSummary;
     },
@@ -4455,7 +4489,7 @@ export async function cmdOrchestrate(
           for (const item of operatorLastSnapshot.daemonState.items) {
             if (item.state !== "done") continue;
             try {
-              if (item.workspaceRef) mux.closeWorkspace(item.workspaceRef);
+              if (item.workspaceRef) muxForWorkspaceRef(item.workspaceRef).closeWorkspace(item.workspaceRef);
               cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
             } catch {
               // Best-effort cleanup.
@@ -4531,7 +4565,7 @@ export async function cmdOrchestrate(
     for (const item of orch.getAllItems()) {
       if (terminalStates.has(item.state) && item.workspaceRef) {
         try {
-          mux.closeWorkspace(item.workspaceRef);
+          muxForWorkspaceRef(item.workspaceRef).closeWorkspace(item.workspaceRef);
           closedWorkspaces.push(item.id);
         } catch {
           // Non-fatal -- best-effort cleanup
