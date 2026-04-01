@@ -296,6 +296,176 @@ export function createRuntimeControlHandlers(
   };
 }
 
+export const INTERACTIVE_WATCH_STAGE_WARN_MS = {
+  eventLoopLag: 150,
+  poll: 250,
+  actionExecution: 250,
+  mainRefresh: 250,
+  displaySync: 100,
+  render: 100,
+} as const;
+
+export type InteractiveWatchStageName = keyof typeof INTERACTIVE_WATCH_STAGE_WARN_MS;
+
+export interface InteractiveWatchTimingsMs {
+  eventLoopLag: number;
+  poll: number;
+  actionExecution: number;
+  mainRefresh: number;
+  displaySync: number;
+  render: number;
+  totalBlocking: number;
+}
+
+export interface InteractiveWatchTiming {
+  iteration: number;
+  actionCount: number;
+  actionTypes: Action["type"][];
+  timingsMs: InteractiveWatchTimingsMs;
+}
+
+export interface EventLoopLagSnapshot {
+  maxLagMs: number;
+  sampleCount: number;
+  lastSampleAtMs?: number;
+}
+
+export interface EventLoopLagSamplerDeps {
+  sampleIntervalMs?: number;
+  now?: () => number;
+  setTimeoutFn?: typeof setTimeout;
+  clearTimeoutFn?: typeof clearTimeout;
+}
+
+export interface EventLoopLagSampler {
+  start: () => void;
+  stop: () => void;
+  drain: () => EventLoopLagSnapshot;
+}
+
+const INTERACTIVE_WATCH_LAG_SAMPLE_INTERVAL_MS = 50;
+const INTERACTIVE_WATCH_STAGE_LOG_NAMES: Record<InteractiveWatchStageName, string> = {
+  eventLoopLag: "event_loop_lag",
+  poll: "poll",
+  actionExecution: "action_execution",
+  mainRefresh: "main_refresh",
+  displaySync: "display_sync",
+  render: "render",
+};
+
+function createInteractiveWatchTiming(iteration: number, actionTypes: Action["type"][]): InteractiveWatchTiming {
+  return {
+    iteration,
+    actionCount: actionTypes.length,
+    actionTypes,
+    timingsMs: {
+      eventLoopLag: 0,
+      poll: 0,
+      actionExecution: 0,
+      mainRefresh: 0,
+      displaySync: 0,
+      render: 0,
+      totalBlocking: 0,
+    },
+  };
+}
+
+function elapsedMs(nowMs: () => number, startMs: number): number {
+  return Math.max(0, nowMs() - startMs);
+}
+
+function finalizeInteractiveWatchTiming(
+  log: (entry: LogEntry) => void,
+  timing: InteractiveWatchTiming,
+  eventLoopLagMs: number,
+): void {
+  timing.timingsMs.eventLoopLag = eventLoopLagMs;
+  timing.timingsMs.totalBlocking = timing.timingsMs.poll
+    + timing.timingsMs.actionExecution
+    + timing.timingsMs.mainRefresh
+    + timing.timingsMs.displaySync
+    + timing.timingsMs.render;
+
+  log({
+    ts: new Date().toISOString(),
+    level: "info",
+    event: "interactive_watch_timing",
+    iteration: timing.iteration,
+    actionCount: timing.actionCount,
+    actionTypes: timing.actionTypes,
+    timingsMs: timing.timingsMs,
+  });
+
+  for (const stage of Object.keys(INTERACTIVE_WATCH_STAGE_WARN_MS) as InteractiveWatchStageName[]) {
+    const durationMs = timing.timingsMs[stage];
+    const thresholdMs = INTERACTIVE_WATCH_STAGE_WARN_MS[stage];
+    if (durationMs < thresholdMs) continue;
+    log({
+      ts: new Date().toISOString(),
+      level: "warn",
+      event: "interactive_watch_stall",
+      iteration: timing.iteration,
+      stage: INTERACTIVE_WATCH_STAGE_LOG_NAMES[stage],
+      durationMs,
+      thresholdMs,
+      actionCount: timing.actionCount,
+      actionTypes: timing.actionTypes,
+      timingsMs: timing.timingsMs,
+      message: `Interactive watch ${INTERACTIVE_WATCH_STAGE_LOG_NAMES[stage]} took ${durationMs}ms`,
+    });
+  }
+}
+
+export function createEventLoopLagSampler(
+  deps: EventLoopLagSamplerDeps = {},
+): EventLoopLagSampler {
+  const now = deps.now ?? Date.now;
+  const sampleIntervalMs = deps.sampleIntervalMs ?? INTERACTIVE_WATCH_LAG_SAMPLE_INTERVAL_MS;
+  const setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
+  const clearTimeoutFn = deps.clearTimeoutFn ?? clearTimeout;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let expectedAtMs = 0;
+  let running = false;
+  let maxLagMs = 0;
+  let sampleCount = 0;
+  let lastSampleAtMs: number | undefined;
+
+  const schedule = () => {
+    expectedAtMs = now() + sampleIntervalMs;
+    timer = setTimeoutFn(() => {
+      const sampledAtMs = now();
+      const lagMs = Math.max(0, sampledAtMs - expectedAtMs);
+      maxLagMs = Math.max(maxLagMs, lagMs);
+      sampleCount += 1;
+      lastSampleAtMs = sampledAtMs;
+      if (running) schedule();
+    }, sampleIntervalMs);
+  };
+
+  return {
+    start: () => {
+      if (running) return;
+      running = true;
+      schedule();
+    },
+    stop: () => {
+      running = false;
+      if (timer) {
+        clearTimeoutFn(timer);
+        timer = undefined;
+      }
+    },
+    drain: () => {
+      const snapshot = { maxLagMs, sampleCount, lastSampleAtMs };
+      maxLagMs = 0;
+      sampleCount = 0;
+      lastSampleAtMs = undefined;
+      return snapshot;
+    },
+  };
+}
+
 // ── TUI mode helpers ────────────────────────────────────────────────
 
 /**
@@ -1577,8 +1747,8 @@ export interface OrchestrateLoopDeps {
   reconcile?: (workDir: string, worktreeDir: string, projectRoot: string) => void;
   /** Read screen content from a worker workspace for telemetry capture. */
   readScreen?: (ref: string, lines?: number) => string;
-  /** Called after each poll cycle with current items. Used for daemon state persistence and TUI countdown. */
-  onPollComplete?: (items: OrchestratorItem[], snapshot: PollSnapshot, pollIntervalMs?: number) => void;
+  /** Called after each poll cycle with current items. Used for daemon state persistence, TUI countdown, and render timing. */
+  onPollComplete?: (items: OrchestratorItem[], snapshot: PollSnapshot, pollIntervalMs?: number, interactiveTiming?: InteractiveWatchTiming) => void;
   /** Sync cmux sidebar display for active workers after each poll cycle. */
   syncDisplay?: (orch: Orchestrator, snapshot: PollSnapshot) => void;
   /** Dependencies for external PR review processing. When present and reviewExternal is enabled, external PRs are scanned and reviewed. */
@@ -1591,6 +1761,11 @@ export interface OrchestrateLoopDeps {
   readTokenUsage?: (item: OrchestratorItem, action: Action, ctx: ExecutionContext) => TokenUsage | undefined;
   /** Schedule dependencies. When present, scheduled task processing is active. */
   scheduleDeps?: ScheduleLoopDeps;
+  /** Injectable clock for interactive watch timing tests. Defaults to Date.now. */
+  nowMs?: () => number;
+  /** Injectable timer hooks for event-loop lag sampling tests. */
+  setTimeoutFn?: typeof setTimeout;
+  clearTimeoutFn?: typeof clearTimeout;
   /**
    * Show the post-completion prompt and wait for user choice.
    * Returns the chosen action (run-more, clean, quit).
@@ -1649,6 +1824,16 @@ export async function orchestrateLoop(
   signal?: AbortSignal,
 ): Promise<OrchestrateLoopResult> {
   const { log } = deps;
+  const nowMs = deps.nowMs ?? Date.now;
+  const lagSampler = config.tuiMode
+    ? createEventLoopLagSampler({
+        now: nowMs,
+        setTimeoutFn: deps.setTimeoutFn,
+        clearTimeoutFn: deps.clearTimeoutFn,
+      })
+    : undefined;
+  lagSampler?.start();
+  let pendingInteractiveTiming: InteractiveWatchTiming | undefined;
 
   // Wire onTransition callback for structured transition logging.
   // This fires from inside Orchestrator.transition() on every state change,
@@ -1806,37 +1991,44 @@ export async function orchestrateLoop(
     return newItems;
   };
 
-  while (true) {
-    __iterations++;
-    if (config.maxIterations != null && __iterations > config.maxIterations) {
-      const items = orch.getAllItems();
-      log({
-        ts: new Date().toISOString(),
-        level: "error",
-        event: "max_iterations_exceeded",
-        iterations: __iterations,
-        limit: config.maxIterations,
-        staleFor: __iterations - __lastTransitionIter,
-        itemDetails: items.map((i) => ({
-          id: i.id,
-          state: i.state,
-          lastTransition: i.lastTransition,
-          prNumber: i.prNumber,
-          ciFailCount: i.ciFailCount,
-          retryCount: i.retryCount,
-          workspaceRef: i.workspaceRef,
-        })),
-        lastSnapshot: __lastSnapshot,
-        lastActions: __lastActions.map((a) => ({ type: a.type, itemId: a.itemId })),
-        rssMB: Math.round(process.memoryUsage.rss() / (1024 * 1024)),
-      });
-      break;
-    }
+  try {
+    while (true) {
+      __iterations++;
 
-    if (signal?.aborted) {
-      log({ ts: new Date().toISOString(), level: "info", event: "shutdown", reason: "SIGINT" });
-      break;
-    }
+      if (pendingInteractiveTiming) {
+        finalizeInteractiveWatchTiming(log, pendingInteractiveTiming, lagSampler?.drain().maxLagMs ?? 0);
+        pendingInteractiveTiming = undefined;
+      }
+
+      if (config.maxIterations != null && __iterations > config.maxIterations) {
+        const items = orch.getAllItems();
+        log({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "max_iterations_exceeded",
+          iterations: __iterations,
+          limit: config.maxIterations,
+          staleFor: __iterations - __lastTransitionIter,
+          itemDetails: items.map((i) => ({
+            id: i.id,
+            state: i.state,
+            lastTransition: i.lastTransition,
+            prNumber: i.prNumber,
+            ciFailCount: i.ciFailCount,
+            retryCount: i.retryCount,
+            workspaceRef: i.workspaceRef,
+          })),
+          lastSnapshot: __lastSnapshot,
+          lastActions: __lastActions.map((a) => ({ type: a.type, itemId: a.itemId })),
+          rssMB: Math.round(process.memoryUsage.rss() / (1024 * 1024)),
+        });
+        break;
+      }
+
+      if (signal?.aborted) {
+        log({ ts: new Date().toISOString(), level: "info", event: "shutdown", reason: "SIGINT" });
+        break;
+      }
 
     // Check if all items are in terminal state
     const allItems = orch.getAllItems();
@@ -1921,13 +2113,13 @@ export async function orchestrateLoop(
       break;
     }
 
-    if (config.watch && deps.scanWorkItems) {
-      const nowWatchScanMs = Date.now();
-      if (nowWatchScanMs - lastWatchScanMs >= watchIntervalMs) {
-        lastWatchScanMs = nowWatchScanMs;
-        scanForNewWatchItems();
+      if (config.watch && deps.scanWorkItems) {
+        const nowWatchScanMs = Date.now();
+        if (nowWatchScanMs - lastWatchScanMs >= watchIntervalMs) {
+          lastWatchScanMs = nowWatchScanMs;
+          scanForNewWatchItems();
+        }
       }
-    }
 
     // Capture pre-transition states for logging
     const prevStates = new Map<string, OrchestratorItemState>();
@@ -1936,20 +2128,20 @@ export async function orchestrateLoop(
     }
 
     // Memory-aware WIP: adjust effective limit based on available free memory
-    const freeMemBytes = (deps.getFreeMem ?? freemem)();
-    const memoryWip = calculateMemoryWipLimit(orch.config.wipLimit, freeMemBytes);
-    orch.setEffectiveWipLimit(memoryWip);
+      const freeMemBytes = (deps.getFreeMem ?? freemem)();
+      const memoryWip = calculateMemoryWipLimit(orch.config.wipLimit, freeMemBytes);
+      orch.setEffectiveWipLimit(memoryWip);
 
-    if (memoryWip < orch.config.wipLimit) {
-      log({
-        ts: new Date().toISOString(),
-        level: "info",
-        event: "wip_reduced_memory",
-        configuredWip: orch.config.wipLimit,
-        effectiveWip: memoryWip,
-        freeMemMB: Math.round(freeMemBytes / (1024 * 1024)),
-      });
-    }
+      if (memoryWip < orch.config.wipLimit) {
+        log({
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "wip_reduced_memory",
+          configuredWip: orch.config.wipLimit,
+          effectiveWip: memoryWip,
+          freeMemMB: Math.round(freeMemBytes / (1024 * 1024)),
+        });
+      }
 
     // Crew mode: sync active items to broker (fire-and-forget, before snapshot)
     // Clear author cache each cycle to avoid stale data across syncs.
@@ -1977,7 +2169,7 @@ export async function orchestrateLoop(
 
     // ── Scheduled task processing ─────────────────────────────────
     // Gated by 30s interval check to avoid excessive filesystem reads.
-    if (deps.scheduleDeps) {
+      if (deps.scheduleDeps) {
       const SCHEDULE_CHECK_INTERVAL_MS = 30_000;
       const nowMs = Date.now();
       if (nowMs - lastScheduleCheckMs >= SCHEDULE_CHECK_INTERVAL_MS) {
@@ -2006,25 +2198,37 @@ export async function orchestrateLoop(
     // ── Periodic main branch refresh ──────────────────────────────
     // Keeps origin/main fresh and fast-forwards local main when clean.
     // ff-only is atomic: succeeds or changes nothing (never leaves partial state).
-    const MAIN_REFRESH_INTERVAL_MS = 60_000;
-    const nowRefreshMs = Date.now();
-    if (nowRefreshMs - lastMainRefreshMs >= MAIN_REFRESH_INTERVAL_MS) {
-      lastMainRefreshMs = nowRefreshMs;
-      const reposToRefresh = new Set<string>([ctx.projectRoot]);
-      for (const item of orch.getAllItems()) {
-        if (item.resolvedRepoRoot && item.state !== "done" && item.state !== "stuck") {
-          reposToRefresh.add(item.resolvedRepoRoot);
+      const interactiveTiming = config.tuiMode
+        ? createInteractiveWatchTiming(__iterations, [])
+        : undefined;
+
+      const MAIN_REFRESH_INTERVAL_MS = 60_000;
+      const nowRefreshMs = Date.now();
+      if (nowRefreshMs - lastMainRefreshMs >= MAIN_REFRESH_INTERVAL_MS) {
+        const mainRefreshStartMs = interactiveTiming ? nowMs() : 0;
+        lastMainRefreshMs = nowRefreshMs;
+        const reposToRefresh = new Set<string>([ctx.projectRoot]);
+        for (const item of orch.getAllItems()) {
+          if (item.resolvedRepoRoot && item.state !== "done" && item.state !== "stuck") {
+            reposToRefresh.add(item.resolvedRepoRoot);
+          }
+        }
+        for (const repoRoot of reposToRefresh) {
+          try { deps.actionDeps.fetchOrigin(repoRoot, "main"); } catch { /* non-fatal */ }
+          try { deps.actionDeps.ffMerge(repoRoot, "main"); } catch { /* non-fatal -- dirty tree or diverged */ }
+        }
+        if (interactiveTiming) {
+          interactiveTiming.timingsMs.mainRefresh = elapsedMs(nowMs, mainRefreshStartMs);
         }
       }
-      for (const repoRoot of reposToRefresh) {
-        try { deps.actionDeps.fetchOrigin(repoRoot, "main"); } catch { /* non-fatal */ }
-        try { deps.actionDeps.ffMerge(repoRoot, "main"); } catch { /* non-fatal -- dirty tree or diverged */ }
-      }
-    }
 
-    // Build snapshot from external state
-    const snapshot = await deps.buildSnapshot(orch, ctx.projectRoot, ctx.worktreeDir);
-    __lastSnapshot = snapshot;
+      // Build snapshot from external state
+      const pollStartMs = interactiveTiming ? nowMs() : 0;
+      const snapshot = await deps.buildSnapshot(orch, ctx.projectRoot, ctx.worktreeDir);
+      if (interactiveTiming) {
+        interactiveTiming.timingsMs.poll = elapsedMs(nowMs, pollStartMs);
+      }
+      __lastSnapshot = snapshot;
 
     // Log warning when GitHub API is unreachable for all polled items
     if (snapshot.apiErrorCount && snapshot.apiErrorCount > 0) {
@@ -2043,8 +2247,8 @@ export async function orchestrateLoop(
 
 
     // Process transitions (pure state machine)
-    let actions = orch.processTransitions(snapshot);
-    __lastActions = actions;
+      let actions = orch.processTransitions(snapshot);
+      __lastActions = actions;
 
     // Arming window: suppress launch actions during the claims-gated period
     if (config.claimsGatedMs && config.claimsGatedMs > 0) {
@@ -2069,7 +2273,7 @@ export async function orchestrateLoop(
     }
 
     // Crew mode: claim/filter launch actions through the broker
-    if (deps.crewBroker) {
+      if (deps.crewBroker) {
       const launchActions = actions.filter((a) => a.type === "launch");
 
       // Diagnostic: log when broker is connected but no items ready to launch
@@ -2167,17 +2371,26 @@ export async function orchestrateLoop(
 
     // Crew mode: suppress write actions for items claimed by other daemons.
     // Remote items are tracked via GitHub polling but only the owning daemon acts.
-    if (deps.crewBroker) {
-      actions = filterCrewRemoteWriteActions(actions, deps.crewBroker.getCrewStatus());
-    }
+      if (deps.crewBroker) {
+        actions = filterCrewRemoteWriteActions(actions, deps.crewBroker.getCrewStatus());
+      }
 
-    // Execute actions
-    for (const action of actions) {
-      handleActionExecution(action, orch, ctx, deps, log);
-    }
+      if (interactiveTiming) {
+        interactiveTiming.actionCount = actions.length;
+        interactiveTiming.actionTypes = actions.map((action) => action.type);
+      }
+
+      // Execute actions
+      const actionExecutionStartMs = interactiveTiming ? nowMs() : 0;
+      for (const action of actions) {
+        handleActionExecution(action, orch, ctx, deps, log);
+      }
+      if (interactiveTiming) {
+        interactiveTiming.timingsMs.actionExecution = elapsedMs(nowMs, actionExecutionStartMs);
+      }
 
     // Crew mode: notify broker of completed items (merge/done)
-    if (deps.crewBroker) {
+      if (deps.crewBroker) {
       for (const action of actions) {
         if (action.type === "merge" || action.type === "clean") {
           const orchItem = orch.getItem(action.itemId);
@@ -2200,9 +2413,13 @@ export async function orchestrateLoop(
     }
 
     // Sync cmux sidebar display for active workers
-    try {
-      deps.syncDisplay?.(orch, snapshot);
-    } catch { /* best-effort -- display sync failure shouldn't block the orchestrator */ }
+      const displaySyncStartMs = interactiveTiming ? nowMs() : 0;
+      try {
+        deps.syncDisplay?.(orch, snapshot);
+      } catch { /* best-effort -- display sync failure shouldn't block the orchestrator */ }
+      if (interactiveTiming) {
+        interactiveTiming.timingsMs.displaySync = elapsedMs(nowMs, displaySyncStartMs);
+      }
 
     // Log state summary
     const states: Record<string, string[]> = {};
@@ -2213,7 +2430,7 @@ export async function orchestrateLoop(
     log({ ts: new Date().toISOString(), level: "debug", event: "state_summary", states });
 
     // ── External PR review processing ───────────────────────────
-    if (config.reviewExternal && deps.externalReviewDeps) {
+      if (config.reviewExternal && deps.externalReviewDeps) {
       try {
         externalReviews = processExternalReviews(
           ctx.projectRoot,
@@ -2236,13 +2453,19 @@ export async function orchestrateLoop(
     }
 
     // Sleep -- adaptive or fixed override
-    const interval = config.pollIntervalMs ?? adaptivePollInterval(orch);
+      const interval = config.pollIntervalMs ?? adaptivePollInterval(orch);
 
-    // Persist state for daemon mode (or any caller that wants snapshots)
-    // Pass interval so TUI can set countdown target
-    deps.onPollComplete?.(orch.getAllItems(), snapshot, interval);
+      // Persist state for daemon mode (or any caller that wants snapshots)
+      // Pass interval so TUI can set countdown target and capture render timing.
+      deps.onPollComplete?.(orch.getAllItems(), snapshot, interval, interactiveTiming);
+      if (interactiveTiming) {
+        pendingInteractiveTiming = interactiveTiming;
+      }
 
-    await deps.sleep(interval);
+      await deps.sleep(interval);
+    }
+  } finally {
+    lagSampler?.stop();
   }
 
   return {};
@@ -2909,7 +3132,12 @@ export async function cmdOrchestrate(
     tmuxSessionName: tmuxOutsideSession ? tmuxSessionName : undefined,
   };
 
-  const onPollComplete = (items: OrchestratorItem[], snapshot: PollSnapshot, _pollIntervalMs?: number) => {
+  const onPollComplete = (
+    items: OrchestratorItem[],
+    snapshot: PollSnapshot,
+    _pollIntervalMs?: number,
+    interactiveTiming?: InteractiveWatchTiming,
+  ) => {
     lastTuiItems = items;
     lastTuiHeartbeats = snapshotToHeartbeatMap(snapshot);
     // Update crew status from broker
@@ -2953,10 +3181,14 @@ export async function cmdOrchestrate(
           tuiState.viewOptions.scheduleWorkers = [];
         }
       }
+      const renderStartMs = interactiveTiming ? Date.now() : 0;
       try {
         renderTuiPanelFrame(items, wipLimit, tuiState, undefined, getRemoteItemSnapshots(), orch.config.maxTimeoutExtensions, lastTuiHeartbeats);
       } catch {
         // Non-fatal -- TUI render failure shouldn't block the orchestrator
+      }
+      if (interactiveTiming) {
+        interactiveTiming.timingsMs.render = Math.max(0, Date.now() - renderStartMs);
       }
     }
   };
