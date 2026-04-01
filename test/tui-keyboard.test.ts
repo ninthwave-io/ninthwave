@@ -13,8 +13,6 @@ import {
   STRATEGY_DEBOUNCE_MS,
   type TuiState,
   type LogLevelFilter,
-  type CollaborationMode,
-  type ReviewMode,
 } from "../core/tui-keyboard.ts";
 import type { MergeStrategy } from "../core/orchestrator.ts";
 import type { ViewOptions, PanelMode, LogEntry as PanelLogEntry } from "../core/status-render.ts";
@@ -46,6 +44,7 @@ function makeTuiState(overrides: Partial<TuiState> = {}): TuiState {
     ctrlCTimestamp: 0,
     showHelp: false,
     showControls: false,
+    controlsRowIndex: 0,
     collaborationMode: "local",
     reviewMode: "off",
     panelMode: "status-only" as PanelMode,
@@ -338,75 +337,99 @@ describe("setupKeyboardShortcuts", () => {
   });
 });
 
-// ── Controls overlay number-key selection ────────────────────────────────────
+// ── Controls overlay row navigation ─────────────────────────────────────────
 
-describe("controls overlay number-key selection", () => {
-  it("keys 1-3 change collaboration mode", () => {
+describe("controls overlay row navigation", () => {
+  it("Up/Down move between setting rows", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
-    const onCollabChange = vi.fn();
+    const state = makeTuiState({ showControls: true, controlsRowIndex: 0 });
+    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
+
+    stdin.emit("data", "\x1b[B");
+    expect(state.controlsRowIndex).toBe(1);
+
+    stdin.emit("data", "\x1b[B");
+    expect(state.controlsRowIndex).toBe(2);
+
+    stdin.emit("data", "\x1b[A");
+    expect(state.controlsRowIndex).toBe(1);
+
+    stdin.emit("data", "\x1b[A");
+    stdin.emit("data", "\x1b[A");
+    expect(state.controlsRowIndex).toBe(0);
+    cleanup();
+  });
+
+  it("Left/Right change collaboration mode on the active row", () => {
+    const ac = new AbortController();
+    const stdin = makeFakeStdin();
+    const onCollaborationChange = vi.fn();
+    const onUpdate = vi.fn();
     const state = makeTuiState({
       showControls: true,
+      controlsRowIndex: 0,
       collaborationMode: "local",
-      onCollaborationChange: onCollabChange,
+      onCollaborationChange,
+      onUpdate,
     });
     state.viewOptions.collaborationMode = "local";
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
-    stdin.emit("data", "2");
+    stdin.emit("data", "\x1b[C");
     expect(state.collaborationMode).toBe("shared");
-    expect(onCollabChange).toHaveBeenCalledWith("shared");
+    expect(state.viewOptions.collaborationMode).toBe("shared");
+    expect(onCollaborationChange).toHaveBeenCalledWith("shared");
+    expect(onUpdate).toHaveBeenCalled();
 
-    stdin.emit("data", "3");
-    expect(state.collaborationMode).toBe("joined");
-    expect(onCollabChange).toHaveBeenCalledWith("joined");
-
-    stdin.emit("data", "1");
+    stdin.emit("data", "\x1b[D");
     expect(state.collaborationMode).toBe("local");
-    expect(onCollabChange).toHaveBeenCalledWith("local");
+    expect(onCollaborationChange).toHaveBeenCalledWith("local");
     cleanup();
   });
 
-  it("keys 4-6 change review mode", () => {
+  it("Left/Right change review mode on the active row", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
     const onReviewChange = vi.fn();
     const state = makeTuiState({
       showControls: true,
+      controlsRowIndex: 1,
       reviewMode: "off",
       onReviewChange,
     });
     state.viewOptions.reviewMode = "off";
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
-    stdin.emit("data", "5");
+    stdin.emit("data", "\x1b[C");
     expect(state.reviewMode).toBe("ninthwave-prs");
+    expect(state.viewOptions.reviewMode).toBe("ninthwave-prs");
     expect(onReviewChange).toHaveBeenCalledWith("ninthwave-prs");
 
-    stdin.emit("data", "6");
+    stdin.emit("data", "\x1b[C");
     expect(state.reviewMode).toBe("all-prs");
     expect(onReviewChange).toHaveBeenCalledWith("all-prs");
 
-    stdin.emit("data", "4");
-    expect(state.reviewMode).toBe("off");
-    expect(onReviewChange).toHaveBeenCalledWith("off");
+    stdin.emit("data", "\x1b[D");
+    expect(state.reviewMode).toBe("ninthwave-prs");
     cleanup();
   });
 
-  it("keys 7-8 change merge strategy", () => {
+  it("Left/Right queue merge strategy changes on the active row", () => {
     vi.useFakeTimers();
     const ac = new AbortController();
     const stdin = makeFakeStdin();
     const onStrategyChange = vi.fn();
     const state = makeTuiState({
       showControls: true,
+      controlsRowIndex: 2,
       mergeStrategy: "manual",
       onStrategyChange,
     });
     state.viewOptions.mergeStrategy = "manual";
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
-    stdin.emit("data", "8");
+    stdin.emit("data", "\x1b[C");
     expect(state.mergeStrategy).toBe("manual");
     expect(state.pendingStrategy).toBe("auto");
     expect(onStrategyChange).not.toHaveBeenCalled();
@@ -416,106 +439,56 @@ describe("controls overlay number-key selection", () => {
     expect(state.pendingStrategy).toBeUndefined();
     expect(onStrategyChange).toHaveBeenCalledWith("auto");
 
-    stdin.emit("data", "7");
-    expect(state.pendingStrategy).toBe("manual");
-    vi.advanceTimersByTime(STRATEGY_DEBOUNCE_MS);
-    expect(state.mergeStrategy).toBe("manual");
-    expect(onStrategyChange).toHaveBeenCalledWith("manual");
     cleanup();
     vi.useRealTimers();
   });
 
-  it("key 9 is a no-op when bypass is hidden", () => {
+  it("Left/Right adjust WIP limit on the active row", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
-    const onStrategyChange = vi.fn();
+    const onWipChange = vi.fn();
     const state = makeTuiState({
       showControls: true,
-      mergeStrategy: "manual",
-      bypassEnabled: false,
-      onStrategyChange,
+      controlsRowIndex: 3,
+      onWipChange,
     });
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
-    stdin.emit("data", "9");
-    expect(state.mergeStrategy).toBe("manual");
-    expect(onStrategyChange).not.toHaveBeenCalled();
+    stdin.emit("data", "\x1b[C");
+    expect(onWipChange).toHaveBeenCalledWith(1);
+
+    stdin.emit("data", "\x1b[D");
+    expect(onWipChange).toHaveBeenCalledWith(-1);
     cleanup();
   });
 
-  it("key 9 sets bypass when bypassEnabled", () => {
-    vi.useFakeTimers();
+  it("Enter dismisses the controls overlay", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
-    const onStrategyChange = vi.fn();
-    const state = makeTuiState({
-      showControls: true,
-      mergeStrategy: "manual",
-      bypassEnabled: true,
-      onStrategyChange,
-    });
+    const state = makeTuiState({ showControls: true });
+    state.viewOptions.showControls = true;
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
-    stdin.emit("data", "9");
-    expect(state.mergeStrategy).toBe("manual");
-    expect(state.pendingStrategy).toBe("bypass");
-    expect(onStrategyChange).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(STRATEGY_DEBOUNCE_MS);
-    expect(state.pendingStrategy).toBeUndefined();
-    expect(state.mergeStrategy).toBe("bypass");
-    expect(onStrategyChange).toHaveBeenCalledWith("bypass");
-    cleanup();
-    vi.useRealTimers();
-  });
-
-  it("number keys are not handled when controls overlay is closed", () => {
-    const ac = new AbortController();
-    const stdin = makeFakeStdin();
-    const onCollabChange = vi.fn();
-    const onUpdate = vi.fn();
-    const state = makeTuiState({
-      showControls: false,
-      onCollaborationChange: onCollabChange,
-      onUpdate,
-    });
-    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
-
-    stdin.emit("data", "2");
-    expect(onCollabChange).not.toHaveBeenCalled();
+    stdin.emit("data", "\r");
+    expect(state.showControls).toBe(false);
+    expect(state.viewOptions.showControls).toBe(false);
     cleanup();
   });
 
-  it("selecting the already-active mode does not fire callback", () => {
+  it("number keys do nothing even while controls are open", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
-    const onReviewChange = vi.fn();
-    const state = makeTuiState({
-      showControls: true,
-      reviewMode: "off",
-      onReviewChange,
-    });
-    state.viewOptions.reviewMode = "off";
-    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
-
-    stdin.emit("data", "4"); // 4 = Off, already active
-    expect(onReviewChange).not.toHaveBeenCalled();
-    cleanup();
-  });
-
-  it("onUpdate is called after number-key selection in controls", () => {
-    const ac = new AbortController();
-    const stdin = makeFakeStdin();
-    const onUpdate = vi.fn();
+    const onCollaborationChange = vi.fn();
     const state = makeTuiState({
       showControls: true,
       collaborationMode: "local",
-      onUpdate,
+      onCollaborationChange,
     });
-    state.viewOptions.collaborationMode = "local";
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
     stdin.emit("data", "2");
-    expect(onUpdate).toHaveBeenCalled();
+    expect(state.collaborationMode).toBe("local");
+    expect(onCollaborationChange).not.toHaveBeenCalled();
     cleanup();
   });
 });

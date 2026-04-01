@@ -28,6 +28,9 @@ export interface ChoiceSettingOption<PersistedValue extends string, RuntimeValue
   persistable: boolean;
 }
 
+export type TuiSettingsRow = (typeof TUI_SETTINGS_ROWS)[number];
+export type TuiSettingsChoiceRow = Extract<TuiSettingsRow, { kind: "choice" }>;
+
 export const TUI_SETTINGS_DEFAULTS: TuiSettingsDefaults = {
   mergeStrategy: "manual",
   reviewMode: "off",
@@ -215,6 +218,29 @@ export function persistedReviewModeToRuntime(mode: PersistedReviewMode): ReviewM
 
 export function persistedCollaborationModeToRuntime(mode: PersistedCollaborationMode): CollaborationMode {
   return getByPersistedValue(COLLABORATION_MODE_OPTIONS, mode).runtimeValue;
+}
+
+export function mergeStrategyToPersisted(mode: MergeStrategy): PersistedMergeStrategy | undefined {
+  const option = getByRuntimeValue(MERGE_STRATEGY_OPTIONS, mode);
+  return option.persistable ? option.persistedValue : undefined;
+}
+
+export function reviewModeToPersisted(mode: ReviewMode): PersistedReviewMode {
+  return getByRuntimeValue(REVIEW_MODE_OPTIONS, mode).persistedValue;
+}
+
+export function collaborationModeToPersisted(mode: CollaborationMode): PersistedCollaborationMode {
+  return getByRuntimeValue(COLLABORATION_MODE_OPTIONS, mode).persistedValue;
+}
+
+export function runtimeOptionsForSettingsRow(
+  row: TuiSettingsChoiceRow,
+  bypassEnabled: boolean,
+): readonly ChoiceSettingOption<string, string>[] {
+  if (row.id === "merge_strategy" && !bypassEnabled) {
+    return row.options.filter((option) => option.runtimeValue !== "bypass");
+  }
+  return row.options;
 }
 
 export function reviewModeLabel(mode: ReviewMode): string {
