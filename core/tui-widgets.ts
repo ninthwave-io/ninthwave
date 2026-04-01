@@ -116,7 +116,7 @@ function wrapLineToWidth(line: string, maxWidth: number): string[] {
   return wrapped.length > 0 ? wrapped : [""];
 }
 
-function fitLineToWidth(line: string, maxWidth: number): string {
+function truncateCheckboxLine(line: string, maxWidth: number): string {
   if (maxWidth <= 0) return "";
   const plain = stripAnsiForWidth(line);
   if (plain.length <= maxWidth) return line;
@@ -124,7 +124,7 @@ function fitLineToWidth(line: string, maxWidth: number): string {
   return `${wrapLineToWidth(line, maxWidth - 3)[0] ?? ""}...${RESET}`;
 }
 
-function clampScrollOffset(
+function clampActiveLineScrollOffset(
   scrollOffset: number,
   activeStartLine: number,
   activeEndLine: number,
@@ -302,7 +302,7 @@ export function runCheckboxList(
       const cursorEndLine = itemEndLines[cursor] ?? cursorStartLine + 1;
 
       // Clamp scroll to keep the active item fully visible, accounting for sublines.
-      scrollOffset = clampScrollOffset(
+      scrollOffset = clampActiveLineScrollOffset(
         scrollOffset,
         cursorStartLine,
         cursorEndLine,
@@ -331,7 +331,7 @@ export function runCheckboxList(
       // Items
       const visibleLines = lines.slice(scrollOffset, scrollOffset + viewportHeight);
       for (const line of visibleLines) {
-        out += `${fitLineToWidth(line, cols)}${CLEAR_LINE}\n`;
+        out += `${truncateCheckboxLine(line, cols)}${CLEAR_LINE}\n`;
       }
 
       // Fill remaining viewport lines
@@ -928,12 +928,12 @@ export function runStartupSettingsScreen(
 
       for (let i = 0; i < choiceRows.length; i++) {
         rowStartLines[i] = bodyLines.length;
-        bodyLines.push(fitLineToWidth(choiceRows[i]!, cols));
+        bodyLines.push(truncateCheckboxLine(choiceRows[i]!, cols));
         rowEndLines[i] = bodyLines.length;
       }
 
       bodyLines.push("", ...descriptionLines);
-      scrollOffset = clampScrollOffset(
+      scrollOffset = clampActiveLineScrollOffset(
         scrollOffset,
         rowStartLines[activeRow] ?? 0,
         rowEndLines[activeRow] ?? (rowStartLines[activeRow] ?? 0) + 1,
@@ -944,19 +944,19 @@ export function runStartupSettingsScreen(
       const visibleBodyLines = bodyLines.slice(scrollOffset, scrollOffset + viewportHeight);
       let out = CURSOR_HOME;
 
-      out += `${fitLineToWidth(`${BOLD}${opts.title ?? "Ninthwave · Start orchestration"}${RESET}`, cols)}${CLEAR_LINE}\n`;
+      out += `${truncateCheckboxLine(`${BOLD}${opts.title ?? "Ninthwave · Start orchestration"}${RESET}`, cols)}${CLEAR_LINE}\n`;
       if (headerGap) {
         out += `${CLEAR_LINE}\n`;
       }
 
       for (const line of visibleBodyLines) {
-        out += `${fitLineToWidth(line, cols)}${CLEAR_LINE}\n`;
+        out += `${truncateCheckboxLine(line, cols)}${CLEAR_LINE}\n`;
       }
       for (let i = visibleBodyLines.length; i < viewportHeight; i++) {
         out += `${CLEAR_LINE}\n`;
       }
 
-      out += `${fitLineToWidth(`${DIM}↑/↓ change row  ←/→ change value  Enter confirm  Esc cancel${RESET}`, cols)}${CLEAR_LINE}`;
+      out += `${truncateCheckboxLine(`${DIM}↑/↓ change row  ←/→ change value  Enter confirm  Esc cancel${RESET}`, cols)}${CLEAR_LINE}`;
       if (footerGap) {
         out += `\n${CLEAR_LINE}`;
       }
