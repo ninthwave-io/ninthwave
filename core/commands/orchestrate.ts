@@ -1103,6 +1103,7 @@ export function waitForArmingKey(
   signal?: AbortSignal,
   durationMs: number = ARMING_WINDOW_MS,
   now: () => number = Date.now,
+  onTick?: (remainingMs: number) => void,
 ): Promise<StartupIntent> {
   return new Promise<StartupIntent>((resolve) => {
     if (signal?.aborted) {
@@ -1112,6 +1113,7 @@ export function waitForArmingKey(
 
     let paused = false;
     const startMs = now();
+    let lastRemainingSec = Math.max(0, Math.ceil(durationMs / 1000));
 
     const timer = setTimeout(() => {
       if (!paused) {
@@ -1119,6 +1121,18 @@ export function waitForArmingKey(
         resolve("local");
       }
     }, durationMs);
+
+    const tickTimer = onTick
+      ? setInterval(() => {
+          if (paused) return;
+          const remainingMs = Math.max(0, durationMs - (now() - startMs));
+          const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+          if (remainingSec > 0 && remainingSec !== lastRemainingSec) {
+            lastRemainingSec = remainingSec;
+            onTick(remainingMs);
+          }
+        }, 1000)
+      : undefined;
 
     const onAbort = () => {
       cleanup();
@@ -1138,6 +1152,8 @@ export function waitForArmingKey(
         case "p":
           // Pause cancels the auto-start timer; user must press Enter/J/S
           paused = true;
+          clearTimeout(timer);
+          if (tickTimer) clearInterval(tickTimer);
           break;
         case "\r": // Enter
         case "\x1b": // Escape
@@ -1153,6 +1169,7 @@ export function waitForArmingKey(
 
     function cleanup() {
       clearTimeout(timer);
+      if (tickTimer) clearInterval(tickTimer);
       stdin.removeListener("data", onData);
       signal?.removeEventListener("abort", onAbort);
     }
@@ -2949,16 +2966,25 @@ export async function cmdOrchestrate(
     } catch { /* non-fatal */ }
 
     // Overlay arming banner at the bottom of the screen
-    const termRows = getTerminalHeight();
-    const bannerLines = formatArmingBanner(ARMING_WINDOW_MS);
-    const startRow = Math.max(1, termRows - bannerLines.length);
-    process.stdout.write(`\x1B[${startRow};1H`);
-    for (const line of bannerLines) {
-      process.stdout.write(line + "\x1B[K\n");
-    }
+    const renderArmingBanner = (remainingMs: number) => {
+      const termRows = getTerminalHeight();
+      const bannerLines = formatArmingBanner(remainingMs);
+      const startRow = Math.max(1, termRows - bannerLines.length);
+      process.stdout.write(`\x1B[${startRow};1H`);
+      for (const line of bannerLines) {
+        process.stdout.write(line + "\x1B[K\n");
+      }
+    };
+    renderArmingBanner(ARMING_WINDOW_MS);
 
     // Wait for user choice or timeout
-    const armingIntent = await waitForArmingKey(process.stdin, abortController.signal);
+    const armingIntent = await waitForArmingKey(
+      process.stdin,
+      abortController.signal,
+      ARMING_WINDOW_MS,
+      Date.now,
+      renderArmingBanner,
+    );
 
     log({
       ts: new Date().toISOString(),

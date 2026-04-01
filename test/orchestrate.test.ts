@@ -5597,6 +5597,120 @@ describe("waitForArmingKey", () => {
     emit("\r");
     expect(await promise).toBe("local");
   });
+
+  it("reports a once-per-second countdown while arming", async () => {
+    vi.useFakeTimers();
+    try {
+      const { stream } = mockStdinForArming();
+      const ticks: number[] = [];
+      let currentTime = 0;
+
+      const promise = waitForArmingKey(
+        stream,
+        undefined,
+        4000,
+        () => currentTime,
+        (remainingMs) => ticks.push(Math.ceil(remainingMs / 1000)),
+      );
+
+      currentTime = 1000;
+      vi.advanceTimersByTime(1000);
+      currentTime = 2000;
+      vi.advanceTimersByTime(1000);
+      currentTime = 3000;
+      vi.advanceTimersByTime(1000);
+      currentTime = 4000;
+      vi.advanceTimersByTime(1000);
+
+      expect(ticks).toEqual([3, 2, 1]);
+      expect(await promise).toBe("local");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops countdown updates after pause", async () => {
+    vi.useFakeTimers();
+    try {
+      const { stream, emit } = mockStdinForArming();
+      const ticks: number[] = [];
+      let currentTime = 0;
+
+      const promise = waitForArmingKey(
+        stream,
+        undefined,
+        4000,
+        () => currentTime,
+        (remainingMs) => ticks.push(Math.ceil(remainingMs / 1000)),
+      );
+
+      currentTime = 1000;
+      vi.advanceTimersByTime(1000);
+      emit("p");
+      currentTime = 4000;
+      vi.advanceTimersByTime(3000);
+
+      expect(ticks).toEqual([3]);
+
+      emit("\r");
+      expect(await promise).toBe("local");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears countdown updates after resolving immediately", async () => {
+    vi.useFakeTimers();
+    try {
+      const { stream, emit } = mockStdinForArming();
+      const ticks: number[] = [];
+      let currentTime = 0;
+
+      const promise = waitForArmingKey(
+        stream,
+        undefined,
+        4000,
+        () => currentTime,
+        (remainingMs) => ticks.push(Math.ceil(remainingMs / 1000)),
+      );
+
+      emit("j");
+      currentTime = 4000;
+      vi.advanceTimersByTime(4000);
+
+      expect(await promise).toBe("join");
+      expect(ticks).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears countdown updates after abort", async () => {
+    vi.useFakeTimers();
+    try {
+      const { stream } = mockStdinForArming();
+      const ac = new AbortController();
+      const ticks: number[] = [];
+      let currentTime = 0;
+
+      const promise = waitForArmingKey(
+        stream,
+        ac.signal,
+        4000,
+        () => currentTime,
+        (remainingMs) => ticks.push(Math.ceil(remainingMs / 1000)),
+      );
+
+      ac.abort();
+      currentTime = 4000;
+      vi.advanceTimersByTime(4000);
+
+      expect(await promise).toBe("local");
+      expect(ticks).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("shouldShowStartupArmingWindow", () => {
