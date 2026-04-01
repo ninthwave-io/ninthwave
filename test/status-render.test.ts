@@ -4084,6 +4084,22 @@ describe("renderControlsOverlay", () => {
     expect(text).toContain("←/→ change value");
   });
 
+  it("renders pending runtime control values until the engine confirms them", () => {
+    const lines = renderControlsOverlay(100, 40, {
+      ...baseOpts,
+      pendingCollaborationMode: "shared",
+      pendingReviewMode: "all-prs",
+      pendingMergeStrategy: "auto",
+      pendingWipLimit: 4,
+    });
+    const text = stripAnsi(lines.join("\n"));
+    expect(text).toContain("[Share pending]");
+    expect(text).toContain("[All PRs pending]");
+    expect(text).toContain("[› Auto pending]");
+    expect(text).toContain("[4 pending]");
+    expect(text).toContain("until engine confirms");
+  });
+
   it("shows dismissal hint", () => {
     const lines = renderControlsOverlay(100, 40, baseOpts);
     const text = stripAnsi(lines.join("\n"));

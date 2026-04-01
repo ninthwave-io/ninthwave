@@ -15,6 +15,7 @@ import {
   getTmuxStartupInfo,
   buildSnapshot,
   setupKeyboardShortcuts,
+  applyRuntimeSnapshotToTuiState,
   isWorkerAlive,
   isWorkerAliveWithCache,
   forkDaemon,
@@ -2427,9 +2428,18 @@ describe("setupKeyboardShortcuts", () => {
     expect(logs.some((l: any) => l.event === "strategy_cycle" && l.oldStrategy === "auto" && l.newStrategy === "manual")).toBe(true);
 
     vi.advanceTimersByTime(5001);
+    expect(tuiState.mergeStrategy).toBe("auto");
+    expect(tuiState.pendingStrategy).toBe("manual");
+    expect(changedStrategies).toEqual(["manual"]);
+
+    applyRuntimeSnapshotToTuiState(tuiState, {
+      mergeStrategy: "manual",
+      wipLimit: 3,
+      reviewMode: "off",
+      collaborationMode: "local",
+    });
     expect(tuiState.mergeStrategy).toBe("manual");
     expect(tuiState.pendingStrategy).toBeUndefined();
-    expect(changedStrategies).toEqual(["manual"]);
     vi.useRealTimers();
   });
 
@@ -2452,6 +2462,14 @@ describe("setupKeyboardShortcuts", () => {
 
     expect(tuiState.pendingStrategy).toBe("auto");
     vi.advanceTimersByTime(5001);
+    expect(tuiState.mergeStrategy).toBe("manual");
+
+    applyRuntimeSnapshotToTuiState(tuiState, {
+      mergeStrategy: "auto",
+      wipLimit: 3,
+      reviewMode: "off",
+      collaborationMode: "local",
+    });
     expect(tuiState.mergeStrategy).toBe("auto");
     vi.useRealTimers();
   });
@@ -2475,16 +2493,37 @@ describe("setupKeyboardShortcuts", () => {
     (stdin as any)._emit("data", "\x1B[Z"); // auto → manual
     expect(tuiState.pendingStrategy).toBe("manual");
     vi.advanceTimersByTime(5001);
+    expect(tuiState.mergeStrategy).toBe("auto");
+    applyRuntimeSnapshotToTuiState(tuiState, {
+      mergeStrategy: "manual",
+      wipLimit: 3,
+      reviewMode: "off",
+      collaborationMode: "local",
+    });
     expect(tuiState.mergeStrategy).toBe("manual");
 
     (stdin as any)._emit("data", "\x1B[Z"); // manual → bypass
     expect(tuiState.pendingStrategy).toBe("bypass");
     vi.advanceTimersByTime(5001);
+    expect(tuiState.mergeStrategy).toBe("manual");
+    applyRuntimeSnapshotToTuiState(tuiState, {
+      mergeStrategy: "bypass",
+      wipLimit: 3,
+      reviewMode: "off",
+      collaborationMode: "local",
+    });
     expect(tuiState.mergeStrategy).toBe("bypass");
 
     (stdin as any)._emit("data", "\x1B[Z"); // bypass → auto (wrap)
     expect(tuiState.pendingStrategy).toBe("auto");
     vi.advanceTimersByTime(5001);
+    expect(tuiState.mergeStrategy).toBe("bypass");
+    applyRuntimeSnapshotToTuiState(tuiState, {
+      mergeStrategy: "auto",
+      wipLimit: 3,
+      reviewMode: "off",
+      collaborationMode: "local",
+    });
     expect(tuiState.mergeStrategy).toBe("auto");
 
     cleanup();
@@ -2512,6 +2551,12 @@ describe("setupKeyboardShortcuts", () => {
     for (let i = 0; i < 4; i++) {
       (stdin as any)._emit("data", "\x1B[Z");
       vi.advanceTimersByTime(5001);
+      applyRuntimeSnapshotToTuiState(tuiState, {
+        mergeStrategy: tuiState.pendingStrategy ?? tuiState.mergeStrategy,
+        wipLimit: 3,
+        reviewMode: "off",
+        collaborationMode: "local",
+      });
       visited.push(tuiState.mergeStrategy);
     }
     expect(visited).toEqual(["manual", "auto", "manual", "auto"]);
@@ -4724,18 +4769,22 @@ describe("createRuntimeControlHandlers", () => {
     const shareResult = handlers.onCollaborationShare?.();
     const joinResult = handlers.onCollaborationJoinSubmit?.("ABCD-1234");
     const localResult = handlers.onCollaborationLocal?.();
+    const extendResult = handlers.onExtendTimeout?.("ENG-1");
     handlers.onStrategyChange?.("auto");
     handlers.onReviewChange?.("all-prs");
     handlers.onWipChange?.(1);
+    handlers.onShutdown?.();
 
     expect(currentWipLimit).toBe(4);
     expect(sentControls).toEqual([
       { type: "set-collaboration-mode", mode: "shared", source: "keyboard" },
       { type: "set-collaboration-mode", mode: "joined", code: "ABCD-1234", source: "keyboard" },
       { type: "set-collaboration-mode", mode: "local", source: "keyboard" },
+      { type: "extend-timeout", itemId: "ENG-1", source: "keyboard" },
       { type: "set-merge-strategy", strategy: "auto", source: "keyboard" },
       { type: "set-review-mode", mode: "all-prs", source: "keyboard" },
       { type: "set-wip-limit", limit: 4, source: "keyboard" },
+      { type: "shutdown", source: "keyboard" },
     ]);
     expect(savedUpdates).toEqual([
       { merge_strategy: "auto" },
@@ -4745,6 +4794,7 @@ describe("createRuntimeControlHandlers", () => {
     expect(shareResult).toEqual({ mode: "shared" });
     expect(joinResult).toEqual({ mode: "joined" });
     expect(localResult).toEqual({ mode: "local" });
+    expect(extendResult).toBe(true);
   });
 
   it("does not persist bypass as a default merge strategy", () => {
@@ -5069,6 +5119,48 @@ describe("watch engine runner", () => {
     expect(orch.config.mergeStrategy).toBe("auto");
     expect(orch.config.skipReview).toBe(true);
   });
+
+  it("handles timeout extension and shutdown through protocol messages", async () => {
+    const orch = new Orchestrator({ wipLimit: 2, mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("ENG-3"));
+    const item = orch.getItem("ENG-3")!;
+    item.timeoutDeadline = "2026-04-01T00:10:00.000Z";
+    item.timeoutExtensionCount = 0;
+
+    const logs: LogEntry[] = [];
+    const snapshots: WatchEngineSnapshotEvent[] = [];
+    let currentWipLimit = 2;
+
+    const runLoop = async (_innerOrch: Orchestrator, _ctx: ExecutionContext, _deps: OrchestrateLoopDeps, _config: unknown, signal?: AbortSignal) => {
+      await new Promise<void>((resolve) => {
+        signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return {};
+    };
+
+    const runner = makeEngineRunner(
+      orch,
+      runLoop as any,
+      logs,
+      snapshots,
+      () => currentWipLimit,
+      (limit) => {
+        currentWipLimit = limit;
+      },
+    );
+
+    const runPromise = runner.run();
+    runner.sendControl({ type: "extend-timeout", itemId: "ENG-3", source: "test-timeout" });
+    runner.sendControl({ type: "shutdown", source: "test-shutdown" });
+    await runPromise;
+
+    expect(logs.map((entry) => entry.event)).toEqual([
+      "timeout_extended",
+      "shutdown_requested",
+    ]);
+    expect(item.timeoutExtensionCount).toBe(1);
+    expect(snapshots).toHaveLength(0);
+  });
 });
 
 describe("shared engine wrappers", () => {
@@ -5150,6 +5242,8 @@ describe("interactive watch operator session", () => {
     return {
       scrollOffset: 0,
       viewOptions: { showBlockerDetail: true, mergeStrategy: "manual" },
+      wipLimit: 2,
+      pendingWipLimit: undefined,
       mergeStrategy: "manual",
       pendingStrategy: undefined,
       pendingStrategyDeadlineMs: undefined,
@@ -5162,11 +5256,13 @@ describe("interactive watch operator session", () => {
       showControls: false,
       controlsRowIndex: 0,
       collaborationMode: "local",
+      pendingCollaborationMode: undefined,
       collaborationIntent: "local",
       collaborationJoinInputActive: false,
       collaborationJoinInputValue: "",
       collaborationBusy: false,
       reviewMode: "ninthwave-prs",
+      pendingReviewMode: undefined,
       panelMode: "status-only",
       logBuffer: [],
       logScrollOffset: 0,
@@ -5178,6 +5274,7 @@ describe("interactive watch operator session", () => {
       detailContentLines: 0,
       savedLogScrollOffset: 0,
       statusLayout: null,
+      engineDisconnected: false,
     };
   }
 
@@ -5308,6 +5405,100 @@ describe("interactive watch operator session", () => {
     expect(result.completionAction).toBe("quit");
     expect((stdin.setRawMode as any).mock.calls).toContainEqual([false]);
     expect(writes.some((chunk) => chunk.includes("\x1B[?1049l"))).toBe(true);
+  });
+
+  it("shows a disconnect recovery overlay and restores the terminal on quit", async () => {
+    const stdin = makeOperatorStdin();
+    const { stream: stdout, writes } = makeOperatorStdout();
+    const tuiState = makeOperatorTuiState();
+    const child = makeOperatorChild();
+
+    const sessionPromise = runInteractiveWatchOperatorSession({
+      projectRoot: "/project",
+      childArgs: ["--items", "H-TRS-3"],
+      tuiState,
+      log: () => {},
+      initialSnapshot: {
+        daemonState: makeOperatorSnapshot().state,
+        runtime: makeOperatorSnapshot().runtime,
+      },
+      watchMode: true,
+      stdin,
+      stdout,
+      spawnChild: () => child,
+    });
+
+    await Promise.resolve();
+    child.emit("close", 1, null);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(writes.join("")).toContain("Engine disconnected");
+    expect(writes.join("")).toContain("Press r to restart or q to quit");
+
+    (stdin as any)._emit("data", "q");
+    const result = await sessionPromise;
+
+    expect(result.completionAction).toBe("quit");
+    expect((stdin.setRawMode as any).mock.calls).toContainEqual([false]);
+    expect(writes.some((chunk) => chunk.includes("\x1B[?1049l"))).toBe(true);
+  });
+
+  it("restarts after disconnect and keeps rendering engine-confirmed state", async () => {
+    const stdin = makeOperatorStdin();
+    const { stream: stdout } = makeOperatorStdout();
+    const tuiState = makeOperatorTuiState();
+    const firstChild = makeOperatorChild();
+    const secondChild = makeOperatorChild();
+    const children = [firstChild, secondChild];
+
+    const sessionPromise = runInteractiveWatchOperatorSession({
+      projectRoot: "/project",
+      childArgs: ["--items", "H-TRS-3"],
+      tuiState,
+      log: () => {},
+      initialSnapshot: {
+        daemonState: makeOperatorSnapshot().state,
+        runtime: makeOperatorSnapshot().runtime,
+      },
+      watchMode: true,
+      stdin,
+      stdout,
+      spawnChild: () => children.shift()!,
+      bindControlSender: () => {},
+    });
+
+    await Promise.resolve();
+    firstChild.emit("close", 1, null);
+    await Promise.resolve();
+    await Promise.resolve();
+    (stdin as any)._emit("data", "r");
+    await Promise.resolve();
+
+    secondChild.emitLine({
+      type: "snapshot",
+      event: {
+        ...makeOperatorSnapshot("Restarted snapshot"),
+        runtime: {
+          mergeStrategy: "auto",
+          wipLimit: 4,
+          reviewMode: "all-prs",
+          collaborationMode: "shared",
+        },
+      },
+    });
+    secondChild.emitLine({ type: "result", result: {} });
+    secondChild.emit("close", 0, null);
+
+    const result = await sessionPromise;
+    expect(result.lastSnapshot.runtime).toEqual({
+      mergeStrategy: "auto",
+      wipLimit: 4,
+      reviewMode: "all-prs",
+      collaborationMode: "shared",
+    });
+    expect(tuiState.engineDisconnected).toBe(false);
+    expect(result.completionAction).toBeUndefined();
   });
 });
 

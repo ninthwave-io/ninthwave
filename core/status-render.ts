@@ -121,7 +121,10 @@ function strategyFooterIndicator(
   if (!pendingStrategy || pendingStrategy === strategy) {
     return strategyIndicator(strategy);
   }
-  const countdownSeconds = Math.max(0, pendingStrategyCountdownSeconds ?? 5);
+  if (pendingStrategyCountdownSeconds === undefined) {
+    return `${strategyIndicator(pendingStrategy)} ${DIM}(pending)${RESET}`;
+  }
+  const countdownSeconds = Math.max(0, pendingStrategyCountdownSeconds);
   return `${strategyIndicator(pendingStrategy)} ${DIM}(${countdownSeconds}s)${RESET}`;
 }
 
@@ -2496,6 +2499,7 @@ export function renderControlsOverlay(
   termRows: number,
   opts: {
     collaborationMode: CollaborationMode;
+    pendingCollaborationMode?: CollaborationMode;
     collaborationIntent?: CollaborationIntent;
     sessionCode?: string;
     collaborationJoinInputActive?: boolean;
@@ -2503,14 +2507,18 @@ export function renderControlsOverlay(
     collaborationBusy?: boolean;
     collaborationError?: string;
     reviewMode: ReviewMode;
+    pendingReviewMode?: ReviewMode;
     mergeStrategy: MergeStrategy;
+    pendingMergeStrategy?: MergeStrategy;
     bypassEnabled: boolean;
     wipLimit?: number;
+    pendingWipLimit?: number;
     activeRowIndex?: number;
   },
 ): string[] {
   const {
     collaborationMode,
+    pendingCollaborationMode,
     collaborationIntent,
     sessionCode,
     collaborationJoinInputActive: _collaborationJoinInputActive = false,
@@ -2518,21 +2526,30 @@ export function renderControlsOverlay(
     collaborationBusy: _collaborationBusy = false,
     collaborationError: _collaborationError,
     reviewMode,
+    pendingReviewMode,
     mergeStrategy,
+    pendingMergeStrategy,
     bypassEnabled,
     wipLimit,
+    pendingWipLimit,
     activeRowIndex = 0,
   } = opts;
 
   const labelWidth = Math.max(...TUI_SETTINGS_ROWS.map((row) => row.title.length));
   const clampedActiveRowIndex = Math.max(0, Math.min(activeRowIndex, TUI_SETTINGS_ROWS.length - 1));
 
-  const renderChoiceValue = (rowId: string, option: { runtimeValue: string; runtimeLabel: string }, selected: boolean): string => {
+  const renderChoiceValue = (
+    rowId: string,
+    option: { runtimeValue: string; runtimeLabel: string },
+    selected: boolean,
+    pending: boolean,
+  ): string => {
     const baseLabel = rowId === "merge_strategy"
       ? `${stripAnsiForWidth(strategyIndicator(option.runtimeValue as MergeStrategy)).split(" ")[0]} ${option.runtimeLabel}`
       : option.runtimeLabel;
+    const displayLabel = pending ? `${baseLabel} pending` : baseLabel;
     return selected
-      ? `${BOLD}[${baseLabel}]${RESET}`
+      ? `${BOLD}[${displayLabel}]${RESET}`
       : `${DIM}${baseLabel}${RESET}`;
   };
 
@@ -2541,7 +2558,8 @@ export function renderControlsOverlay(
     "",
   ];
 
-  const selectedCollaborationMode = collaborationIntent ? collaborationIntentToMode(collaborationIntent) : collaborationMode;
+  const selectedCollaborationMode = pendingCollaborationMode
+    ?? (collaborationIntent ? collaborationIntentToMode(collaborationIntent) : collaborationMode);
   const joinInputActive = _collaborationJoinInputActive || collaborationIntent === "join";
   const collaborationDetailLines: string[] = [];
   const joinCommand = sessionCode ? `nw watch --crew ${sessionCode}` : undefined;
@@ -2566,6 +2584,10 @@ export function renderControlsOverlay(
         ? "Joining session..."
         : "Returning to local mode...";
     collaborationDetailLines.push(`  ${DIM}Status:${RESET}  ${CYAN}${busyLabel}${RESET}`);
+  }
+
+  if (pendingCollaborationMode && pendingCollaborationMode !== collaborationMode) {
+    collaborationDetailLines.push(`  ${DIM}Pending:${RESET} ${CYAN}${collaborationLabel(pendingCollaborationMode)}${RESET} until engine confirms`);
   }
 
   if (_collaborationError) {
@@ -2594,10 +2616,17 @@ export function renderControlsOverlay(
       const selectedValue = row.id === "collaboration_mode"
         ? selectedCollaborationMode
         : row.id === "review_mode"
-          ? reviewMode
-          : mergeStrategy;
+          ? (pendingReviewMode ?? reviewMode)
+          : (pendingMergeStrategy ?? mergeStrategy);
       const choiceLine = runtimeOptionsForSettingsRow(row, bypassEnabled)
-        .map((option) => renderChoiceValue(row.id, option, option.runtimeValue === selectedValue))
+        .map((option) => {
+          const pending = row.id === "collaboration_mode"
+            ? option.runtimeValue === pendingCollaborationMode && pendingCollaborationMode !== collaborationMode
+            : row.id === "review_mode"
+              ? option.runtimeValue === pendingReviewMode && pendingReviewMode !== reviewMode
+              : option.runtimeValue === pendingMergeStrategy && pendingMergeStrategy !== mergeStrategy;
+          return renderChoiceValue(row.id, option, option.runtimeValue === selectedValue, pending);
+        })
         .join("  ");
       settingsLines.push(`${rowPrefix} ${titleCell}  ${choiceLine}`);
       if (row.id === "collaboration_mode") {
@@ -2606,8 +2635,10 @@ export function renderControlsOverlay(
       continue;
     }
 
-    const wipDisplay = wipLimit !== undefined ? `${wipLimit}` : "auto";
-    const value = `${BOLD}[${wipDisplay}]${RESET}`;
+    const displayedWip = pendingWipLimit ?? wipLimit;
+    const wipDisplay = displayedWip !== undefined ? `${displayedWip}` : "auto";
+    const pendingSuffix = pendingWipLimit !== undefined && pendingWipLimit !== wipLimit ? " pending" : "";
+    const value = `${BOLD}[${wipDisplay}${pendingSuffix}]${RESET}`;
     settingsLines.push(`${rowPrefix} ${titleCell}  ${value}`);
   }
 
