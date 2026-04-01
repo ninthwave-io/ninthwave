@@ -35,6 +35,7 @@ import {
   shouldShowStartupArmingWindow,
   createRuntimeControlHandlers,
   resolveInteractiveStartupConfig,
+  INTERACTIVE_WATCH_STAGE_WARN_MS,
   ARMING_WINDOW_MS,
   LOG_BUFFER_MAX,
   type LogEntry,
@@ -4753,6 +4754,163 @@ describe("createRuntimeControlHandlers", () => {
 
     handlers.onStrategyChange?.("bypass");
     expect(saveUserConfigFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("interactive watch instrumentation", () => {
+  it("captures stage timings and warns on long blocking stages in tui mode", async () => {
+    const orch = new Orchestrator({ fixForward: false, wipLimit: 1, mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("T-TUI-1"));
+    orch.getItem("T-TUI-1")!.reviewCompleted = true;
+
+    const logs: LogEntry[] = [];
+    const abortController = new AbortController();
+    let currentMs = 0;
+    const advance = (ms: number) => {
+      currentMs += ms;
+    };
+
+    const pollMs = INTERACTIVE_WATCH_STAGE_WARN_MS.poll + 15;
+    const actionExecutionMs = INTERACTIVE_WATCH_STAGE_WARN_MS.actionExecution + 20;
+    const mainRefreshMs = INTERACTIVE_WATCH_STAGE_WARN_MS.mainRefresh + 25;
+    const displaySyncMs = INTERACTIVE_WATCH_STAGE_WARN_MS.displaySync + 10;
+    const renderMs = INTERACTIVE_WATCH_STAGE_WARN_MS.render + 5;
+
+    const deps: OrchestrateLoopDeps = {
+      buildSnapshot: () => {
+        advance(pollMs);
+        return { items: [], readyIds: ["T-TUI-1"] };
+      },
+      sleep: async () => {
+        abortController.abort();
+      },
+      log: (entry) => logs.push(entry),
+      actionDeps: mockActionDeps({
+        fetchOrigin: vi.fn(() => advance(mainRefreshMs)),
+        ffMerge: vi.fn(),
+        launchSingleItem: vi.fn(() => {
+          advance(actionExecutionMs);
+          return { worktreePath: "/tmp/test/tui-stage-timing", workspaceRef: "workspace:T-TUI-1" };
+        }),
+      }),
+      syncDisplay: () => {
+        advance(displaySyncMs);
+      },
+      onPollComplete: (_items, _snapshot, _pollIntervalMs, interactiveTiming) => {
+        if (!interactiveTiming) return;
+        advance(renderMs);
+        interactiveTiming.timingsMs.render = renderMs;
+      },
+      nowMs: () => currentMs,
+    };
+
+    await orchestrateLoop(
+      orch,
+      defaultCtx,
+      deps,
+      { maxIterations: 10, tuiMode: true },
+      abortController.signal,
+    );
+
+    const timingLog = logs.find((entry) => entry.event === "interactive_watch_timing");
+    expect(timingLog).toBeDefined();
+    expect(timingLog!.iteration).toBe(1);
+    expect(timingLog!.actionCount).toBe(1);
+    expect(timingLog!.actionTypes).toEqual(["launch"]);
+    expect(timingLog!.timingsMs).toEqual({
+      eventLoopLag: 0,
+      poll: pollMs,
+      actionExecution: actionExecutionMs,
+      mainRefresh: mainRefreshMs,
+      displaySync: displaySyncMs,
+      render: renderMs,
+      totalBlocking: pollMs + actionExecutionMs + mainRefreshMs + displaySyncMs + renderMs,
+    });
+
+    const stallStages = logs
+      .filter((entry) => entry.event === "interactive_watch_stall")
+      .map((entry) => entry.stage);
+    expect(stallStages).toEqual([
+      "poll",
+      "action_execution",
+      "main_refresh",
+      "display_sync",
+      "render",
+    ]);
+  });
+
+  it("captures event-loop lag in tui mode without real blocking subprocesses", async () => {
+    vi.useFakeTimers();
+    try {
+      const orch = new Orchestrator({ fixForward: false, wipLimit: 1, mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("T-LAG-1"));
+      orch.getItem("T-LAG-1")!.reviewCompleted = true;
+
+      const logs: LogEntry[] = [];
+      const abortController = new AbortController();
+      let currentMs = 0;
+
+      const deps: OrchestrateLoopDeps = {
+        buildSnapshot: () => {
+          currentMs = INTERACTIVE_WATCH_STAGE_WARN_MS.eventLoopLag + 100;
+          vi.advanceTimersByTime(50);
+          return { items: [], readyIds: ["T-LAG-1"] };
+        },
+        sleep: async () => {
+          abortController.abort();
+        },
+        log: (entry) => logs.push(entry),
+        actionDeps: mockActionDeps(),
+        onPollComplete: () => {},
+        nowMs: () => currentMs,
+        setTimeoutFn: setTimeout,
+        clearTimeoutFn: clearTimeout,
+      };
+
+      await orchestrateLoop(
+        orch,
+        defaultCtx,
+        deps,
+        { maxIterations: 10, tuiMode: true },
+        abortController.signal,
+      );
+
+      const timingLog = logs.find((entry) => entry.event === "interactive_watch_timing");
+      expect(timingLog).toBeDefined();
+      expect((timingLog!.timingsMs as Record<string, number>).eventLoopLag).toBe(200);
+
+      const lagWarning = logs.find(
+        (entry) => entry.event === "interactive_watch_stall" && entry.stage === "event_loop_lag",
+      );
+      expect(lagWarning).toBeDefined();
+      expect(lagWarning!.durationMs).toBe(200);
+      expect(lagWarning!.thresholdMs).toBe(INTERACTIVE_WATCH_STAGE_WARN_MS.eventLoopLag);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not emit interactive timing logs outside tui mode", async () => {
+    const orch = new Orchestrator({ fixForward: false, wipLimit: 1, mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("T-NON-TUI-1"));
+    orch.getItem("T-NON-TUI-1")!.reviewCompleted = true;
+
+    const logs: LogEntry[] = [];
+    const abortController = new AbortController();
+
+    const deps: OrchestrateLoopDeps = {
+      buildSnapshot: () => ({ items: [], readyIds: ["T-NON-TUI-1"] }),
+      sleep: async () => {
+        abortController.abort();
+      },
+      log: (entry) => logs.push(entry),
+      actionDeps: mockActionDeps(),
+    };
+
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 10 }, abortController.signal);
+
+    expect(logs.some((entry) => entry.event === "interactive_watch_timing")).toBe(false);
+    expect(logs.some((entry) => entry.event === "interactive_watch_stall")).toBe(false);
   });
 });
 
