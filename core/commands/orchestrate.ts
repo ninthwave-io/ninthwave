@@ -44,7 +44,11 @@ import { ID_IN_FILENAME, PRIORITY_NUM } from "../types.ts";
 import { loadConfig, saveConfig, loadUserConfig, saveUserConfig } from "../config.ts";
 import type { ProjectConfig, UserConfig } from "../config.ts";
 import {
+  collaborationModeToPersisted,
+  mergeStrategyToPersisted,
+  persistedCollaborationModeToRuntime,
   resolveTuiSettingsDefaults,
+  reviewModeToPersisted,
   type TuiSettingsDefaults,
 } from "../tui-settings.ts";
 import { preflight } from "../preflight.ts";
@@ -210,6 +214,87 @@ export function resolveInteractiveStartupConfig(
     defaults: resolveTuiSettingsDefaults(userConfig),
     savedToolIds: userConfig.ai_tools,
     skipToolStep: !!toolOverride || (userConfig.ai_tools?.length ?? 0) > 0,
+  };
+}
+
+export interface RuntimeControlHandlerDeps {
+  orch: Pick<Orchestrator, "config" | "setMergeStrategy" | "setSkipReview" | "setWipLimit">;
+  log: (entry: LogEntry) => void;
+  getWipLimit: () => number;
+  setWipLimit: (limit: number) => void;
+  saveUserConfigFn?: typeof saveUserConfig;
+}
+
+export function createRuntimeControlHandlers(
+  deps: RuntimeControlHandlerDeps,
+): Pick<TuiState, "onStrategyChange" | "onWipChange" | "onReviewChange" | "onCollaborationChange"> {
+  const saveUserConfigFn = deps.saveUserConfigFn ?? saveUserConfig;
+
+  return {
+    onStrategyChange: (strategy) => {
+      deps.orch.setMergeStrategy(strategy);
+      const persisted = mergeStrategyToPersisted(strategy);
+      if (persisted) {
+        try {
+          saveUserConfigFn({ merge_strategy: persisted });
+        } catch {
+          // Best-effort persistence only.
+        }
+      }
+    },
+    onWipChange: (delta) => {
+      const currentLimit = deps.getWipLimit();
+      const newLimit = Math.max(1, currentLimit + delta);
+      if (newLimit === currentLimit) return;
+      deps.orch.setWipLimit(newLimit);
+      deps.setWipLimit(newLimit);
+      deps.log({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "wip_limit_changed",
+        oldLimit: currentLimit,
+        newLimit,
+        source: "keyboard",
+      });
+      try {
+        saveUserConfigFn({ wip_limit: newLimit });
+      } catch {
+        // Best-effort persistence only.
+      }
+    },
+    onReviewChange: (mode) => {
+      const skip = mode === "off";
+      deps.orch.setSkipReview(skip);
+      deps.log({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "review_mode_changed",
+        mode,
+        skipReview: skip,
+        source: "keyboard",
+      });
+      try {
+        saveUserConfigFn({ review_mode: reviewModeToPersisted(mode) });
+      } catch {
+        // Best-effort persistence only.
+      }
+    },
+    onCollaborationChange: (mode) => {
+      deps.log({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "collaboration_mode_changed",
+        mode,
+        source: "keyboard",
+      });
+      try {
+        saveUserConfigFn({ collaboration_mode: collaborationModeToPersisted(mode) });
+      } catch {
+        // Best-effort persistence only.
+      }
+      // Collaboration mode state is tracked in the TUI only; actual crew
+      // connection semantics are still determined at startup.
+    },
   };
 }
 
@@ -433,6 +518,7 @@ export function renderTuiPanelFrame(
       mergeStrategy: tuiState.pendingStrategy ?? tuiState.mergeStrategy,
       bypassEnabled: tuiState.bypassEnabled,
       wipLimit,
+      activeRowIndex: tuiState.controlsRowIndex,
     });
     const content = controlsLines.join("\n");
     write(content.replace(/\n/g, "\x1B[K\n") + "\x1B[K");
@@ -2691,17 +2777,31 @@ export async function cmdOrchestrate(
   // TUI state: scroll offset and view option toggles (shared with keyboard handler)
   // Read persisted layout preference (defaults to "status-only" if missing/corrupt)
   const savedPanelMode = tuiMode ? readLayoutPreference(projectRoot) : "status-only";
+  const initialCollaborationMode = persistedCollaborationModeToRuntime(
+    interactiveStartupConfig.defaults.collaborationMode,
+  );
+  const initialReviewMode = orch.config.skipReview
+    ? "off" as const
+    : reviewExternalEnabled ? "all-prs" as const : "ninthwave-prs" as const;
 
   let lastTuiItems: OrchestratorItem[] = orch.getAllItems();
   let lastTuiHeartbeats = new Map<string, WorkerProgress>();
+  const runtimeControlHandlers = createRuntimeControlHandlers({
+    orch,
+    log,
+    getWipLimit: () => wipLimit,
+    setWipLimit: (limit) => {
+      wipLimit = limit;
+    },
+  });
   const tuiState: TuiState = {
     scrollOffset: 0,
     viewOptions: {
       showBlockerDetail: true,
       sessionStartedAt: daemonStartedAt,
       mergeStrategy: orch.config.mergeStrategy,
-      collaborationMode: "local",
-      reviewMode: orch.config.skipReview ? "off" : "ninthwave-prs",
+      collaborationMode: initialCollaborationMode,
+      reviewMode: initialReviewMode,
       ...(futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
     },
     mergeStrategy: orch.config.mergeStrategy,
@@ -2712,8 +2812,9 @@ export async function cmdOrchestrate(
     ctrlCTimestamp: 0,
     showHelp: false,
     showControls: false,
-    collaborationMode: "local",
-    reviewMode: orch.config.skipReview ? "off" : "ninthwave-prs",
+    controlsRowIndex: 0,
+    collaborationMode: initialCollaborationMode,
+    reviewMode: initialReviewMode,
     panelMode: savedPanelMode,
     logBuffer,
     logScrollOffset: 0,
@@ -2732,51 +2833,7 @@ export async function cmdOrchestrate(
       return getItemCount(items);
     },
     onExtendTimeout: (itemId) => orch.extendTimeout(itemId),
-    onStrategyChange: (strategy) => {
-      orch.setMergeStrategy(strategy);
-    },
-    onWipChange: (delta) => {
-      const newLimit = Math.max(1, orch.config.wipLimit + delta);
-      if (newLimit === orch.config.wipLimit) return;
-      const oldLimit = orch.config.wipLimit;
-      orch.setWipLimit(newLimit);
-      wipLimit = newLimit;
-      log({
-        ts: new Date().toISOString(),
-        level: "info",
-        event: "wip_limit_changed",
-        oldLimit,
-        newLimit,
-        source: "keyboard",
-      });
-      // Persist to user-level config unless this run used an explicit CLI --wip-limit
-      if (!wipLimitFromCli) {
-        try { saveUserConfig({ wip_limit: newLimit }); } catch { /* best-effort */ }
-      }
-    },
-    onReviewChange: (mode) => {
-      const skip = mode === "off";
-      orch.setSkipReview(skip);
-      log({
-        ts: new Date().toISOString(),
-        level: "info",
-        event: "review_mode_changed",
-        mode,
-        skipReview: skip,
-        source: "keyboard",
-      });
-    },
-    onCollaborationChange: (mode) => {
-      log({
-        ts: new Date().toISOString(),
-        level: "info",
-        event: "collaboration_mode_changed",
-        mode,
-        source: "keyboard",
-      });
-      // Collaboration mode state is tracked in TUI; actual crew connection
-      // is handled by the crew broker at startup via --crew/--connect flags.
-    },
+    ...runtimeControlHandlers,
     onPanelModeChange: (mode) => {
       writeLayoutPreference(projectRoot, mode);
     },

@@ -15,11 +15,10 @@ import type { DaemonState } from "./daemon.ts";
 import type { MergeStrategy, PollSnapshot } from "./orchestrator.ts";
 import { ghFailureKindLabel } from "./gh.ts";
 import {
-  COLLABORATION_MODE_OPTIONS,
-  MERGE_STRATEGY_OPTIONS,
-  REVIEW_MODE_OPTIONS,
+  TUI_SETTINGS_ROWS,
   collaborationLabel,
   reviewModeLabel,
+  runtimeOptionsForSettingsRow,
   type CollaborationMode,
   type ReviewMode,
 } from "./tui-settings.ts";
@@ -2302,7 +2301,7 @@ export { collaborationLabel, reviewModeLabel } from "./tui-settings.ts";
 /**
  * Render a full-screen controls overlay for runtime settings.
  * Styled identically to renderHelpOverlay() -- box-drawing border, centered.
- * Number keys 1-9 select options directly; current selections are highlighted.
+ * Rows are navigated with arrows; the active row and active value are highlighted separately.
  */
 export function renderControlsOverlay(
   termWidth: number,
@@ -2313,64 +2312,59 @@ export function renderControlsOverlay(
     mergeStrategy: MergeStrategy;
     bypassEnabled: boolean;
     wipLimit?: number;
+    activeRowIndex?: number;
   },
 ): string[] {
-  const { collaborationMode, reviewMode, mergeStrategy, bypassEnabled, wipLimit } = opts;
-  const sections: string[][] = [];
+  const {
+    collaborationMode,
+    reviewMode,
+    mergeStrategy,
+    bypassEnabled,
+    wipLimit,
+    activeRowIndex = 0,
+  } = opts;
 
-  // Collaboration section
-  const collabLine = COLLABORATION_MODE_OPTIONS.map((option) => {
-    const key = option.runtimeKey!;
-    const mode = option.runtimeValue;
-    return mode === collaborationMode
-      ? `${BOLD}[${key}] ${option.runtimeLabel}${RESET}`
-      : `${DIM}[${key}]${RESET} ${option.runtimeLabel}`;
-  }).join("   ");
-  sections.push([
-    `${BOLD}Collaboration${RESET}`,
-    `  ${collabLine}`,
-  ]);
+  const labelWidth = Math.max(...TUI_SETTINGS_ROWS.map((row) => row.title.length));
+  const clampedActiveRowIndex = Math.max(0, Math.min(activeRowIndex, TUI_SETTINGS_ROWS.length - 1));
 
-  // Reviews section
-  const reviewLine = REVIEW_MODE_OPTIONS.map((option) => {
-    const key = option.runtimeKey!;
-    const mode = option.runtimeValue;
-    return mode === reviewMode
-      ? `${BOLD}[${key}] ${option.runtimeLabel}${RESET}`
-      : `${DIM}[${key}]${RESET} ${option.runtimeLabel}`;
-  }).join("   ");
-  sections.push([
-    `${BOLD}Reviews${RESET}`,
-    `  ${reviewLine}`,
-  ]);
+  const renderChoiceValue = (rowId: string, option: { runtimeValue: string; runtimeLabel: string }, selected: boolean): string => {
+    const baseLabel = rowId === "merge_strategy"
+      ? `${stripAnsiForWidth(strategyIndicator(option.runtimeValue as MergeStrategy)).split(" ")[0]} ${option.runtimeLabel}`
+      : option.runtimeLabel;
+    return selected
+      ? `${BOLD}[${baseLabel}]${RESET}`
+      : `${DIM}${baseLabel}${RESET}`;
+  };
 
-  // Merge section
-  const mergeLine = MERGE_STRATEGY_OPTIONS
-    .filter((option) => bypassEnabled || option.runtimeValue !== "bypass")
-    .map((option) => {
-      const key = option.runtimeKey!;
-      const strat = option.runtimeValue;
-      return strat === mergeStrategy
-        ? `${BOLD}[${key}] ${strategyIndicator(strat)} ${option.runtimeLabel}${RESET}`
-        : `${DIM}[${key}]${RESET} ${strategyIndicator(strat)} ${option.runtimeLabel}`;
-  }).join("   ");
-  sections.push([
-    `${BOLD}Merge${RESET}`,
-    `  ${mergeLine}`,
-  ]);
+  const contentLines: string[] = [
+    `${DIM}↑/↓ choose row  ←/→ change value  Enter/Esc close${RESET}`,
+    "",
+  ];
 
-  // WIP section
-  const wipDisplay = wipLimit !== undefined ? `${wipLimit}` : "auto";
-  sections.push([
-    `${BOLD}WIP Limit${RESET}  ${CYAN}${wipDisplay}${RESET}`,
-    `  ${DIM}Press${RESET} + ${DIM}to increase,${RESET} - ${DIM}to decrease${RESET}`,
-  ]);
+  for (const [rowIndex, row] of TUI_SETTINGS_ROWS.entries()) {
+    const active = rowIndex === clampedActiveRowIndex;
+    const rowPrefix = active ? `${CYAN}>${RESET}` : " ";
+    const title = active
+      ? `${BOLD}${CYAN}${row.title}${RESET}`
+      : `${BOLD}${row.title}${RESET}`;
+    const titleCell = `${title}${" ".repeat(Math.max(0, labelWidth - row.title.length))}`;
 
-  // Flatten with blank separators
-  const contentLines: string[] = [];
-  for (let s = 0; s < sections.length; s++) {
-    if (s > 0) contentLines.push("");
-    contentLines.push(...sections[s]!);
+    if (row.kind === "choice") {
+      const selectedValue = row.id === "collaboration_mode"
+        ? collaborationMode
+        : row.id === "review_mode"
+          ? reviewMode
+          : mergeStrategy;
+      const choiceLine = runtimeOptionsForSettingsRow(row, bypassEnabled)
+        .map((option) => renderChoiceValue(row.id, option, option.runtimeValue === selectedValue))
+        .join("  ");
+      contentLines.push(`${rowPrefix} ${titleCell}  ${choiceLine}`);
+      continue;
+    }
+
+    const wipDisplay = wipLimit !== undefined ? `${wipLimit}` : "auto";
+    const value = `${BOLD}[${wipDisplay}]${RESET}`;
+    contentLines.push(`${rowPrefix} ${titleCell}  ${value}`);
   }
 
   // Compute box dimensions
@@ -2412,7 +2406,7 @@ export function renderControlsOverlay(
   }
 
   boxLines.push(`${marginPad}│${" ".repeat(innerWidth)}│`);
-  const hint = "Press c or Escape to close";
+  const hint = "Press Enter or Escape to close";
   const hintPad = Math.max(0, Math.floor((innerWidth - hint.length) / 2));
   boxLines.push(`${marginPad}│${" ".repeat(hintPad)}${DIM}${hint}${RESET}${" ".repeat(Math.max(0, innerWidth - hintPad - hint.length))}│`);
   boxLines.push(`${marginPad}└${"─".repeat(innerWidth)}┘`);

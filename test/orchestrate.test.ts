@@ -33,6 +33,7 @@ import {
   formatArmingBanner,
   waitForArmingKey,
   shouldShowStartupArmingWindow,
+  createRuntimeControlHandlers,
   resolveInteractiveStartupConfig,
   ARMING_WINDOW_MS,
   LOG_BUFFER_MAX,
@@ -4682,6 +4683,72 @@ describe("resolveInteractiveStartupConfig", () => {
 
     expect(result.defaults.reviewMode).toBe("mine");
     expect(result.skipToolStep).toBe(true);
+  });
+});
+
+describe("createRuntimeControlHandlers", () => {
+  it("persists merge, review, collaboration, and WIP changes", () => {
+    const savedUpdates: Array<Record<string, unknown>> = [];
+    const logs: LogEntry[] = [];
+    let currentWipLimit = 3;
+    const orch = {
+      config: { wipLimit: 3 },
+      setMergeStrategy: vi.fn(),
+      setSkipReview: vi.fn(),
+      setWipLimit: vi.fn((limit: number) => {
+        orch.config.wipLimit = limit;
+      }),
+    } as any;
+
+    const handlers = createRuntimeControlHandlers({
+      orch,
+      log: (entry) => logs.push(entry),
+      getWipLimit: () => currentWipLimit,
+      setWipLimit: (limit) => {
+        currentWipLimit = limit;
+      },
+      saveUserConfigFn: (updates) => {
+        savedUpdates.push(updates as Record<string, unknown>);
+      },
+    });
+
+    handlers.onStrategyChange?.("auto");
+    handlers.onReviewChange?.("all-prs");
+    handlers.onCollaborationChange?.("shared");
+    handlers.onWipChange?.(1);
+
+    expect(orch.setMergeStrategy).toHaveBeenCalledWith("auto");
+    expect(orch.setSkipReview).toHaveBeenCalledWith(false);
+    expect(orch.setWipLimit).toHaveBeenCalledWith(4);
+    expect(currentWipLimit).toBe(4);
+    expect(savedUpdates).toEqual([
+      { merge_strategy: "auto" },
+      { review_mode: "all" },
+      { collaboration_mode: "share" },
+      { wip_limit: 4 },
+    ]);
+    expect(logs.map((entry) => entry.event)).toContain("review_mode_changed");
+    expect(logs.map((entry) => entry.event)).toContain("collaboration_mode_changed");
+    expect(logs.map((entry) => entry.event)).toContain("wip_limit_changed");
+  });
+
+  it("does not persist bypass as a default merge strategy", () => {
+    const saveUserConfigFn = vi.fn();
+    const handlers = createRuntimeControlHandlers({
+      orch: {
+        config: { wipLimit: 3 },
+        setMergeStrategy: vi.fn(),
+        setSkipReview: vi.fn(),
+        setWipLimit: vi.fn(),
+      } as any,
+      log: () => {},
+      getWipLimit: () => 3,
+      setWipLimit: () => {},
+      saveUserConfigFn,
+    });
+
+    handlers.onStrategyChange?.("bypass");
+    expect(saveUserConfigFn).not.toHaveBeenCalled();
   });
 });
 

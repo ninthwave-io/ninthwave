@@ -3822,43 +3822,44 @@ describe("renderControlsOverlay", () => {
     expect(text).toContain("Merge");
   });
 
-  it("shows collaboration modes with number keys", () => {
+  it("shows collaboration choices horizontally on one row", () => {
     const lines = renderControlsOverlay(100, 40, baseOpts);
-    const text = stripAnsi(lines.join("\n"));
-    expect(text).toContain("[1]");
-    expect(text).toContain("Local");
-    expect(text).toContain("[2]");
-    expect(text).toContain("Share");
-    expect(text).toContain("[3]");
-    expect(text).toContain("Join");
+    const row = stripAnsi(lines.find((line) => line.includes("Collaboration")) ?? "");
+    expect(row).toContain("Collaboration");
+    expect(row).toContain("[Local]");
+    expect(row).toContain("Share");
+    expect(row).toContain("Join");
   });
 
-  it("shows review modes with number keys", () => {
+  it("shows review choices horizontally on one row", () => {
     const lines = renderControlsOverlay(100, 40, baseOpts);
-    const text = stripAnsi(lines.join("\n"));
-    expect(text).toContain("[4]");
-    expect(text).toContain("Off");
-    expect(text).toContain("[5]");
-    expect(text).toContain("Ninthwave PRs");
-    expect(text).toContain("[6]");
-    expect(text).toContain("All PRs");
+    const row = stripAnsi(lines.find((line) => line.includes("Reviews")) ?? "");
+    expect(row).toContain("Reviews");
+    expect(row).toContain("[Off]");
+    expect(row).toContain("Ninthwave PRs");
+    expect(row).toContain("All PRs");
+  });
+
+  it("marks the active row separately from the active value", () => {
+    const lines = renderControlsOverlay(100, 40, { ...baseOpts, activeRowIndex: 1 });
+    const reviewsRow = stripAnsi(lines.find((line) => line.includes("Reviews")) ?? "");
+    const collaborationRow = stripAnsi(lines.find((line) => line.includes("Collaboration")) ?? "");
+    expect(reviewsRow).toContain("> Reviews");
+    expect(collaborationRow).not.toContain("> Collaboration");
+    expect(collaborationRow).toContain("[Local]");
   });
 
   it("hides bypass merge strategy when bypassEnabled is false", () => {
     const lines = renderControlsOverlay(100, 40, baseOpts);
     const text = stripAnsi(lines.join("\n"));
-    expect(text).toContain("[7]");
     expect(text).toContain("Manual");
-    expect(text).toContain("[8]");
     expect(text).toContain("Auto");
-    expect(text).not.toContain("[9]");
     expect(text).not.toContain("Bypass");
   });
 
   it("shows bypass merge strategy when bypassEnabled is true", () => {
     const lines = renderControlsOverlay(100, 40, { ...baseOpts, bypassEnabled: true });
     const text = stripAnsi(lines.join("\n"));
-    expect(text).toContain("[9]");
     expect(text).toContain("Bypass");
   });
 
@@ -3867,14 +3868,13 @@ describe("renderControlsOverlay", () => {
     const text = stripAnsi(lines.join("\n"));
     expect(text).toContain("WIP Limit");
     expect(text).toContain("3");
-    expect(text).toContain("+");
-    expect(text).toContain("-");
+    expect(text).toContain("←/→ change value");
   });
 
   it("shows dismissal hint", () => {
     const lines = renderControlsOverlay(100, 40, baseOpts);
     const text = stripAnsi(lines.join("\n"));
-    expect(text).toContain("Press c or Escape to close");
+    expect(text).toContain("Press Enter or Escape to close");
   });
 
   it("content fits within termWidth", () => {

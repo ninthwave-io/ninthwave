@@ -13,8 +13,8 @@ import {
   detailOverlayMaxScroll,
 } from "./status-render.ts";
 import {
-  COLLABORATION_MODE_CYCLE,
-  REVIEW_MODE_CYCLE,
+  TUI_SETTINGS_ROWS,
+  runtimeOptionsForSettingsRow,
   type CollaborationMode,
   type ReviewMode,
 } from "./tui-settings.ts";
@@ -77,7 +77,7 @@ function extractLogLevel(message: string): string {
 
 // Re-export runtime control types from status-render for consumers
 export type { CollaborationMode, ReviewMode } from "./tui-settings.ts";
-export { REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE };
+export { REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE } from "./tui-settings.ts";
 
 /** Debounce window for merge strategy changes triggered from the TUI. */
 export const STRATEGY_DEBOUNCE_MS = 5000;
@@ -104,6 +104,8 @@ export interface TuiState {
   showHelp: boolean;
   /** Whether the controls overlay is visible. */
   showControls: boolean;
+  /** Active row cursor within the controls overlay (0-based). */
+  controlsRowIndex?: number;
   /** Current collaboration mode (per-run, not persisted). */
   collaborationMode: CollaborationMode;
   /** Current AI review mode (per-run, not persisted). */
@@ -221,6 +223,83 @@ export function setupKeyboardShortcuts(
     }, STRATEGY_DEBOUNCE_MS);
   };
 
+  const clampControlsRowIndex = () => {
+    if (!tuiState) return;
+    tuiState.controlsRowIndex = Math.max(0, Math.min(tuiState.controlsRowIndex ?? 0, TUI_SETTINGS_ROWS.length - 1));
+  };
+
+  const dismissControls = () => {
+    if (!tuiState) return;
+    tuiState.showControls = false;
+    tuiState.viewOptions.showControls = false;
+  };
+
+  const moveControlsRow = (delta: number) => {
+    if (!tuiState) return;
+    clampControlsRowIndex();
+    tuiState.controlsRowIndex = Math.max(
+      0,
+      Math.min((tuiState.controlsRowIndex ?? 0) + delta, TUI_SETTINGS_ROWS.length - 1),
+    );
+  };
+
+  const adjustControlsValue = (delta: -1 | 1) => {
+    if (!tuiState) return;
+    clampControlsRowIndex();
+    const row = TUI_SETTINGS_ROWS[tuiState.controlsRowIndex ?? 0] ?? TUI_SETTINGS_ROWS[0]!;
+    if (row.kind === "number") {
+      tuiState.onWipChange?.(delta);
+      return;
+    }
+
+    const options = runtimeOptionsForSettingsRow(row, tuiState.bypassEnabled);
+    const currentValue = row.id === "collaboration_mode"
+      ? tuiState.collaborationMode
+      : row.id === "review_mode"
+        ? tuiState.reviewMode
+        : (tuiState.pendingStrategy ?? tuiState.mergeStrategy);
+    const currentIdx = options.findIndex((option) => option.runtimeValue === currentValue);
+    if (currentIdx < 0) return;
+    const nextIdx = Math.max(0, Math.min(currentIdx + delta, options.length - 1));
+    if (nextIdx === currentIdx) return;
+    const nextOption = options[nextIdx]!;
+
+    if (row.id === "collaboration_mode") {
+      const newMode = nextOption.runtimeValue as CollaborationMode;
+      tuiState.collaborationMode = newMode;
+      tuiState.viewOptions.collaborationMode = newMode;
+      tuiState.onCollaborationChange?.(newMode);
+      return;
+    }
+
+    if (row.id === "review_mode") {
+      const oldMode = tuiState.reviewMode;
+      const newMode = nextOption.runtimeValue as ReviewMode;
+      tuiState.reviewMode = newMode;
+      tuiState.viewOptions.reviewMode = newMode;
+      log({
+        ts: new Date().toISOString(),
+        level: "info",
+        event: "review_mode_change",
+        oldMode,
+        newMode,
+      });
+      tuiState.onReviewChange?.(newMode);
+      return;
+    }
+
+    const newStrategy = nextOption.runtimeValue as MergeStrategy;
+    const oldStrategy = tuiState.pendingStrategy ?? tuiState.mergeStrategy;
+    log({
+      ts: new Date().toISOString(),
+      level: "info",
+      event: "strategy_cycle",
+      oldStrategy,
+      newStrategy,
+    });
+    queueStrategyChange(newStrategy);
+  };
+
   const onData = (key: string) => {
     // q still exits immediately (discoverable via ? help overlay)
     if (key === "q") {
@@ -270,61 +349,30 @@ export function setupKeyboardShortcuts(
 
     let handled = true;
 
-    // ── Controls overlay number-key selection ──────────────────────
-    // When the controls overlay is open, 1-9 select options directly.
-    if (tuiState.showControls && key >= "1" && key <= "9") {
-      const num = parseInt(key, 10);
-      switch (num) {
-        // Collaboration: 1=Local, 2=Share, 3=Join
-        case 1: case 2: case 3: {
-          const modes: CollaborationMode[] = ["local", "shared", "joined"];
-          const newMode = modes[num - 1]!;
-          if (newMode !== tuiState.collaborationMode) {
-            tuiState.collaborationMode = newMode;
-            tuiState.viewOptions.collaborationMode = newMode;
-            tuiState.onCollaborationChange?.(newMode);
-          }
-          break;
-        }
-        // Reviews: 4=Off, 5=Ninthwave PRs, 6=All PRs
-        case 4: case 5: case 6: {
-          const modes: ReviewMode[] = ["off", "ninthwave-prs", "all-prs"];
-          const newMode = modes[num - 4]!;
-          if (newMode !== tuiState.reviewMode) {
-            tuiState.reviewMode = newMode;
-            tuiState.viewOptions.reviewMode = newMode;
-            log({
-              ts: new Date().toISOString(),
-              level: "info",
-              event: "review_mode_change",
-              oldMode: tuiState.reviewMode,
-              newMode,
-            });
-            tuiState.onReviewChange?.(newMode);
-          }
-          break;
-        }
-        // Merge: 7=Manual, 8=Auto, 9=Bypass (when allowed)
-        case 7: case 8: case 9: {
-          const strategies: MergeStrategy[] = ["manual", "auto", "bypass"];
-          const newStrategy = strategies[num - 7]!;
-          if (newStrategy === "bypass" && !tuiState.bypassEnabled) break;
-          const oldStrategy = tuiState.pendingStrategy ?? tuiState.mergeStrategy;
-          if (newStrategy !== oldStrategy) {
-            log({
-              ts: new Date().toISOString(),
-              level: "info",
-              event: "strategy_cycle",
-              oldStrategy,
-              newStrategy,
-            });
-          }
-          queueStrategyChange(newStrategy);
-          break;
-        }
+    if (tuiState.showControls) {
+      switch (key) {
+        case "\x1b[A":
+          moveControlsRow(-1);
+          tuiState.onUpdate?.();
+          return;
+        case "\x1b[B":
+          moveControlsRow(1);
+          tuiState.onUpdate?.();
+          return;
+        case "\x1b[D":
+          adjustControlsValue(-1);
+          tuiState.onUpdate?.();
+          return;
+        case "\x1b[C":
+          adjustControlsValue(1);
+          tuiState.onUpdate?.();
+          return;
+        case "\r":
+        case "\x1b":
+          dismissControls();
+          tuiState.onUpdate?.();
+          return;
       }
-      tuiState.onUpdate?.();
-      return;
     }
 
     switch (key) {
@@ -344,6 +392,7 @@ export function setupKeyboardShortcuts(
         if (tuiState.showControls) {
           tuiState.showHelp = false;
           tuiState.viewOptions.showHelp = false;
+          clampControlsRowIndex();
         }
         break;
       case "\x1b": // Raw Escape (length 1) -- dismiss help, controls, or detail panel
@@ -353,8 +402,7 @@ export function setupKeyboardShortcuts(
           tuiState.showHelp = false;
           tuiState.viewOptions.showHelp = false;
         } else if (tuiState.showControls) {
-          tuiState.showControls = false;
-          tuiState.viewOptions.showControls = false;
+          dismissControls();
         } else if (tuiState.detailItemId) {
           // Return from detail view to log panel, restore scroll offset
           tuiState.detailItemId = null;
