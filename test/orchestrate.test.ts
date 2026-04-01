@@ -4712,9 +4712,11 @@ describe("createRuntimeControlHandlers", () => {
       },
     });
 
+    const shareResult = handlers.onCollaborationShare?.();
+    const joinResult = handlers.onCollaborationJoinSubmit?.("ABCD-1234");
+    const localResult = handlers.onCollaborationLocal?.();
     handlers.onStrategyChange?.("auto");
     handlers.onReviewChange?.("all-prs");
-    handlers.onCollaborationChange?.("shared");
     handlers.onWipChange?.(1);
 
     expect(orch.setMergeStrategy).toHaveBeenCalledWith("auto");
@@ -4726,6 +4728,9 @@ describe("createRuntimeControlHandlers", () => {
       { review_mode: "all" },
       { wip_limit: 4 },
     ]);
+    expect(shareResult).toEqual({ mode: "shared" });
+    expect(joinResult).toEqual({ mode: "joined" });
+    expect(localResult).toEqual({ mode: "local" });
     expect(logs.map((entry) => entry.event)).toContain("review_mode_changed");
     expect(logs.map((entry) => entry.event)).toContain("collaboration_mode_changed");
     expect(logs.map((entry) => entry.event)).toContain("wip_limit_changed");

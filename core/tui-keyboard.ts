@@ -16,7 +16,10 @@ import {
 } from "./status-render.ts";
 import {
   TUI_SETTINGS_ROWS,
+  collaborationIntentFromMode,
+  collaborationIntentToMode,
   runtimeOptionsForSettingsRow,
+  type CollaborationIntent,
   type CollaborationMode,
   type ReviewMode,
 } from "./tui-settings.ts";
@@ -78,11 +81,19 @@ function extractLogLevel(message: string): string {
 }
 
 // Re-export runtime control types from status-render for consumers
-export type { CollaborationMode, ReviewMode } from "./tui-settings.ts";
+export type { CollaborationIntent, CollaborationMode, ReviewMode } from "./tui-settings.ts";
 export { REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE } from "./tui-settings.ts";
 
 /** Debounce window for merge strategy changes triggered from the TUI. */
 export const STRATEGY_DEBOUNCE_MS = 5000;
+
+export interface CollaborationActionResult {
+  mode?: CollaborationMode;
+  error?: string;
+}
+
+type CollaborationActionHandler = () => void | CollaborationActionResult | Promise<void | CollaborationActionResult>;
+type CollaborationJoinSubmitHandler = (code: string) => void | CollaborationActionResult | Promise<void | CollaborationActionResult>;
 
 // ── TUI keyboard state ────────────────────────────────────────────
 
@@ -114,6 +125,16 @@ export interface TuiState {
   controlsRowIndex?: number;
   /** Current collaboration mode (per-run, not persisted). */
   collaborationMode: CollaborationMode;
+  /** Active collaboration intent shown in the controls overlay. */
+  collaborationIntent?: CollaborationIntent;
+  /** Whether the controls overlay is capturing join-session text input. */
+  collaborationJoinInputActive?: boolean;
+  /** Current join-session input value. */
+  collaborationJoinInputValue?: string;
+  /** Whether a collaboration action is currently in flight. */
+  collaborationBusy?: boolean;
+  /** Inline collaboration error shown in the controls overlay. */
+  collaborationError?: string;
   /** Current AI review mode (per-run, not persisted). */
   reviewMode: ReviewMode;
   /** Active page mode: status-only or logs-only. */
@@ -146,6 +167,12 @@ export interface TuiState {
   onReviewChange?: (mode: ReviewMode) => void;
   /** Called when the collaboration mode changes from the controls overlay. */
   onCollaborationChange?: (mode: CollaborationMode) => void;
+  /** Called when the user selects Local in the controls overlay. */
+  onCollaborationLocal?: CollaborationActionHandler;
+  /** Called when the user selects Share in the controls overlay. */
+  onCollaborationShare?: CollaborationActionHandler;
+  /** Called when the user submits a Join code in the controls overlay. */
+  onCollaborationJoinSubmit?: CollaborationJoinSubmitHandler;
   /** Called after any key that should trigger an immediate re-render. */
   onUpdate?: () => void;
   /** Resolve item ID at the given index in the visible item list. */
@@ -262,6 +289,160 @@ export function setupKeyboardShortcuts(
     }, STRATEGY_DEBOUNCE_MS);
   };
 
+  const syncCollaborationView = () => {
+    if (!tuiState) return;
+    if (tuiState.collaborationIntent === undefined) {
+      tuiState.collaborationIntent = collaborationIntentFromMode(tuiState.collaborationMode);
+    }
+    if (tuiState.collaborationJoinInputActive === undefined) {
+      tuiState.collaborationJoinInputActive = false;
+    }
+    if (tuiState.collaborationJoinInputValue === undefined) {
+      tuiState.collaborationJoinInputValue = "";
+    }
+    if (tuiState.collaborationBusy === undefined) {
+      tuiState.collaborationBusy = false;
+    }
+    tuiState.viewOptions.collaborationMode = tuiState.collaborationMode;
+    tuiState.viewOptions.collaborationIntent = tuiState.collaborationIntent;
+    tuiState.viewOptions.collaborationJoinInputActive = tuiState.collaborationJoinInputActive;
+    tuiState.viewOptions.collaborationJoinInputValue = tuiState.collaborationJoinInputValue;
+    tuiState.viewOptions.collaborationBusy = tuiState.collaborationBusy;
+    tuiState.viewOptions.collaborationError = tuiState.collaborationError;
+  };
+
+  const setCollaborationMode = (mode: CollaborationMode) => {
+    if (!tuiState) return;
+    tuiState.collaborationMode = mode;
+    tuiState.collaborationIntent = collaborationIntentFromMode(mode);
+    syncCollaborationView();
+  };
+
+  const resetCollaborationFeedback = () => {
+    if (!tuiState) return;
+    tuiState.collaborationBusy = false;
+    tuiState.collaborationError = undefined;
+    syncCollaborationView();
+  };
+
+  const exitJoinInput = (preserveIntent = false) => {
+    if (!tuiState) return;
+    tuiState.collaborationJoinInputActive = false;
+    tuiState.collaborationJoinInputValue = "";
+    tuiState.collaborationBusy = false;
+    tuiState.collaborationError = undefined;
+    if (!preserveIntent) {
+      tuiState.collaborationIntent = collaborationIntentFromMode(tuiState.collaborationMode);
+    }
+    syncCollaborationView();
+  };
+
+  const enterJoinInput = () => {
+    if (!tuiState) return;
+    tuiState.collaborationIntent = "join";
+    tuiState.collaborationJoinInputActive = true;
+    tuiState.collaborationBusy = false;
+    tuiState.collaborationError = undefined;
+    syncCollaborationView();
+  };
+
+  const selectCollaborationIntent = (intent: CollaborationIntent) => {
+    if (!tuiState) return;
+    tuiState.collaborationIntent = intent;
+    tuiState.collaborationError = undefined;
+    syncCollaborationView();
+  };
+
+  const applyCollaborationActionResult = (
+    fallbackMode: CollaborationMode,
+    result?: void | CollaborationActionResult,
+  ) => {
+    if (!tuiState) return;
+    if (result?.error) {
+      tuiState.collaborationBusy = false;
+      tuiState.collaborationError = result.error;
+      syncCollaborationView();
+      tuiState.onUpdate?.();
+      return;
+    }
+
+    const nextMode = result?.mode ?? fallbackMode;
+    setCollaborationMode(nextMode);
+    tuiState.collaborationBusy = false;
+    tuiState.collaborationError = undefined;
+    if (nextMode === "joined") {
+      exitJoinInput(true);
+    } else {
+      exitJoinInput();
+    }
+    syncCollaborationView();
+    tuiState.onUpdate?.();
+  };
+
+  const runCollaborationAction = (
+    fallbackMode: CollaborationMode,
+    handler?: CollaborationActionHandler | CollaborationJoinSubmitHandler,
+    arg?: string,
+  ) => {
+    if (!tuiState) return;
+    tuiState.collaborationBusy = true;
+    tuiState.collaborationError = undefined;
+    syncCollaborationView();
+    tuiState.onUpdate?.();
+    try {
+      const maybePromise = arg === undefined
+        ? (handler as CollaborationActionHandler | undefined)?.()
+        : (handler as CollaborationJoinSubmitHandler | undefined)?.(arg);
+      if (maybePromise && typeof (maybePromise as PromiseLike<void | CollaborationActionResult>).then === "function") {
+        void (maybePromise as Promise<void | CollaborationActionResult>)
+          .then((result) => applyCollaborationActionResult(fallbackMode, result))
+          .catch((error: unknown) => {
+            if (!tuiState) return;
+            tuiState.collaborationBusy = false;
+            tuiState.collaborationError = error instanceof Error ? error.message : String(error);
+            syncCollaborationView();
+            tuiState.onUpdate?.();
+          });
+        return;
+      }
+      applyCollaborationActionResult(fallbackMode, maybePromise as void | CollaborationActionResult);
+    } catch (error: unknown) {
+      tuiState.collaborationBusy = false;
+      tuiState.collaborationError = error instanceof Error ? error.message : String(error);
+      syncCollaborationView();
+      tuiState.onUpdate?.();
+    }
+  };
+
+  const triggerCollaborationIntent = (intent: CollaborationIntent) => {
+    if (!tuiState) return;
+    resetCollaborationFeedback();
+    if (intent === "join") {
+      enterJoinInput();
+      return;
+    }
+
+    const fallbackMode = collaborationIntentToMode(intent);
+    const handler = intent === "share"
+      ? (tuiState.onCollaborationShare ?? (() => tuiState.onCollaborationChange?.("shared")))
+      : (tuiState.onCollaborationLocal ?? (() => tuiState.onCollaborationChange?.("local")));
+    runCollaborationAction(fallbackMode, handler);
+  };
+
+  const submitJoinInput = () => {
+    if (!tuiState) return;
+    const joinCode = (tuiState.collaborationJoinInputValue ?? "").trim();
+    if (!joinCode) {
+      tuiState.collaborationError = "Enter a session code to join.";
+      syncCollaborationView();
+      tuiState.onUpdate?.();
+      return;
+    }
+
+    const handler = tuiState.onCollaborationJoinSubmit ?? (() => tuiState.onCollaborationChange?.("joined"));
+    runCollaborationAction("joined", handler, joinCode);
+  };
+
   const clampControlsRowIndex = () => {
     if (!tuiState) return;
     tuiState.controlsRowIndex = Math.max(0, Math.min(tuiState.controlsRowIndex ?? 0, TUI_SETTINGS_ROWS.length - 1));
@@ -269,6 +450,7 @@ export function setupKeyboardShortcuts(
 
   const dismissControls = () => {
     if (!tuiState) return;
+    exitJoinInput();
     tuiState.showControls = false;
     tuiState.viewOptions.showControls = false;
   };
@@ -293,7 +475,7 @@ export function setupKeyboardShortcuts(
 
     const options = runtimeOptionsForSettingsRow(row, tuiState.bypassEnabled);
     const currentValue = row.id === "collaboration_mode"
-      ? tuiState.collaborationMode
+      ? collaborationIntentToMode(tuiState.collaborationIntent ?? collaborationIntentFromMode(tuiState.collaborationMode))
       : row.id === "review_mode"
         ? tuiState.reviewMode
         : (tuiState.pendingStrategy ?? tuiState.mergeStrategy);
@@ -304,10 +486,8 @@ export function setupKeyboardShortcuts(
     const nextOption = options[nextIdx]!;
 
     if (row.id === "collaboration_mode") {
-      const newMode = nextOption.runtimeValue as CollaborationMode;
-      tuiState.collaborationMode = newMode;
-      tuiState.viewOptions.collaborationMode = newMode;
-      tuiState.onCollaborationChange?.(newMode);
+      const intent = collaborationIntentFromMode(nextOption.runtimeValue as CollaborationMode);
+      selectCollaborationIntent(intent);
       return;
     }
 
@@ -419,6 +599,35 @@ export function setupKeyboardShortcuts(
     let handled = true;
 
     if (tuiState.showControls) {
+      if (tuiState.collaborationJoinInputActive) {
+        switch (key) {
+          case "\r":
+            submitJoinInput();
+            return;
+          case "\x1b":
+            exitJoinInput();
+            tuiState.onUpdate?.();
+            return;
+          case "\x7f":
+          case "\b":
+            if (!tuiState.collaborationBusy && (tuiState.collaborationJoinInputValue ?? "").length > 0) {
+              tuiState.collaborationJoinInputValue = (tuiState.collaborationJoinInputValue ?? "").slice(0, -1);
+              tuiState.collaborationError = undefined;
+              syncCollaborationView();
+              tuiState.onUpdate?.();
+            }
+            return;
+          default:
+            if (!tuiState.collaborationBusy && /^[\x20-\x7E]$/.test(key)) {
+              tuiState.collaborationJoinInputValue += key.toUpperCase();
+              tuiState.collaborationError = undefined;
+              syncCollaborationView();
+              tuiState.onUpdate?.();
+              return;
+            }
+        }
+      }
+
       switch (key) {
         case "\x1b[A":
           moveControlsRow(-1);
@@ -436,7 +645,22 @@ export function setupKeyboardShortcuts(
           adjustControlsValue(1);
           tuiState.onUpdate?.();
           return;
-        case "\r":
+        case "\r": {
+          clampControlsRowIndex();
+          const row = TUI_SETTINGS_ROWS[tuiState.controlsRowIndex ?? 0] ?? TUI_SETTINGS_ROWS[0]!;
+          if (row.id === "collaboration_mode") {
+            if ((tuiState.collaborationIntent ?? collaborationIntentFromMode(tuiState.collaborationMode)) === "join") {
+              enterJoinInput();
+            } else {
+              triggerCollaborationIntent(tuiState.collaborationIntent ?? collaborationIntentFromMode(tuiState.collaborationMode));
+            }
+            tuiState.onUpdate?.();
+            return;
+          }
+          dismissControls();
+          tuiState.onUpdate?.();
+          return;
+        }
         case "\x1b":
           dismissControls();
           tuiState.onUpdate?.();
@@ -462,6 +686,10 @@ export function setupKeyboardShortcuts(
           tuiState.showHelp = false;
           tuiState.viewOptions.showHelp = false;
           clampControlsRowIndex();
+          exitJoinInput();
+          syncCollaborationView();
+        } else {
+          exitJoinInput();
         }
         break;
       case "\x1b": // Raw Escape (length 1) -- dismiss help, controls, or detail panel
@@ -627,6 +855,8 @@ export function setupKeyboardShortcuts(
       tuiState.onUpdate?.();
     }
   };
+
+  syncCollaborationView();
 
   stdin.on("data", onData);
   process.stdout.on("resize", onResize);

@@ -17,8 +17,10 @@ import { ghFailureKindLabel } from "./gh.ts";
 import {
   TUI_SETTINGS_ROWS,
   collaborationLabel,
+  collaborationIntentToMode,
   reviewModeLabel,
   runtimeOptionsForSettingsRow,
+  type CollaborationIntent,
   type CollaborationMode,
   type ReviewMode,
 } from "./tui-settings.ts";
@@ -66,6 +68,16 @@ export interface ViewOptions {
   showControls?: boolean;
   /** Current collaboration mode for display. */
   collaborationMode?: CollaborationMode;
+  /** Active collaboration intent in the controls overlay. */
+  collaborationIntent?: CollaborationIntent;
+  /** Whether the controls overlay is capturing join-session text input. */
+  collaborationJoinInputActive?: boolean;
+  /** Current join-session input value shown in the controls overlay. */
+  collaborationJoinInputValue?: string;
+  /** Whether a collaboration action is currently submitting. */
+  collaborationBusy?: boolean;
+  /** Inline collaboration error shown in the controls overlay. */
+  collaborationError?: string;
   /** Current AI review mode for display. */
   reviewMode?: ReviewMode;
   /** Active schedule workers to display in the TUI. */
@@ -2495,6 +2507,11 @@ export function renderControlsOverlay(
   termRows: number,
   opts: {
     collaborationMode: CollaborationMode;
+    collaborationIntent?: CollaborationIntent;
+    collaborationJoinInputActive?: boolean;
+    collaborationJoinInputValue?: string;
+    collaborationBusy?: boolean;
+    collaborationError?: string;
     reviewMode: ReviewMode;
     mergeStrategy: MergeStrategy;
     bypassEnabled: boolean;
@@ -2504,6 +2521,11 @@ export function renderControlsOverlay(
 ): string[] {
   const {
     collaborationMode,
+    collaborationIntent,
+    collaborationJoinInputActive: _collaborationJoinInputActive = false,
+    collaborationJoinInputValue: _collaborationJoinInputValue = "",
+    collaborationBusy: _collaborationBusy = false,
+    collaborationError: _collaborationError,
     reviewMode,
     mergeStrategy,
     bypassEnabled,
@@ -2538,7 +2560,7 @@ export function renderControlsOverlay(
 
     if (row.kind === "choice") {
       const selectedValue = row.id === "collaboration_mode"
-        ? collaborationMode
+        ? (collaborationIntent ? collaborationIntentToMode(collaborationIntent) : collaborationMode)
         : row.id === "review_mode"
           ? reviewMode
           : mergeStrategy;

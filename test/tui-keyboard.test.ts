@@ -55,6 +55,10 @@ function makeTuiState(overrides: Partial<TuiState> = {}): TuiState {
     showControls: false,
     controlsRowIndex: 0,
     collaborationMode: "local",
+    collaborationIntent: "local",
+    collaborationJoinInputActive: false,
+    collaborationJoinInputValue: "",
+    collaborationBusy: false,
     reviewMode: "off",
     panelMode: "status-only" as PanelMode,
     logBuffer: [],
@@ -472,30 +476,128 @@ describe("controls overlay row navigation", () => {
     cleanup();
   });
 
-  it("Left/Right change collaboration mode on the active row", () => {
+  it("Left/Right select collaboration intents and Enter invokes Share/Local callbacks", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
-    const onCollaborationChange = vi.fn();
+    const onCollaborationLocal = vi.fn(() => ({ mode: "local" as const }));
+    const onCollaborationShare = vi.fn(() => ({ mode: "shared" as const }));
     const onUpdate = vi.fn();
     const state = makeTuiState({
       showControls: true,
       controlsRowIndex: 0,
       collaborationMode: "local",
-      onCollaborationChange,
+      collaborationIntent: "local",
+      onCollaborationLocal,
+      onCollaborationShare,
       onUpdate,
     });
     state.viewOptions.collaborationMode = "local";
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
     stdin.emit("data", "\x1b[C");
+    expect(state.collaborationIntent).toBe("share");
+    expect(state.viewOptions.collaborationIntent).toBe("share");
+    expect(state.collaborationMode).toBe("local");
+    expect(onCollaborationShare).not.toHaveBeenCalled();
+
+    stdin.emit("data", "\r");
     expect(state.collaborationMode).toBe("shared");
     expect(state.viewOptions.collaborationMode).toBe("shared");
-    expect(onCollaborationChange).toHaveBeenCalledWith("shared");
+    expect(onCollaborationShare).toHaveBeenCalledTimes(1);
     expect(onUpdate).toHaveBeenCalled();
 
     stdin.emit("data", "\x1b[D");
+    expect(state.collaborationIntent).toBe("local");
+    expect(state.collaborationMode).toBe("shared");
+    expect(onCollaborationLocal).not.toHaveBeenCalled();
+
+    stdin.emit("data", "\r");
     expect(state.collaborationMode).toBe("local");
-    expect(onCollaborationChange).toHaveBeenCalledWith("local");
+    expect(state.collaborationIntent).toBe("local");
+    expect(onCollaborationLocal).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("entering Join from the controls overlay enables join input and mirrors it to viewOptions", () => {
+    const ac = new AbortController();
+    const stdin = makeFakeStdin();
+    const state = makeTuiState({
+      showControls: true,
+      controlsRowIndex: 0,
+      collaborationMode: "local",
+      collaborationIntent: "local",
+    });
+    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
+
+    stdin.emit("data", "\x1b[C");
+    stdin.emit("data", "\x1b[C");
+    expect(state.collaborationMode).toBe("local");
+    expect(state.collaborationIntent).toBe("join");
+    expect(state.collaborationJoinInputActive).toBe(false);
+
+    stdin.emit("data", "\r");
+
+    expect(state.collaborationMode).toBe("local");
+    expect(state.collaborationJoinInputActive).toBe(true);
+    expect(state.viewOptions.collaborationIntent).toBe("join");
+    expect(state.viewOptions.collaborationJoinInputActive).toBe(true);
+    expect(state.viewOptions.collaborationJoinInputValue).toBe("");
+    cleanup();
+  });
+
+  it("printable input, backspace, Enter submit, and Escape cancel stay inside join-input mode", () => {
+    const ac = new AbortController();
+    const stdin = makeFakeStdin();
+    const onCollaborationJoinSubmit = vi.fn((code: string) => ({
+      mode: "joined" as const,
+      error: code === "AB12" ? undefined : "unexpected code",
+    }));
+    const state = makeTuiState({
+      showControls: true,
+      controlsRowIndex: 0,
+      collaborationMode: "local",
+      collaborationIntent: "join",
+      collaborationJoinInputActive: true,
+      onCollaborationJoinSubmit,
+    });
+    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
+
+    stdin.emit("data", "a");
+    stdin.emit("data", "b");
+    stdin.emit("data", "1");
+    stdin.emit("data", "2");
+    expect(state.collaborationJoinInputValue).toBe("AB12");
+    expect(state.viewOptions.collaborationJoinInputValue).toBe("AB12");
+
+    stdin.emit("data", "\x7f");
+    expect(state.collaborationJoinInputValue).toBe("AB1");
+    expect(state.controlsRowIndex).toBe(0);
+
+    stdin.emit("data", "2");
+    stdin.emit("data", "\r");
+    expect(onCollaborationJoinSubmit).toHaveBeenCalledWith("AB12");
+    expect(state.collaborationMode).toBe("joined");
+    expect(state.collaborationIntent).toBe("join");
+    expect(state.collaborationJoinInputActive).toBe(false);
+
+    stdin.emit("data", "\x1b[C");
+    expect(state.collaborationJoinInputActive).toBe(false);
+
+    state.collaborationMode = "local";
+    state.collaborationIntent = "join";
+    state.collaborationJoinInputActive = true;
+    state.collaborationJoinInputValue = "CODE";
+    state.viewOptions.collaborationMode = "local";
+    state.viewOptions.collaborationIntent = "join";
+    state.viewOptions.collaborationJoinInputActive = true;
+    state.viewOptions.collaborationJoinInputValue = "CODE";
+
+    stdin.emit("data", "\x1b");
+    expect(state.showControls).toBe(true);
+    expect(state.collaborationMode).toBe("local");
+    expect(state.collaborationIntent).toBe("local");
+    expect(state.collaborationJoinInputActive).toBe(false);
+    expect(state.viewOptions.collaborationJoinInputActive).toBe(false);
     cleanup();
   });
 
@@ -573,10 +675,10 @@ describe("controls overlay row navigation", () => {
     cleanup();
   });
 
-  it("Enter dismisses the controls overlay", () => {
+  it("Enter dismisses the controls overlay on non-collaboration rows", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
-    const state = makeTuiState({ showControls: true });
+    const state = makeTuiState({ showControls: true, controlsRowIndex: 1 });
     state.viewOptions.showControls = true;
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
