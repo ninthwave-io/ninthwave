@@ -6,6 +6,7 @@ export type StartupReviewMode = "off" | "mine" | "all";
 export type ReviewMode = "off" | "ninthwave-prs" | "all-prs";
 
 export type StartupCollaborationMode = "local" | "share" | "join";
+export type CollaborationIntent = StartupCollaborationMode;
 export type CollaborationMode = "local" | "shared" | "joined";
 
 export type PersistedMergeStrategy = Extract<MergeStrategy, "auto" | "manual">;
@@ -231,6 +232,28 @@ export function reviewModeToPersisted(mode: ReviewMode): PersistedReviewMode {
 
 export function collaborationModeToPersisted(mode: CollaborationMode): PersistedCollaborationMode {
   return getByRuntimeValue(COLLABORATION_MODE_OPTIONS, mode).persistedValue;
+}
+
+export function collaborationIntentToMode(intent: CollaborationIntent): CollaborationMode {
+  switch (intent) {
+    case "local":
+      return "local";
+    case "share":
+      return "shared";
+    case "join":
+      return "joined";
+  }
+}
+
+export function collaborationIntentFromMode(mode: CollaborationMode): CollaborationIntent {
+  switch (mode) {
+    case "local":
+      return "local";
+    case "shared":
+      return "share";
+    case "joined":
+      return "join";
+  }
 }
 
 export function runtimeOptionsForSettingsRow(

@@ -226,8 +226,19 @@ export interface RuntimeControlHandlerDeps {
 
 export function createRuntimeControlHandlers(
   deps: RuntimeControlHandlerDeps,
-): Pick<TuiState, "onStrategyChange" | "onWipChange" | "onReviewChange" | "onCollaborationChange"> {
+): Pick<TuiState, "onStrategyChange" | "onWipChange" | "onReviewChange" | "onCollaborationLocal" | "onCollaborationShare" | "onCollaborationJoinSubmit"> {
   const saveUserConfigFn = deps.saveUserConfigFn ?? saveUserConfig;
+  const logCollaborationIntent = (mode: "local" | "shared" | "joined", code?: string) => {
+    deps.log({
+      ts: new Date().toISOString(),
+      level: "info",
+      event: "collaboration_mode_changed",
+      mode,
+      ...(code ? { code } : {}),
+      source: "keyboard",
+    });
+    return { mode };
+  };
 
   return {
     onStrategyChange: (strategy) => {
@@ -278,17 +289,9 @@ export function createRuntimeControlHandlers(
         // Best-effort persistence only.
       }
     },
-    onCollaborationChange: (mode) => {
-      deps.log({
-        ts: new Date().toISOString(),
-        level: "info",
-        event: "collaboration_mode_changed",
-        mode,
-        source: "keyboard",
-      });
-      // Collaboration mode state is tracked in the TUI only; actual crew
-      // connection semantics are still determined at startup.
-    },
+    onCollaborationLocal: () => logCollaborationIntent("local"),
+    onCollaborationShare: () => logCollaborationIntent("shared"),
+    onCollaborationJoinSubmit: (code) => logCollaborationIntent("joined", code),
   };
 }
 
@@ -514,6 +517,11 @@ export function renderTuiPanelFrame(
     // Render controls overlay for runtime settings
     const controlsLines = renderControlsOverlay(termWidth, termRows, {
       collaborationMode: tuiState.collaborationMode,
+      collaborationIntent: tuiState.collaborationIntent,
+      collaborationJoinInputActive: tuiState.collaborationJoinInputActive,
+      collaborationJoinInputValue: tuiState.collaborationJoinInputValue,
+      collaborationBusy: tuiState.collaborationBusy,
+      collaborationError: tuiState.collaborationError,
       reviewMode: tuiState.reviewMode,
       mergeStrategy: tuiState.pendingStrategy ?? tuiState.mergeStrategy,
       bypassEnabled: tuiState.bypassEnabled,
@@ -621,6 +629,10 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     showHelp: false,
     showControls: false,
     collaborationMode: "local",
+    collaborationIntent: "local",
+    collaborationJoinInputActive: false,
+    collaborationJoinInputValue: "",
+    collaborationBusy: false,
     reviewMode: "ninthwave-prs",
     panelMode,
     logBuffer,
@@ -674,6 +686,11 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     } else if (tuiState.showControls) {
       const controlsLines = renderControlsOverlay(termWidth, termRows, {
         collaborationMode: tuiState.collaborationMode,
+        collaborationIntent: tuiState.collaborationIntent,
+        collaborationJoinInputActive: tuiState.collaborationJoinInputActive,
+        collaborationJoinInputValue: tuiState.collaborationJoinInputValue,
+        collaborationBusy: tuiState.collaborationBusy,
+        collaborationError: tuiState.collaborationError,
         reviewMode: tuiState.reviewMode,
         mergeStrategy: tuiState.mergeStrategy,
         bypassEnabled: tuiState.bypassEnabled,
@@ -2828,6 +2845,10 @@ export async function cmdOrchestrate(
       sessionStartedAt: daemonStartedAt,
       mergeStrategy: orch.config.mergeStrategy,
       collaborationMode: initialCollaborationMode,
+      collaborationIntent: "local",
+      collaborationJoinInputActive: false,
+      collaborationJoinInputValue: "",
+      collaborationBusy: false,
       reviewMode: initialReviewMode,
       ...(futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
     },
@@ -2841,6 +2862,10 @@ export async function cmdOrchestrate(
     showControls: false,
     controlsRowIndex: 0,
     collaborationMode: initialCollaborationMode,
+    collaborationIntent: "local",
+    collaborationJoinInputActive: false,
+    collaborationJoinInputValue: "",
+    collaborationBusy: false,
     reviewMode: initialReviewMode,
     panelMode: savedPanelMode,
     logBuffer,
