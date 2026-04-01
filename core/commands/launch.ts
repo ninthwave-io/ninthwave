@@ -19,6 +19,7 @@ import { allocatePartition, getPartitionFor, releasePartition } from "../partiti
 import { resolveRepo, writeCrossRepoIndex, removeCrossRepoIndex, ensureWorktreeExcluded } from "../cross-repo.ts";
 import { readWorkItem } from "../work-item-files.ts";
 import { prList as defaultPrList } from "../gh.ts";
+import { headlessLogFilePath } from "../headless.ts";
 import { cleanInbox } from "./inbox.ts";
 import {
   allToolIds,
@@ -72,6 +73,20 @@ export interface LaunchResult {
    *  to ci-pending and let the daemon handle rebase/CI instead of launching
    *  a full implementation worker. */
   existingPrNumber?: number;
+}
+
+type RuntimeMuxResolver = () => Multiplexer;
+
+function resolveRuntimeLaunchMux(
+  mux: Multiplexer,
+  resolveMux: RuntimeMuxResolver = () => getMux(),
+): Multiplexer {
+  const runtimeMux = resolveMux();
+  return runtimeMux.type === mux.type ? mux : runtimeMux;
+}
+
+function logHeadlessLaunch(itemId: string, projectRoot: string, workspaceRef: string): void {
+  info(`Headless worker detached for ${itemId}. Logs: ${headlessLogFilePath(projectRoot, workspaceRef)}`);
 }
 
 /**
@@ -258,7 +273,7 @@ export function launchSingleItem(
   projectRoot: string,
   aiTool: string,
   mux: Multiplexer = getMux(),
-  options: { baseBranch?: string; forceWorkerLaunch?: boolean; hubRepoNwo?: string } = {},
+  options: { baseBranch?: string; forceWorkerLaunch?: boolean; hubRepoNwo?: string; resolveMux?: RuntimeMuxResolver } = {},
   deps: LaunchGitDeps = defaultLaunchGitDeps,
 ): LaunchResult | null {
   let targetRepo: string;
@@ -299,6 +314,8 @@ export function launchSingleItem(
   const partitionDir = join(worktreeDir, ".partitions");
 
   try {
+    const launchMux = resolveRuntimeLaunchMux(mux, options.resolveMux);
+
     // Track cross-repo items in the index
     if (targetRepo !== projectRoot) {
       writeCrossRepoIndex(crossRepoIndex, item.id, targetRepo, worktreePath);
@@ -317,8 +334,11 @@ export function launchSingleItem(
     // Sanitize title for shell safety (allowlist: only keep safe characters)
     const safeTitle = sanitizeTitle(item.title);
     info(
-      `Launching ${aiTool} session for ${item.id}: ${safeTitle} (partition ${partition})`,
+      `Launching ${aiTool} session for ${item.id}: ${safeTitle} (partition ${partition}, backend ${launchMux.type})`,
     );
+    if (launchMux.type !== mux.type) {
+      info(`Runtime backend resolver selected ${launchMux.type}; overriding ${mux.type} for ${item.id}.`);
+    }
 
     // Build system prompt
     const itemText = extractItemText(workDir, item.id);
@@ -350,12 +370,15 @@ ${itemText}`;
       item.id,
       safeTitle,
       promptFile,
-      mux,
+      launchMux,
       { projectRoot },
     );
     if (!workspaceRef) {
       // launchAiSession returned null -- clean up and propagate
       throw new Error(`AI session launch failed for ${item.id}`);
+    }
+    if (launchMux.type === "headless") {
+      logHeadlessLaunch(item.id, projectRoot, workspaceRef);
     }
     return { worktreePath, workspaceRef };
   } catch (err) {
@@ -391,7 +414,7 @@ export function launchReviewWorker(
   repoRoot: string,
   aiTool: string,
   mux: Multiplexer = getMux(),
-  options: { baseBranch?: string; reviewType?: "todo" | "external"; implementerWorktreePath?: string; hubRepoNwo?: string } = {},
+  options: { baseBranch?: string; reviewType?: "todo" | "external"; implementerWorktreePath?: string; hubRepoNwo?: string; projectRoot?: string; resolveMux?: RuntimeMuxResolver } = {},
   deps: LaunchGitDeps = defaultLaunchGitDeps,
 ): ReviewLaunchResult | null {
   let worktreePath: string | null = null;
@@ -476,7 +499,11 @@ VERDICT_FILE: ${verdictPath}
 ${baseBranchLine}${hubRepoNwoLine}${securityLine}`;
 
   const safeTitle = sanitizeTitle(`Review PR #${prNumber}`);
+  const launchMux = resolveRuntimeLaunchMux(mux, options.resolveMux);
   info(`Launching ${aiTool} review session for ${itemId}: PR #${prNumber} (${autoFixMode} mode)`);
+  if (launchMux.type !== mux.type) {
+    info(`Runtime backend resolver selected ${launchMux.type}; overriding ${mux.type} for review ${itemId}.`);
+  }
   const promptFile = join(workDir, ".ninthwave", ".prompt");
   mkdirSync(join(workDir, ".ninthwave"), { recursive: true });
   writeFileSync(promptFile, systemPrompt);
@@ -487,10 +514,13 @@ ${baseBranchLine}${hubRepoNwoLine}${securityLine}`;
     itemId,
     safeTitle,
     promptFile,
-    mux,
-    { projectRoot: repoRoot, agentName: "ninthwave-reviewer" },
+    launchMux,
+    { projectRoot: options.projectRoot ?? repoRoot, agentName: "ninthwave-reviewer" },
   );
   if (!workspaceRef) return null;
+  if (launchMux.type === "headless") {
+    logHeadlessLaunch(itemId, options.projectRoot ?? repoRoot, workspaceRef);
+  }
   return { worktreePath, workspaceRef, verdictPath };
 }
 
@@ -506,7 +536,7 @@ export function launchRebaserWorker(
   repoRoot: string,
   aiTool: string,
   mux: Multiplexer = getMux(),
-  options: { hubRepoNwo?: string } = {},
+  options: { hubRepoNwo?: string; projectRoot?: string; resolveMux?: RuntimeMuxResolver } = {},
 ): RebaserLaunchResult | null {
   // The rebaser worker runs in the existing worktree for this item
   const worktreePath = join(repoRoot, ".ninthwave", ".worktrees", `ninthwave-${itemId}`);
@@ -522,12 +552,22 @@ PROJECT_ROOT: ${worktreePath}
 ${hubRepoNwoLine}`;
 
   const safeTitle = sanitizeTitle(`Rebase PR #${prNumber}`);
+  const launchMux = resolveRuntimeLaunchMux(mux, options.resolveMux);
   info(`Launching ${aiTool} rebaser session for ${itemId}: PR #${prNumber}`);
+  if (launchMux.type !== mux.type) {
+    info(`Runtime backend resolver selected ${launchMux.type}; overriding ${mux.type} for rebaser ${itemId}.`);
+  }
   const promptFile = join(worktreePath, ".ninthwave", ".prompt");
   mkdirSync(join(worktreePath, ".ninthwave"), { recursive: true });
   writeFileSync(promptFile, systemPrompt);
-  const workspaceRef = launchAiSession(aiTool, worktreePath, itemId, safeTitle, promptFile, mux, { projectRoot: repoRoot, agentName: "ninthwave-rebaser" });
+  const workspaceRef = launchAiSession(aiTool, worktreePath, itemId, safeTitle, promptFile, launchMux, {
+    projectRoot: options.projectRoot ?? repoRoot,
+    agentName: "ninthwave-rebaser",
+  });
   if (!workspaceRef) return null;
+  if (launchMux.type === "headless") {
+    logHeadlessLaunch(itemId, options.projectRoot ?? repoRoot, workspaceRef);
+  }
   return { workspaceRef };
 }
 
@@ -544,7 +584,7 @@ export function launchForwardFixerWorker(
   repoRoot: string,
   aiTool: string,
   mux: Multiplexer = getMux(),
-  options: { hubRepoNwo?: string; defaultBranch?: string } = {},
+  options: { hubRepoNwo?: string; defaultBranch?: string; projectRoot?: string; resolveMux?: RuntimeMuxResolver } = {},
   deps: LaunchGitDeps = defaultLaunchGitDeps,
 ): ForwardFixerLaunchResult | null {
   const worktreePath = join(repoRoot, ".ninthwave", ".worktrees", `ninthwave-fix-forward-${itemId}`);
@@ -592,11 +632,21 @@ ${defaultBranchLine}${repairPrOutcomesLine}${syntheticChildWorkItemLine}
 ${hubRepoNwoLine}`;
 
   const safeTitle = sanitizeTitle(`Repair ${itemId}`);
+  const launchMux = resolveRuntimeLaunchMux(mux, options.resolveMux);
   info(`Launching ${aiTool} forward-fixer session for ${itemId}: merge SHA ${mergeCommitSha.slice(0, 8)}`);
+  if (launchMux.type !== mux.type) {
+    info(`Runtime backend resolver selected ${launchMux.type}; overriding ${mux.type} for forward-fixer ${itemId}.`);
+  }
   const promptFile = join(worktreePath, ".ninthwave", ".prompt");
   mkdirSync(join(worktreePath, ".ninthwave"), { recursive: true });
   writeFileSync(promptFile, systemPrompt);
-  const workspaceRef = launchAiSession(aiTool, worktreePath, itemId, safeTitle, promptFile, mux, { projectRoot: repoRoot, agentName: "ninthwave-forward-fixer" });
+  const workspaceRef = launchAiSession(aiTool, worktreePath, itemId, safeTitle, promptFile, launchMux, {
+    projectRoot: options.projectRoot ?? repoRoot,
+    agentName: "ninthwave-forward-fixer",
+  });
   if (!workspaceRef) return null;
+  if (launchMux.type === "headless") {
+    logHeadlessLaunch(itemId, options.projectRoot ?? repoRoot, workspaceRef);
+  }
   return { worktreePath, workspaceRef };
 }

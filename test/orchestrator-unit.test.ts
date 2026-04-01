@@ -3214,7 +3214,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.statusCalls).toHaveLength(1);
     expect(mux.statusCalls[0]).toEqual({
@@ -3239,7 +3239,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.progressCalls).toHaveLength(1);
     expect(mux.progressCalls[0]).toEqual({
@@ -3263,7 +3263,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.progressCalls).toHaveLength(1);
     expect(mux.progressCalls[0]).toEqual({
@@ -3286,7 +3286,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.progressCalls).toHaveLength(1);
     expect(mux.progressCalls[0]).toEqual({
@@ -3309,7 +3309,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.progressCalls).toHaveLength(1);
     expect(mux.progressCalls[0]).toEqual({
@@ -3332,7 +3332,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.progressCalls).toHaveLength(1);
     expect(mux.progressCalls[0]).toEqual({
@@ -3352,7 +3352,7 @@ describe("syncWorkerDisplay", () => {
     const mux = createMockMux();
     const snapshot: PollSnapshot = { items: [{ id: "H-1-1" }], readyIds: [] };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.statusCalls).toHaveLength(0);
     expect(mux.progressCalls).toHaveLength(0);
@@ -3368,7 +3368,7 @@ describe("syncWorkerDisplay", () => {
     const mux = createMockMux();
     const snapshot: PollSnapshot = { items: [], readyIds: [] };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     expect(mux.statusCalls).toHaveLength(0);
     expect(mux.progressCalls).toHaveLength(0);
@@ -3387,7 +3387,7 @@ describe("syncWorkerDisplay", () => {
       readyIds: [],
     };
 
-    syncWorkerDisplay(orch, snapshot, mux);
+    syncWorkerDisplay(orch, snapshot, mux, "/tmp/project");
 
     // Status should be set, and progress should default to 0% (waiting for first heartbeat)
     expect(mux.statusCalls).toHaveLength(1);

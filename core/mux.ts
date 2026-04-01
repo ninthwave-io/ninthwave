@@ -4,7 +4,7 @@
 import { createInterface } from "readline";
 import * as cmux from "./cmux.ts";
 import { loadUserConfig } from "./config.ts";
-import { HeadlessAdapter } from "./headless.ts";
+import { HeadlessAdapter, isHeadlessWorkspaceRef } from "./headless.ts";
 import { TmuxAdapter } from "./tmux.ts";
 import { die, warn as defaultWarn } from "./output.ts";
 import { resolveCmuxBinary } from "./cmux-resolve.ts";
@@ -84,6 +84,13 @@ const VALID_MUX_VALUES: readonly MuxType[] = ["cmux", "tmux", "headless"] as con
 
 export type BackendPreference = PersistedBackendMode;
 export type BackendPreferenceSource = "env" | "user-config" | "auto";
+
+export function muxTypeForWorkspaceRef(ref: string): MuxType {
+  if (isHeadlessWorkspaceRef(ref)) return "headless";
+  if (ref.startsWith("workspace:")) return "cmux";
+  if (ref.includes(":")) return "tmux";
+  return "headless";
+}
 
 export interface BackendFallback {
   from: BackendPreference;

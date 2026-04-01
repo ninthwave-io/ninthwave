@@ -24,6 +24,7 @@ import {
   type CollaborationMode,
   type ReviewMode,
 } from "./tui-settings.ts";
+import { muxTypeForWorkspaceRef } from "./mux.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -220,6 +221,12 @@ export interface StatusItem {
   progressLabel?: string;
   /** ISO timestamp of the latest worker heartbeat. */
   progressTs?: string;
+}
+
+function headlessModeTag(item: StatusItem): string {
+  return item.workspaceRef && muxTypeForWorkspaceRef(item.workspaceRef) === "headless"
+    ? ` ${DIM}[headless]${RESET}`
+    : "";
 }
 
 // ─── Dependency tree types ────────────────────────────────────────────────────
@@ -680,8 +687,9 @@ export function formatItemRow(
   const prefix = isSelected ? `${BOLD}>${RESET} ` : "  ";
 
   const progressSuffix = progressText ? ` ${DIM}${progressText}${RESET}` : "";
+  const modeTag = headlessModeTag(item);
 
-  return `${prefix}${iconColor}${icon}${RESET} ${id}${color}${stateCell}${RESET}${remoteDot} ${durationCell}${timeoutExtensions} ${depCol}${title}${progressSuffix}${repo}${reason}${telemetry}`;
+  return `${prefix}${iconColor}${icon}${RESET} ${id}${color}${stateCell}${RESET}${remoteDot} ${durationCell}${timeoutExtensions} ${depCol}${title}${progressSuffix}${modeTag}${repo}${reason}${telemetry}`;
 }
 
 /**
@@ -2322,6 +2330,10 @@ export function formatItemDetail(
     lines.push(`  ${DIM}Duration:${RESET}  ${duration}`);
   }
 
+  if (item.workspaceRef && muxTypeForWorkspaceRef(item.workspaceRef) === "headless") {
+    lines.push(`  ${DIM}Runtime:${RESET}   detached headless worker`);
+  }
+
   return lines;
 }
 
@@ -2791,8 +2803,11 @@ export function renderDetailOverlay(
 
   if (item.workspaceRef) {
     contentLines.push(`  ${DIM}Workspace:${RESET} ${item.workspaceRef}`);
-    // Show tmux attach hint for tmux-style refs (session:window, not cmux workspace:N)
-    if (!item.workspaceRef.startsWith("workspace:")) {
+    const workspaceBackend = muxTypeForWorkspaceRef(item.workspaceRef);
+    if (workspaceBackend === "headless") {
+      contentLines.push(`  ${DIM}Mode:${RESET}      detached headless worker`);
+    } else if (workspaceBackend === "tmux") {
+      // Show tmux attach hint for tmux-style refs (session:window)
       const colonIdx = item.workspaceRef.indexOf(":");
       if (colonIdx > 0) {
         const session = item.workspaceRef.slice(0, colonIdx);
