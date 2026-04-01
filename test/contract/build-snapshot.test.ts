@@ -9,7 +9,10 @@ import { buildSnapshot } from "../../core/commands/orchestrate.ts";
 import { FakeGitHub } from "../fakes/fake-github.ts";
 import { FakeMux } from "../fakes/fake-mux.ts";
 import { makeWorkItem } from "../scenario/helpers.ts";
-import { writeHeartbeat, type DaemonIO } from "../../core/daemon.ts";
+import { writeHeartbeat, userStateDir, type DaemonIO } from "../../core/daemon.ts";
+import { rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const PROJECT_ROOT = "/tmp/test-project";
 const WORKTREE_DIR = "/tmp/test-project/.ninthwave/.worktrees";
@@ -842,6 +845,107 @@ describe("buildSnapshot contract", () => {
       const item = findItem(result.items, "TC-1");
       expect(item).toBeDefined();
       expect(item!.prState).toBe("merged");
+    });
+  });
+
+  // ── Heartbeat-based fast PR detection ────────────────────────────
+
+  describe("heartbeat fast PR detection", () => {
+    function uniqueRoot(): string {
+      return join(tmpdir(), `nw-snap-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    }
+
+    function cleanupRoot(root: string): void {
+      try { rmSync(userStateDir(root), { recursive: true, force: true }); } catch {}
+    }
+
+    it("sets prNumber from heartbeat when GitHub returns no-pr", () => {
+      const root = uniqueRoot();
+      try {
+        // Write a heartbeat with prNumber to real disk
+        writeHeartbeat(root, "HP-1", 1.0, "PR created", undefined, 42);
+
+        const testOrch = new Orchestrator({
+          wipLimit: 5, mergeStrategy: "auto", bypassEnabled: false,
+          enableStacking: false, fixForward: false,
+        });
+        testOrch.addItem(makeWorkItem("HP-1"));
+        testOrch.hydrateState("HP-1", "implementing");
+        const orchItem = testOrch.getItem("HP-1")!;
+        orchItem.workspaceRef = fakeMux.launchWorkspace("/tmp/wt", "claude", "HP-1")!;
+
+        const result = buildSnapshot(
+          testOrch, root, join(root, ".ninthwave/.worktrees"), fakeMux,
+          () => null,               // getLastCommitTime
+          () => "HP-1\t\tno-pr",    // checkPr: no PR found via GitHub
+        );
+
+        const item = findItem(result.items, "HP-1");
+        expect(item).toBeDefined();
+        expect(item!.prNumber).toBe(42);
+        expect(item!.prState).toBe("open");
+      } finally {
+        cleanupRoot(root);
+      }
+    });
+
+    it("does NOT override GitHub prNumber with heartbeat", () => {
+      const root = uniqueRoot();
+      try {
+        // Heartbeat says PR 42, but GitHub found PR 99
+        writeHeartbeat(root, "HP-2", 1.0, "PR created", undefined, 42);
+
+        const testOrch = new Orchestrator({
+          wipLimit: 5, mergeStrategy: "auto", bypassEnabled: false,
+          enableStacking: false, fixForward: false,
+        });
+        testOrch.addItem(makeWorkItem("HP-2"));
+        testOrch.hydrateState("HP-2", "implementing");
+        const orchItem = testOrch.getItem("HP-2")!;
+        orchItem.workspaceRef = fakeMux.launchWorkspace("/tmp/wt", "claude", "HP-2")!;
+
+        const result = buildSnapshot(
+          testOrch, root, join(root, ".ninthwave/.worktrees"), fakeMux,
+          () => null,
+          () => "HP-2\t99\tpending\tMERGEABLE",  // GitHub found PR #99
+        );
+
+        const item = findItem(result.items, "HP-2");
+        expect(item).toBeDefined();
+        expect(item!.prNumber).toBe(99);  // GitHub wins
+      } finally {
+        cleanupRoot(root);
+      }
+    });
+
+    it("does not set prNumber when heartbeat has no prNumber", () => {
+      const root = uniqueRoot();
+      try {
+        // Heartbeat without prNumber
+        writeHeartbeat(root, "HP-3", 0.5, "Writing code");
+
+        const testOrch = new Orchestrator({
+          wipLimit: 5, mergeStrategy: "auto", bypassEnabled: false,
+          enableStacking: false, fixForward: false,
+        });
+        testOrch.addItem(makeWorkItem("HP-3"));
+        testOrch.hydrateState("HP-3", "implementing");
+        const orchItem = testOrch.getItem("HP-3")!;
+        orchItem.workspaceRef = fakeMux.launchWorkspace("/tmp/wt", "claude", "HP-3")!;
+
+        const result = buildSnapshot(
+          testOrch, root, join(root, ".ninthwave/.worktrees"), fakeMux,
+          () => null,
+          () => "HP-3\t\tno-pr",
+        );
+
+        const item = findItem(result.items, "HP-3");
+        expect(item).toBeDefined();
+        expect(item!.prNumber).toBeUndefined();
+        expect(item!.prState).toBeUndefined();
+      } finally {
+        cleanupRoot(root);
+      }
     });
   });
 });

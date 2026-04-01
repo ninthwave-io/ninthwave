@@ -44,12 +44,14 @@ export function extractItemId(branch: string): string | null {
 export interface HeartbeatArgs {
   progress: number;
   label: string;
+  prNumber?: number;
 }
 
-/** Parse --progress and --label from CLI args. Throws on invalid input. */
+/** Parse --progress, --label, and --pr from CLI args. Throws on invalid input. */
 export function parseHeartbeatArgs(args: string[]): HeartbeatArgs {
   let progress: number | undefined;
   let label: string | undefined;
+  let prNumber: number | undefined;
   const unsupportedFlags = new Set(["--model", "--tokens-in", "--tokens-out"]);
 
   for (let i = 0; i < args.length; i++) {
@@ -58,6 +60,9 @@ export function parseHeartbeatArgs(args: string[]): HeartbeatArgs {
       i++;
     } else if (args[i] === "--label" && i + 1 < args.length) {
       label = args[i + 1]!;
+      i++;
+    } else if (args[i] === "--pr" && i + 1 < args.length) {
+      prNumber = parseInt(args[i + 1]!, 10);
       i++;
     } else if (unsupportedFlags.has(args[i]!)) {
       die(`Unsupported flag: ${args[i]}. nw heartbeat only accepts --progress and --label`);
@@ -77,8 +82,12 @@ export function parseHeartbeatArgs(args: string[]): HeartbeatArgs {
     die(`Invalid progress value: ${progress}. Must be between 0.0 and 1.0`);
     return { progress: 0, label: "" }; // unreachable
   }
+  if (prNumber !== undefined && (isNaN(prNumber) || prNumber <= 0)) {
+    die(`Invalid PR number: ${args[args.indexOf("--pr") + 1]}. Must be a positive integer`);
+    return { progress: 0, label: "" }; // unreachable
+  }
 
-  return { progress, label };
+  return { progress, label, prNumber };
 }
 
 // ── Command implementation ───────────────────────────────────────────
@@ -93,7 +102,7 @@ export function cmdHeartbeat(
   projectRoot: string,
   deps: HeartbeatDeps = defaultDeps,
 ): string {
-  const { progress, label } = parseHeartbeatArgs(args);
+  const { progress, label, prNumber } = parseHeartbeatArgs(args);
 
   const branch = deps.getBranch();
   if (!branch) {
@@ -107,7 +116,7 @@ export function cmdHeartbeat(
     return ""; // unreachable
   }
 
-  writeHeartbeat(projectRoot, id, progress, label, deps.io);
+  writeHeartbeat(projectRoot, id, progress, label, deps.io, prNumber);
 
   const msg = `Heartbeat: ${id} ${(progress * 100).toFixed(0)}% -- ${label}`;
   console.log(msg);

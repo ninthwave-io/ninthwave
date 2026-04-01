@@ -401,6 +401,8 @@ export interface WorkerProgress {
   progress: number;
   label: string;
   ts: string;
+  /** PR number reported by the worker after `gh pr create`. */
+  prNumber?: number;
 }
 
 // ── Review verdict ──────────────────────────────────────────────────
@@ -476,6 +478,7 @@ export function writeHeartbeat(
   progress: number,
   label: string,
   io: DaemonIO = defaultIO,
+  prNumber?: number,
 ): void {
   const dir = heartbeatDir(projectRoot);
   if (!io.existsSync(dir)) {
@@ -486,6 +489,7 @@ export function writeHeartbeat(
     progress,
     label,
     ts: new Date().toISOString(),
+    ...(prNumber != null ? { prNumber } : {}),
   };
   io.writeFileSync(
     heartbeatFilePath(projectRoot, id),

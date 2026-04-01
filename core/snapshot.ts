@@ -232,6 +232,14 @@ export function buildSnapshot(
       } catch { /* best-effort -- heartbeat read failure doesn't block polling */ }
     }
 
+    // Fast PR detection: if GitHub didn't find a PR but the heartbeat reports one,
+    // trust the heartbeat. The worker writes --pr after gh pr create returns, so
+    // the PR definitely exists. GitHub API will confirm on the next cycle.
+    if (!snap.prNumber && snap.lastHeartbeat?.prNumber) {
+      snap.prNumber = snap.lastHeartbeat.prNumber;
+      snap.prState = "open";
+    }
+
     // Fetch new trusted PR comments for items with open PRs in active states
     if (orchItem.prNumber && fetchComments) {
       const commentRelayStates = new Set(["ci-pending", "ci-passed", "ci-failed", "review-pending", "reviewing"]);
@@ -414,6 +422,14 @@ export async function buildSnapshotAsync(
       try {
         snap.lastHeartbeat = readHeartbeat(projectRoot, orchItem.id) ?? null;
       } catch { /* best-effort */ }
+    }
+
+    // Fast PR detection: if GitHub didn't find a PR but the heartbeat reports one,
+    // trust the heartbeat. The worker writes --pr after gh pr create returns, so
+    // the PR definitely exists. GitHub API will confirm on the next cycle.
+    if (!snap.prNumber && snap.lastHeartbeat?.prNumber) {
+      snap.prNumber = snap.lastHeartbeat.prNumber;
+      snap.prState = "open";
     }
 
     // PR comments

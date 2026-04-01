@@ -416,7 +416,7 @@ export const COMMAND_REGISTRY: ReadonlyArray<CommandEntry> = [
   },
   {
     name: "heartbeat",
-    usage: "heartbeat --progress <0-1> --label <text>",
+    usage: "heartbeat --progress <0-1> --label <text> [--pr <number>]",
     description: "Report worker progress (auto-detects item ID from branch)",
     group: "advanced",
     needsRoot: true,
@@ -427,10 +427,11 @@ export const COMMAND_REGISTRY: ReadonlyArray<CommandEntry> = [
     flags: {
       "--progress": "Progress value from 0.0 to 1.0",
       "--label": "Status label text",
+      "--pr": "PR number (enables fast PR detection by the orchestrator)",
     },
     examples: [
       'nw heartbeat --progress 0.5 --label "Writing tests"',
-      'nw heartbeat --progress 1.0 --label "Done"',
+      'nw heartbeat --progress 1.0 --label "PR created" --pr 42',
     ],
   },
   {

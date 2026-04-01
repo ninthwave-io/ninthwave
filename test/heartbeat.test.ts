@@ -114,6 +114,40 @@ describe("parseHeartbeatArgs", () => {
     expect(result).toEqual({ progress: 1.0, label: "Done" });
   });
 
+  it("parses --pr flag", () => {
+    const result = parseHeartbeatArgs([
+      "--progress", "1.0", "--label", "PR created", "--pr", "42",
+    ]);
+    expect(result).toEqual({ progress: 1.0, label: "PR created", prNumber: 42 });
+  });
+
+  it("omits prNumber when --pr not provided", () => {
+    const result = parseHeartbeatArgs([
+      "--progress", "0.5", "--label", "test",
+    ]);
+    expect(result.prNumber).toBeUndefined();
+  });
+
+  it("exits on invalid --pr value", () => {
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    parseHeartbeatArgs(["--progress", "1.0", "--label", "test", "--pr", "abc"]);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it("exits on negative --pr value", () => {
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    parseHeartbeatArgs(["--progress", "1.0", "--label", "test", "--pr", "-1"]);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
   it("exits on missing --progress", () => {
     const exitSpy = vi
       .spyOn(process, "exit")
@@ -192,6 +226,24 @@ describe("writeHeartbeat", () => {
       { recursive: true },
     );
   });
+
+  it("includes prNumber when provided", () => {
+    const io = createMockIO();
+    writeHeartbeat("/project", "H-FOO-1", 1.0, "PR created", io, 42);
+
+    const filePath = heartbeatFilePath("/project", "H-FOO-1");
+    const data = JSON.parse(io.files.get(filePath)!) as WorkerProgress;
+    expect(data.prNumber).toBe(42);
+  });
+
+  it("omits prNumber when not provided", () => {
+    const io = createMockIO();
+    writeHeartbeat("/project", "H-FOO-1", 0.5, "Writing tests", io);
+
+    const filePath = heartbeatFilePath("/project", "H-FOO-1");
+    const data = JSON.parse(io.files.get(filePath)!) as WorkerProgress;
+    expect(data.prNumber).toBeUndefined();
+  });
 });
 
 describe("readHeartbeat", () => {
@@ -218,6 +270,26 @@ describe("readHeartbeat", () => {
     io.files.set(filePath, "not-json");
     const result = readHeartbeat("/project", "H-FOO-1", io);
     expect(result).toBeNull();
+  });
+
+  it("reads prNumber when present", () => {
+    const io = createMockIO();
+    writeHeartbeat("/project", "H-FOO-1", 1.0, "PR created", io, 99);
+
+    const result = readHeartbeat("/project", "H-FOO-1", io);
+    expect(result).not.toBeNull();
+    expect(result!.prNumber).toBe(99);
+  });
+
+  it("returns undefined prNumber for old heartbeat files without it", () => {
+    const io = createMockIO();
+    // Simulate old format without prNumber
+    const filePath = heartbeatFilePath("/project", "H-FOO-1");
+    io.files.set(filePath, JSON.stringify({ id: "H-FOO-1", progress: 0.5, label: "test", ts: new Date().toISOString() }));
+
+    const result = readHeartbeat("/project", "H-FOO-1", io);
+    expect(result).not.toBeNull();
+    expect(result!.prNumber).toBeUndefined();
   });
 });
 
@@ -306,6 +378,20 @@ describe("cmdHeartbeat", () => {
     const data = JSON.parse(io.files.get(filePath)!) as WorkerProgress;
     expect(data.progress).toBe(0.3);
     expect(data.label).toBe("Writing tests");
+  });
+
+  it("writes prNumber when --pr flag is provided", () => {
+    const io = createMockIO();
+    const deps = createDeps(io, "ninthwave/H-FOO-1");
+    cmdHeartbeat(
+      ["--progress", "1.0", "--label", "PR created", "--pr", "42"],
+      "/project",
+      deps,
+    );
+
+    const filePath = heartbeatFilePath("/project", "H-FOO-1");
+    const data = JSON.parse(io.files.get(filePath)!) as WorkerProgress;
+    expect(data.prNumber).toBe(42);
   });
   it.each(["--model", "--tokens-in", "--tokens-out"])(
     "exits on unsupported %s flag",

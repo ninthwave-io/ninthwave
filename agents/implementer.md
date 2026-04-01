@@ -318,8 +318,11 @@ EOF
 
 Choose the right PR title prefix based on the change type (`fix:`, `feat:`, `refactor:`, `test:`, `docs:`, `chore:`).
 
+After `gh pr create` returns the PR URL, extract the PR number and report it:
+
 ```bash
-nw heartbeat --progress 1.0 --label "PR created"
+PR_NUM=$(gh pr view --json number --jq '.number')
+nw heartbeat --progress 1.0 --label "PR created" --pr "$PR_NUM"
 ```
 
 ## 10. Friction Log
