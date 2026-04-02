@@ -86,6 +86,15 @@ function stripAnsi(s: string): string {
     .replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");  // Strip CSI sequences (colors, etc.)
 }
 
+function extractOverlayContentLines(lines: string[]): string[] {
+  return lines.map((line) => {
+    const plain = stripAnsi(line);
+    const match = plain.match(/^\s*│(.*)│\s*$/);
+    if (!match) return plain.trimEnd();
+    return match[1]!.replace(/^\s+/, "").replace(/\s+$/, "");
+  });
+}
+
 function withTerminalSize(columns: number, rows: number, fn: () => void): void {
   const originalColumns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
   const originalRows = Object.getOwnPropertyDescriptor(process.stdout, "rows");
@@ -3869,7 +3878,7 @@ describe("formatItemDetail", () => {
     expect(text).toContain("Duration:");
   });
 
-  it("renders a wrapped summary when descriptionSnippet is present", () => {
+  it("does not render a summary block when descriptionSnippet is present", () => {
     const item = makeStatusItem({
       id: "H-SM-1",
       descriptionSnippet: "Carry a compact description snippet from work item markdown into the detail panel so operators can see meaningful context without opening the file.",
@@ -3877,8 +3886,7 @@ describe("formatItemDetail", () => {
 
     const lines = formatItemDetail(item);
     const text = lines.map(stripAnsi).join("\n");
-    expect(text).toContain("Summary:");
-    expect(text).toContain("Carry a compact description snippet");
+    expect(text).not.toContain("Summary:");
   });
 
   it("renders ci-failed state with failure reason", () => {
@@ -4115,7 +4123,7 @@ describe("renderDetailOverlay", () => {
     expect(text).not.toContain("#");
   });
 
-  it("shows descriptionSnippet content when available", () => {
+  it("does not show a summary block when only descriptionSnippet is available", () => {
     const item = makeStatusItem({
       id: "H-DS-1",
       descriptionSnippet: "Show markdown-derived context in the detail overlay.",
@@ -4123,8 +4131,7 @@ describe("renderDetailOverlay", () => {
 
     const lines = renderDetailOverlay(item, 100, 40);
     const text = lines.map(stripAnsi).join("\n");
-    expect(text).toContain("Summary:");
-    expect(text).toContain("Show markdown-derived context in the detail overlay.");
+    expect(text).not.toContain("Summary:");
   });
 
   it("shows prior repair PR references when available", () => {
@@ -4190,6 +4197,49 @@ describe("renderDetailOverlay", () => {
     const text = lines.map(stripAnsi).join("\n");
     expect(text).toContain("Description");
     expect(text).toContain("detailed description");
+  });
+
+  it("omits the first markdown title line, drops only the blank before priority, and preserves later blank lines", () => {
+    const item = makeStatusItem({ id: "H-DB-2", state: "implementing" });
+    const body = [
+      "# Refactor: Clean up detail modal description rendering (H-TDM-1)",
+      "",
+      "**Priority:** High",
+      "**Depends on:** None",
+      "",
+      "Paragraph one.",
+      "",
+      "Paragraph two.",
+    ].join("\n");
+
+    const contentLines = extractOverlayContentLines(renderDetailOverlay(item, 80, 40, { descriptionBody: body }));
+    const descriptionIndex = contentLines.indexOf("Description");
+    expect(descriptionIndex).toBeGreaterThan(-1);
+    expect(contentLines).not.toContain("# Refactor: Clean up detail modal description rendering (H-TDM-1)");
+    expect(contentLines[descriptionIndex + 1]).toBe("");
+    expect(contentLines[descriptionIndex + 2]).toBe("**Priority:** High");
+    expect(contentLines[descriptionIndex + 3]).toBe("**Depends on:** None");
+    expect(contentLines[descriptionIndex + 4]).toBe("");
+    expect(contentLines[descriptionIndex + 5]).toBe("Paragraph one.");
+    expect(contentLines[descriptionIndex + 6]).toBe("");
+    expect(contentLines[descriptionIndex + 7]).toBe("Paragraph two.");
+  });
+
+  it("wraps descriptionBody lines to the modal width", () => {
+    const item = makeStatusItem({ id: "H-DB-3", state: "implementing" });
+    const body = "A very long description line that should wrap to fit inside the modal body without relying on the overlay truncation path for normal prose content.";
+
+    const contentLines = extractOverlayContentLines(renderDetailOverlay(item, 60, 40, { descriptionBody: body }));
+    const descriptionIndex = contentLines.indexOf("Description");
+    const footerIndex = contentLines.indexOf("Press Escape to close");
+    const descriptionLines = contentLines
+      .slice(descriptionIndex + 2, footerIndex)
+      .filter((line) => line && !line.startsWith("─"));
+
+    expect(descriptionLines.length).toBeGreaterThan(1);
+    for (const line of descriptionLines) {
+      expect(line.length).toBeLessThanOrEqual(48);
+    }
   });
 
   it("renders empty descriptionBody without crashing", () => {

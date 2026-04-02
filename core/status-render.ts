@@ -1406,6 +1406,41 @@ export function wrapDetailText(text: string, maxWidth: number): string[] {
   return lines;
 }
 
+function isMarkdownHeadingLine(line: string): boolean {
+  return /^#{1,6}\s+/.test(line.trim());
+}
+
+function isPriorityFieldLine(line: string): boolean {
+  return line.trim().replace(/\*/g, "").startsWith("Priority:");
+}
+
+function formatDescriptionBodyLines(text: string, maxWidth: number): string[] {
+  const rawLines = text.split(/\r?\n/);
+  const lines = isMarkdownHeadingLine(rawLines[0] ?? "")
+    ? rawLines.slice(1)
+    : rawLines;
+
+  if ((lines[0] ?? "").trim() === "" && isPriorityFieldLine(lines[1] ?? "")) {
+    lines.shift();
+  }
+
+  const wrappedLines: string[] = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      wrappedLines.push("");
+      continue;
+    }
+    wrappedLines.push(...wrapDetailText(line, maxWidth));
+  }
+
+  while (wrappedLines[wrappedLines.length - 1] === "") {
+    wrappedLines.pop();
+  }
+
+  return wrappedLines;
+}
+
 // ─── Terminal width detection ─────────────────────────────────────────────────
 
 /**
@@ -2397,16 +2432,6 @@ export function formatItemDetail(
     lines.push(`  ${DIM}PRs:${RESET}       ${prChain}`);
   }
 
-  if (item.descriptionSnippet) {
-    const wrappedSummary = wrapDetailText(item.descriptionSnippet, 72);
-    if (wrappedSummary.length > 0) {
-      lines.push(`  ${DIM}Summary:${RESET}   ${wrappedSummary[0]}`);
-      for (const line of wrappedSummary.slice(1)) {
-        lines.push(`             ${line}`);
-      }
-    }
-  }
-
   // Failure / CI status
   if (item.state === "blocked" && item.failureReason) {
     pushWrappedDetailField(lines, "Blocked", item.failureReason, YELLOW);
@@ -3100,14 +3125,16 @@ export function renderDetailOverlay(
 
   // Full description body: wrap and append as a scrollable region
   if (opts?.descriptionBody) {
-    contentLines.push("");
-    contentLines.push(`  ${DIM}${"─".repeat(40)}${RESET}`);
-    contentLines.push(`  ${BOLD}Description${RESET}`);
-    contentLines.push("");
     const wrapWidth = Math.min(72, termWidth - 12);
-    const wrappedBody = wrapDetailText(opts.descriptionBody, wrapWidth);
-    for (const line of wrappedBody) {
-      contentLines.push(`  ${line}`);
+    const wrappedBody = formatDescriptionBodyLines(opts.descriptionBody, wrapWidth);
+    if (wrappedBody.length > 0) {
+      contentLines.push("");
+      contentLines.push(`  ${DIM}${"─".repeat(40)}${RESET}`);
+      contentLines.push(`  ${BOLD}Description${RESET}`);
+      contentLines.push("");
+      for (const line of wrappedBody) {
+        contentLines.push(`  ${line}`);
+      }
     }
   }
 
