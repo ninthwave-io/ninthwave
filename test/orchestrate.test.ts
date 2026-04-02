@@ -5015,6 +5015,32 @@ describe("orchestrateLoop crew mode", () => {
     expect(syncedIds.length).toBeGreaterThan(0);
   });
 
+  it("excludes blocked items from crew sync", async () => {
+    const orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("T-1"));
+    orch.getItem("T-1")!.reviewCompleted = true;
+    orch.hydrateState("T-1", "blocked");
+    orch.addItem(makeWorkItem("T-2"));
+    orch.getItem("T-2")!.reviewCompleted = true;
+    orch.hydrateState("T-2", "implementing");
+
+    const { broker, syncedIds } = mockCrewBroker({ connected: true });
+
+    const deps: OrchestrateLoopDeps = {
+      buildSnapshot: (): PollSnapshot => ({ items: [{ id: "T-2", workerAlive: true }], readyIds: [] }),
+      sleep: () => Promise.resolve(),
+      log: () => {},
+      actionDeps: mockActionDeps(),
+      crewBroker: broker,
+      getFreeMem: () => 16 * 1024 ** 3,
+    };
+
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 1 });
+
+    const syncedItemIds = (syncedIds[0] as Array<{ id: string }>).map((item) => item.id);
+    expect(syncedItemIds).toEqual(["T-2"]);
+  });
+
   it("blocks ALL launches when broker is disconnected", async () => {
     const orch = new Orchestrator({ wipLimit: 5, mergeStrategy: "auto" });
     orch.addItem(makeWorkItem("T-1"));
@@ -5075,6 +5101,29 @@ describe("orchestrateLoop crew mode", () => {
 
     expect(orch.getItem("T-1")!.state).toBe("done");
     expect(completedIds).toContain("T-1");
+  });
+
+  it("does not call broker.complete for blocked terminal items", async () => {
+    const orch = new Orchestrator({ fixForward: false, wipLimit: 2, mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("T-1"));
+    orch.hydrateState("T-1", "blocked");
+
+    const { broker, completedIds } = mockCrewBroker({
+      connected: true,
+    });
+
+    const deps: OrchestrateLoopDeps = {
+      buildSnapshot: (): PollSnapshot => ({ items: [], readyIds: [] }),
+      sleep: () => Promise.resolve(),
+      log: () => {},
+      actionDeps: mockActionDeps(),
+      crewBroker: broker,
+      getFreeMem: () => 16 * 1024 ** 3,
+    };
+
+    await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 2 });
+
+    expect(completedIds).toEqual([]);
   });
 
   it("reports complete with model and token usage before broker.complete", async () => {
@@ -8027,6 +8076,17 @@ describe("formatExitSummary", () => {
     expect(result).toContain("0 merged, 0 stuck, 0 queued");
   });
 
+  it("tracks blocked items separately from active completion counts", () => {
+    const result = formatExitSummary([
+      { ...makeOrchestratorItem("E-4"), state: "done" as any },
+      { ...makeOrchestratorItem("E-5"), state: "blocked" as any },
+    ], new Date(Date.now() - 30_000).toISOString());
+
+    expect(result).toContain("1 merged");
+    expect(result).toContain("1 blocked");
+    expect(result).not.toContain("1 active");
+  });
+
   it("treats repair verification as active instead of complete", () => {
     const result = formatExitSummary([
       { ...makeOrchestratorItem("E-4"), state: "done" as any },
@@ -8065,6 +8125,18 @@ describe("formatCompletionBanner", () => {
     expect(text).toContain("Work still in progress");
     expect(text).toContain("1 done, 1 active, 0 stuck");
     expect(text).not.toContain("All 2 items complete");
+  });
+
+  it("treats blocked items as terminal but not complete", () => {
+    const lines = formatCompletionBanner([
+      { ...makeOrchestratorItem("B-6"), state: "done" as any },
+      { ...makeOrchestratorItem("B-7"), state: "blocked" as any },
+    ], new Date(Date.now() - 60_000).toISOString());
+
+    const text = lines.join("\n");
+    expect(text).toContain("All runnable items complete");
+    expect(text).toContain("1 merged, 0 stuck, 1 blocked");
+    expect(text).not.toContain("Work still in progress");
   });
 });
 

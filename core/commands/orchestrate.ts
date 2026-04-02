@@ -14,6 +14,7 @@ import {
   DEFAULT_CONFIG,
   calculateMemoryWipLimit,
   statusDisplayForState,
+  TERMINAL_STATES,
   type Action,
   type MergeStrategy,
   type PollSnapshot,
@@ -2374,6 +2375,7 @@ function handleRunComplete(
   }
 
   const doneCount = allItems.filter((i) => i.state === "done").length;
+  const blockedCount = allItems.filter((i) => i.state === "blocked").length;
   const stuckCount = allItems.filter((i) => i.state === "stuck").length;
   const itemSummaries = allItems.map((i) => ({
     id: i.id,
@@ -2387,6 +2389,7 @@ function handleRunComplete(
     level: "info",
     event: "orchestrate_complete",
     done: doneCount,
+    blocked: blockedCount,
     stuck: stuckCount,
     total: allItems.length,
     items: itemSummaries,
@@ -2435,10 +2438,11 @@ export interface CompletionSummaryItem {
   remoteSnapshot?: { state: string };
 }
 
-function completionSummaryState(item: CompletionSummaryItem): "done" | "stuck" | "queued" | "active" {
+function completionSummaryState(item: CompletionSummaryItem): "done" | "blocked" | "stuck" | "queued" | "active" {
   const state = item.remoteSnapshot?.state ?? item.state;
 
   if (state === "done") return "done";
+  if (state === "blocked") return "blocked";
   if (state === "stuck") return "stuck";
   if (state === "queued" || state === "ready") return "queued";
   return "active";
@@ -2449,6 +2453,7 @@ export function formatExitSummary(
   runStartTime: string,
 ): string {
   const merged = allItems.filter((i) => completionSummaryState(i) === "done").length;
+  const blocked = allItems.filter((i) => completionSummaryState(i) === "blocked").length;
   const stuck = allItems.filter((i) => completionSummaryState(i) === "stuck").length;
   const queued = allItems.filter((i) => completionSummaryState(i) === "queued").length;
   const active = allItems.filter((i) => completionSummaryState(i) === "active").length;
@@ -2459,9 +2464,10 @@ export function formatExitSummary(
   const seconds = Math.floor((elapsed % 60_000) / 1000);
   const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
+  const blockedSegment = blocked > 0 ? `, ${blocked} blocked` : "";
   let line = active > 0
-    ? `ninthwave: ${merged} done, ${active} active, ${stuck} stuck, ${queued} queued (${durationStr})`
-    : `ninthwave: ${merged} merged, ${stuck} stuck, ${queued} queued (${durationStr})`;
+    ? `ninthwave: ${merged} done, ${active} active, ${stuck} stuck, ${queued} queued${blockedSegment} (${durationStr})`
+    : `ninthwave: ${merged} merged, ${stuck} stuck, ${queued} queued${blockedSegment} (${durationStr})`;
 
   // Lead time (time from start to done for each completed item)
   const leadTimes = allItems
@@ -2500,6 +2506,7 @@ export function formatCompletionBanner(
   runStartTime: string,
 ): string[] {
   const merged = allItems.filter((i) => completionSummaryState(i) === "done").length;
+  const blocked = allItems.filter((i) => completionSummaryState(i) === "blocked").length;
   const stuck = allItems.filter((i) => completionSummaryState(i) === "stuck").length;
   const active = allItems.filter((i) => completionSummaryState(i) === "active").length;
   const total = allItems.length;
@@ -2514,7 +2521,9 @@ export function formatCompletionBanner(
   lines.push(
     active > 0
       ? `  Work still in progress. ${merged} done, ${active} active, ${stuck} stuck. (${durationStr})`
-      : `  All ${total} items complete. ${merged} merged, ${stuck} stuck. (${durationStr})`,
+      : blocked > 0
+        ? `  All runnable items complete. ${merged} merged, ${stuck} stuck, ${blocked} blocked. (${durationStr})`
+        : `  All ${total} items complete. ${merged} merged, ${stuck} stuck. (${durationStr})`,
   );
 
   const leadTimes = allItems
@@ -3180,7 +3189,7 @@ export async function orchestrateLoop(
 
     // Check if all items are in terminal state
     const allItems = orch.getAllItems();
-    const allTerminal = allItems.every((i) => i.state === "done" || i.state === "stuck");
+    const allTerminal = allItems.every((i) => TERMINAL_STATES.has(i.state));
     if (allTerminal) {
       handleRunComplete(allItems, orch, ctx, deps, config, log, runStartTime);
 
@@ -3297,7 +3306,7 @@ export async function orchestrateLoop(
     if (deps.crewBroker) {
       try {
         const activeItems = orch.getAllItems()
-          .filter((i) => i.state !== "done" && i.state !== "stuck");
+          .filter((i) => !TERMINAL_STATES.has(i.state));
         // Build enriched sync items with priority, dependencies, and author.
         // Filter dependencies to only include items tracked in the orchestrator.
         // Untracked deps (removed from work dir = already delivered) are omitted
@@ -3357,7 +3366,7 @@ export async function orchestrateLoop(
         lastMainRefreshMs = nowRefreshMs;
         const reposToRefresh = new Set<string>([ctx.projectRoot]);
         for (const item of orch.getAllItems()) {
-          if (item.resolvedRepoRoot && item.state !== "done" && item.state !== "stuck") {
+          if (item.resolvedRepoRoot && !TERMINAL_STATES.has(item.state)) {
             reposToRefresh.add(item.resolvedRepoRoot);
           }
         }
@@ -5047,7 +5056,7 @@ export async function cmdOrchestrate(
       // In-flight workers (implementing, ci-pending, etc.) may still be actively
       // running -- leave their workspaces open so they survive orchestrator restarts.
       // On restart, reconstructState recovers their workspace refs.
-      const terminalStates = new Set(["done", "stuck", "merged"]);
+      const terminalStates = new Set(["done", "blocked", "stuck", "merged"]);
       const closedWorkspaces: string[] = [];
       for (const item of orch.getAllItems()) {
         if (terminalStates.has(item.state) && item.workspaceRef) {

@@ -255,6 +255,11 @@ export function reconstructState(
       continue;
     }
 
+    if (saved?.state === "blocked") {
+      orch.hydrateState(item.id, "blocked");
+      continue;
+    }
+
     // Restore post-merge fix-forward states from daemon state (these items have no worktree)
     if (saved && item.mergeCommitSha) {
       let savedState = saved.state;

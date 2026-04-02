@@ -333,6 +333,7 @@ describe("state file management", () => {
       makeOrchestratorItem("T-1-1", "implementing"),
       makeOrchestratorItem("T-1-2", "ci-pending", 42),
       makeOrchestratorItem("T-1-3", "done", 99),
+      makeOrchestratorItem("T-1-4", "blocked"),
     ];
 
     const state = serializeOrchestratorState(
@@ -348,7 +349,7 @@ describe("state file management", () => {
     expect(restored).not.toBeNull();
     expect(restored!.pid).toBe(1234);
     expect(restored!.startedAt).toBe("2026-03-24T10:00:00.000Z");
-    expect(restored!.items).toHaveLength(3);
+    expect(restored!.items).toHaveLength(4);
     expect(restored!.items[0]!.id).toBe("T-1-1");
     expect(restored!.items[0]!.state).toBe("implementing");
     expect(restored!.items[0]!.prNumber).toBeNull();
@@ -358,6 +359,9 @@ describe("state file management", () => {
     expect(restored!.items[2]!.id).toBe("T-1-3");
     expect(restored!.items[2]!.state).toBe("done");
     expect(restored!.items[2]!.prNumber).toBe(99);
+    expect(restored!.items[3]!.id).toBe("T-1-4");
+    expect(restored!.items[3]!.state).toBe("blocked");
+    expect(restored!.items[3]!.prNumber).toBeNull();
   });
 });
 

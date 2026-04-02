@@ -130,6 +130,22 @@ describe("reconstructState", () => {
     expect(orch.getItem("H-1-1")!.reviewCompleted).toBe(true);
     expect(orch.getItem("H-1-1")!.reviewWorkspaceRef).toBe("workspace:5");
   });
+
+  it("restores blocked from daemon state without requiring a worktree", () => {
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+
+    const daemonState = {
+      items: [{ id: "H-1-1", state: "blocked", ciFailCount: 0, retryCount: 0, prNumber: null }],
+    };
+
+    reconstructState(
+      orch, "/tmp/proj", "/tmp/proj/.ninthwave/.worktrees", undefined,
+      () => "", daemonState,
+    );
+
+    expect(orch.getItem("H-1-1")!.state).toBe("blocked");
+  });
 });
 
 // ── buildSnapshot ────────────────────────────────────────────────────
@@ -224,14 +240,17 @@ describe("buildSnapshot", () => {
     expect(itemSnap!.isMergeable).toBe(false);
   });
 
-  it("skips terminal states (done, stuck) in snapshot items", () => {
+  it("skips terminal states (done, stuck, blocked) in snapshot items", () => {
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.addItem(makeWorkItem("H-1-2"));
     orch.getItem("H-1-2")!.reviewCompleted = true;
+    orch.addItem(makeWorkItem("H-1-3"));
+    orch.getItem("H-1-3")!.reviewCompleted = true;
     orch.hydrateState("H-1-1", "done");
     orch.hydrateState("H-1-2", "stuck");
+    orch.hydrateState("H-1-3", "blocked");
 
     const fakeCheckPr = () => null;
     const fakeMux = { listWorkspaces: () => "", readScreen: () => "" } as any;
@@ -241,6 +260,7 @@ describe("buildSnapshot", () => {
 
     expect(snap.items.find((s) => s.id === "H-1-1")).toBeUndefined();
     expect(snap.items.find((s) => s.id === "H-1-2")).toBeUndefined();
+    expect(snap.items.find((s) => s.id === "H-1-3")).toBeUndefined();
   });
 
   it("sets eventTime from checkPr 5th field", () => {
@@ -3368,12 +3388,16 @@ describe("syncWorkerDisplay", () => {
     expect(mux.progressCalls).toHaveLength(0);
   });
 
-  it("skips terminal-state items (done, stuck)", () => {
+  it("skips terminal-state items (done, stuck, blocked)", () => {
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.hydrateState("H-1-1", "done");
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
+    orch.addItem(makeWorkItem("H-1-2"));
+    orch.getItem("H-1-2")!.reviewCompleted = true;
+    orch.hydrateState("H-1-2", "blocked");
+    orch.getItem("H-1-2")!.workspaceRef = "workspace:2";
 
     const mux = createMockMux();
     const snapshot: PollSnapshot = { items: [], readyIds: [] };

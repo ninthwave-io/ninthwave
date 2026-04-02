@@ -1,4 +1,4 @@
-// retry command: reset stuck/done items to queued for re-processing.
+// retry command: reset terminal items to queued for re-processing.
 
 import {
   existsSync,
@@ -41,7 +41,7 @@ const defaultDeps: RetryDeps = {
 // ── Retryable state check ────────────────────────────────────────────
 
 /** States that can be retried (terminal states). */
-const RETRYABLE_STATES = new Set(["stuck", "done"]);
+const RETRYABLE_STATES = new Set(["stuck", "done", "blocked"]);
 
 /** States that are actively being processed and cannot be retried. */
 const ACTIVE_STATES = new Set([
@@ -61,7 +61,7 @@ const ACTIVE_STATES = new Set([
 // ── Command implementation ───────────────────────────────────────────
 
 /**
- * Retry one or more stuck/done items by resetting them to queued.
+ * Retry one or more terminal items by resetting them to queued.
  * Returns a summary message.
  */
 export function cmdRetry(
@@ -95,7 +95,7 @@ export function cmdRetry(
 
     if (ACTIVE_STATES.has(item.state)) {
       deps.logError(
-        `${id}: cannot retry -- currently in "${item.state}" state. Only stuck or done items can be retried.`,
+        `${id}: cannot retry -- currently in "${item.state}" state. Only blocked, stuck, or done items can be retried.`,
       );
       results.push(`${id}: skipped (active: ${item.state})`);
       continue;
@@ -120,6 +120,13 @@ export function cmdRetry(
     item.retryCount = 0;
     item.ciFailCount = 0;
     item.prNumber = null;
+    item.failureReason = undefined;
+    item.exitCode = undefined;
+    item.stderrTail = undefined;
+    item.endedAt = undefined;
+    item.startedAt = undefined;
+    item.worktreePath = undefined;
+    item.workspaceRef = undefined;
     item.lastTransition = new Date().toISOString();
 
     resetCount++;

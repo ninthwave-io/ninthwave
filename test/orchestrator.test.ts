@@ -847,6 +847,24 @@ describe("Orchestrator", () => {
     expect(orch.wipSlots).toBe(3);
   });
 
+  it("blocked does not count toward WIP", () => {
+    orch = new Orchestrator({ wipLimit: 3 });
+
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.addItem(makeWorkItem("H-1-2"));
+    orch.getItem("H-1-2")!.reviewCompleted = true;
+    orch.addItem(makeWorkItem("H-1-3"));
+    orch.getItem("H-1-3")!.reviewCompleted = true;
+
+    orch.hydrateState("H-1-1", "implementing");
+    orch.hydrateState("H-1-2", "blocked");
+    orch.hydrateState("H-1-3", "ci-pending");
+
+    expect(orch.wipCount).toBe(2);
+    expect(orch.wipSlots).toBe(1);
+  });
+
   // ── 16. Terminal states don't transition ───────────────────────
 
   it("done state does not transition", () => {
@@ -872,6 +890,19 @@ describe("Orchestrator", () => {
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("stuck");
+    expect(actions).toHaveLength(0);
+  });
+
+  it("blocked state does not transition", () => {
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "blocked");
+
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", ciStatus: "pass", prState: "merged" }]),
+    );
+
+    expect(orch.getItem("H-1-1")!.state).toBe("blocked");
     expect(actions).toHaveLength(0);
   });
 
@@ -3451,6 +3482,22 @@ describe("Orchestrator", () => {
           ),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("stuck");
+        expect(actions).toHaveLength(0);
+      });
+    });
+
+    describe("blocked (terminal)", () => {
+      it("never transitions regardless of any snapshot data", () => {
+        orch.addItem(makeWorkItem("X-1-1"));
+        orch.getItem("X-1-1")!.reviewCompleted = true;
+        orch.hydrateState("X-1-1", "blocked");
+        const actions = orch.processTransitions(
+          snapshotWith(
+            [{ id: "X-1-1", ciStatus: "pass", prState: "merged", workerAlive: true, reviewDecision: "APPROVED" }],
+            ["X-1-1"],
+          ),
+        );
+        expect(orch.getItem("X-1-1")!.state).toBe("blocked");
         expect(actions).toHaveLength(0);
       });
     });
