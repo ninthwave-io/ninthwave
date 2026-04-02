@@ -23,6 +23,7 @@ export type OrchestratorItemState =
   | "fix-forward-failed"
   | "fixing-forward"
   | "done"
+  | "blocked"
   | "stuck";
 
 export type MergeStrategy = "auto" | "manual" | "bypass";
@@ -74,7 +75,7 @@ export interface OrchestratorItem {
   failureReason?: string;
   /** ISO timestamp of when the worker was launched (set on transition to implementing). */
   startedAt?: string;
-  /** ISO timestamp of when the worker completed (set on transition to done or stuck). */
+  /** ISO timestamp of when the worker completed for the current run (set on transition to done, blocked, or stuck). */
   endedAt?: string;
   /** Exit code from the worker process (parsed from screen output on completion/failure). */
   exitCode?: number | null;
@@ -527,6 +528,13 @@ export const WIP_STATES: Set<OrchestratorItemState> = new Set([
   "merging",
 ]);
 
+/** States that are terminal for the current run and should not be polled or launched. */
+export const TERMINAL_STATES: Set<OrchestratorItemState> = new Set([
+  "done",
+  "blocked",
+  "stuck",
+]);
+
 // ── Stackable states: dep states that allow a dependent item to launch stacked ──
 
 export const STACKABLE_STATES: Set<OrchestratorItemState> = new Set([
@@ -580,6 +588,8 @@ export function statusDisplayForState(state: OrchestratorItemState, flags?: { re
       return { text: "Verifying", icon: "clock.fill", color: "#06b6d4" };
     case "done":
       return { text: "Done", icon: "checkmark.seal.fill", color: "#22c55e" };
+    case "blocked":
+      return { text: "Blocked", icon: "minus.circle", color: "#f59e0b" };
     case "stuck":
       return { text: "Stuck", icon: "exclamationmark.triangle", color: "#ef4444" };
     default:

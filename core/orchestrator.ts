@@ -28,6 +28,7 @@ import {
   HEARTBEAT_TIMEOUT_MS,
   NOT_ALIVE_THRESHOLD,
   LAUNCHING_TIMEOUT_MS,
+  TERMINAL_STATES,
   WIP_STATES,
   STACKABLE_STATES,
   getNextTool,
@@ -282,7 +283,7 @@ export class Orchestrator {
       item.startedAt = detectedTime;
     }
     // Telemetry: record endedAt when worker reaches a terminal state
-    if (state === "done" || state === "stuck") {
+    if (TERMINAL_STATES.has(state)) {
       item.endedAt = detectedTime;
     }
     // Emit structured transition event
@@ -460,6 +461,7 @@ export class Orchestrator {
         break;
 
       case "done":
+      case "blocked":
       case "stuck":
         actions = [];
         break;

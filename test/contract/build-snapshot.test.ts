@@ -717,6 +717,16 @@ describe("buildSnapshot contract", () => {
       expect(result.items).toHaveLength(0);
       expect(result.readyIds).toHaveLength(0);
     });
+
+    it("skips blocked items", () => {
+      orch.addItem(makeWorkItem("T-3"));
+      orch.hydrateState("T-3", "blocked");
+
+      const result = snap(orch);
+
+      expect(result.items).toHaveLength(0);
+      expect(result.readyIds).toHaveLength(0);
+    });
   });
 
   // ── Reviewing items ───────────────────────────────────────────────

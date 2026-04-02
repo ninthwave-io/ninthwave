@@ -153,6 +153,39 @@ describe("cmdRetry", () => {
     expect(result).toContain("H-PRX-4: reset to queued");
   });
 
+  it("resets a blocked item to queued and clears failure metadata", () => {
+    const state = makeState([
+      makeItem("H-PRX-4", "blocked", {
+        failureReason: "launch-blocked: missing repo",
+        exitCode: 1,
+        stderrTail: "fatal: repo not found",
+        startedAt: "2026-03-25T00:10:00Z",
+        endedAt: "2026-03-25T00:11:00Z",
+        worktreePath: "/tmp/worktree",
+        workspaceRef: "workspace:9",
+      }),
+    ]);
+    seedState(io, state);
+    const deps = createDeps(io);
+
+    const result = cmdRetry(["H-PRX-4"], "/worktrees", "/project", deps);
+
+    expect(result).toContain("H-PRX-4: reset to queued");
+
+    const updated = JSON.parse(
+      io.files.get(stateFilePath("/project"))!,
+    ) as DaemonState;
+    const item = updated.items.find((i) => i.id === "H-PRX-4")!;
+    expect(item.state).toBe("queued");
+    expect(item.failureReason).toBeUndefined();
+    expect(item.exitCode).toBeUndefined();
+    expect(item.stderrTail).toBeUndefined();
+    expect(item.startedAt).toBeUndefined();
+    expect(item.endedAt).toBeUndefined();
+    expect(item.worktreePath).toBeUndefined();
+    expect(item.workspaceRef).toBeUndefined();
+  });
+
   it("resets multiple items", () => {
     const state = makeState([
       makeItem("H-PRX-4", "stuck"),

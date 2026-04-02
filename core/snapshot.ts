@@ -8,6 +8,7 @@ import {
   type PollSnapshot,
   type ItemSnapshot,
   type OrchestratorItem,
+  TERMINAL_STATES,
 } from "./orchestrator.ts";
 import { readHeartbeat, readVerdictFile } from "./daemon.ts";
 import {
@@ -329,7 +330,7 @@ export function buildSnapshot(
     }
 
     // Skip terminal states -- nothing to poll
-    if (orchItem.state === "done" || orchItem.state === "stuck") continue;
+    if (TERMINAL_STATES.has(orchItem.state)) continue;
 
     // Post-merge verification: poll CI on the merge commit (no PR polling needed)
     if ((orchItem.state === "forward-fix-pending" || orchItem.state === "fix-forward-failed") && orchItem.mergeCommitSha) {
@@ -562,7 +563,7 @@ export async function buildSnapshotAsync(
     }
 
     // Skip terminal states
-    if (orchItem.state === "done" || orchItem.state === "stuck") continue;
+    if (TERMINAL_STATES.has(orchItem.state)) continue;
 
     // Post-merge verification
     if ((orchItem.state === "forward-fix-pending" || orchItem.state === "fix-forward-failed") && orchItem.mergeCommitSha) {
