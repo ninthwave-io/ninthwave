@@ -53,7 +53,7 @@ class Ninthwave < Formula
     # Verify nw symlink works
     assert_match version.to_s, shell_output("#{bin}/nw version")
     # Verify resource files are discoverable (BUNDLE_MARKER)
-    assert_predicate share/"ninthwave/skills/work/SKILL.md", :exist?
+    assert_predicate share/"ninthwave/skills/decompose/SKILL.md", :exist?
     assert_predicate share/"ninthwave/VERSION", :exist?
   end
 end

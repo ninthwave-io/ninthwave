@@ -66,8 +66,8 @@ jobs:
           cp -r templates "staging/${ARTIFACT_NAME}/"
 
           # Validate BUNDLE_MARKER exists
-          test -f "staging/${ARTIFACT_NAME}/skills/work/SKILL.md" || {
-            echo "ERROR: BUNDLE_MARKER (skills/work/SKILL.md) missing from staging"
+          test -f "staging/${ARTIFACT_NAME}/skills/decompose/SKILL.md" || {
+            echo "ERROR: BUNDLE_MARKER (skills/decompose/SKILL.md) missing from staging"
             exit 1
           }
 
