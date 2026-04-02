@@ -3421,6 +3421,23 @@ describe("renderHelpOverlay", () => {
     expect(text).toContain("x           Extend worker timeout");
   });
 
+  it("advertises Enter, Escape, and ? as help dismiss keys", () => {
+    const lines = renderHelpOverlay(100, 40);
+    const text = stripAnsi(lines.join("\n"));
+    expect(text).toContain("Press Enter, Escape, or ? to close");
+  });
+
+  it("stays within tight terminal bounds", () => {
+    const termWidth = 60;
+    const termRows = 24;
+    const lines = renderHelpOverlay(termWidth, termRows);
+
+    expect(lines).toHaveLength(termRows);
+    for (const line of lines) {
+      expect(stripAnsiForWidth(line).length).toBeLessThanOrEqual(termWidth);
+    }
+  });
+
   it("help content is ASCII-only except strategy icons", () => {
     const lines = renderHelpOverlay(100, 40);
     const text = stripAnsi(lines.join("\n"));

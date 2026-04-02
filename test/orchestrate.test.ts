@@ -6303,7 +6303,7 @@ describe("interactive watch operator session", () => {
 
     const helpOutput = writes.join("");
     expect(helpOutput).toContain("Help");
-    expect(helpOutput).toContain("Press Enter, ? or Escape to close");
+    expect(helpOutput).toContain("Press Enter, Escape, or ? to close");
     expect(helpOutput).not.toContain("Controls");
     expect(helpOutput).not.toContain("H-TRS-5");
 
@@ -6325,6 +6325,7 @@ describe("interactive watch operator session", () => {
 
     const controlsOutput = writes.join("");
     expect(controlsOutput).toContain("Controls");
+    expect(controlsOutput).toContain("Press Enter or Escape to close");
     expect(controlsOutput).not.toContain("Help");
     expect(controlsOutput).not.toContain("H-TRS-5");
   });

@@ -2488,10 +2488,23 @@ export function renderHelpOverlay(
     contentLines.push(...sections[s]!);
   }
 
+  const hint = "Press Enter, Escape, or ? to close";
+  const fixedBoxLines = 6;
+  const maxContentLines = Math.max(0, termRows - fixedBoxLines);
+  const visibleContentLines = contentLines.length <= maxContentLines
+    ? contentLines
+    : maxContentLines <= 0
+      ? []
+      : [
+          ...contentLines.slice(0, Math.max(0, maxContentLines - 1)),
+          `${DIM}...${RESET}`,
+        ];
+
   // ── Compute box dimensions ─────────────────────────────────────────
 
   const maxContentWidth = Math.max(
-    ...contentLines.map((l) => stripAnsiForWidth(l).length),
+    hint.length,
+    ...visibleContentLines.map((l) => stripAnsiForWidth(l).length),
   );
   // Box inner width: at least content width + 2 padding chars each side
   const innerWidth = Math.min(maxContentWidth + 4, termWidth - 4);
@@ -2514,7 +2527,7 @@ export function renderHelpOverlay(
 
   // Content lines (truncate if wider than available space)
   const maxContentDisplay = innerWidth - 2; // 2 chars left padding
-  for (const line of contentLines) {
+  for (const line of visibleContentLines) {
     const displayLen = stripAnsiForWidth(line).length;
     let rendered = line;
     if (displayLen > maxContentDisplay) {
@@ -2540,7 +2553,6 @@ export function renderHelpOverlay(
   boxLines.push(`${pad}│${" ".repeat(innerWidth)}│`);
 
   // Footer hint
-  const hint = "Press Enter, ? or Escape to close";
   const hintPad = Math.max(0, Math.floor((innerWidth - hint.length) / 2));
   boxLines.push(`${pad}│${" ".repeat(hintPad)}${DIM}${hint}${RESET}${" ".repeat(Math.max(0, innerWidth - hintPad - hint.length))}│`);
 
@@ -2562,7 +2574,7 @@ export function renderHelpOverlay(
     output.push("");
   }
 
-  return output;
+  return output.slice(0, termRows);
 }
 
 // ─── Controls overlay ───────────────────────────────────────────────────────
