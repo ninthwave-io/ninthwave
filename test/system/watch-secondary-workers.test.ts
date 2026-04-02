@@ -282,7 +282,9 @@ async function readSecondaryWorkerContext(
   const runId = fakeAiDefaultRunId(itemId, agent);
   await waitFor(() => {
     const artifactDir = fakeAiArtifactDir(harness.stateDir, runId);
-    return existsSync(join(artifactDir, "context.env")) ? runId : false;
+    const contextPath = join(artifactDir, "context.env");
+    const promptPath = join(artifactDir, "prompt.txt");
+    return existsSync(contextPath) && existsSync(promptPath) ? runId : false;
   }, {
     description: `${agent} fake worker artifacts`,
   });
