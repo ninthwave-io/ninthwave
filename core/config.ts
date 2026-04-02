@@ -18,6 +18,21 @@ import {
 export interface ProjectConfig {
   review_external: boolean;
   schedule_enabled: boolean;
+  crew_url?: string;
+}
+
+function parseProjectCrewUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+      return undefined;
+    }
+    return value;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -40,9 +55,12 @@ export function loadConfig(projectRoot: string): ProjectConfig {
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return defaults;
     }
+
+    const crewUrl = parseProjectCrewUrl(parsed.crew_url);
     return {
       review_external: parsed.review_external === true,
       schedule_enabled: parsed.schedule_enabled === true,
+      ...(crewUrl === undefined ? {} : { crew_url: crewUrl }),
     };
   } catch {
     return defaults;
