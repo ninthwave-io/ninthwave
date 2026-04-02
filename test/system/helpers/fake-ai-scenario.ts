@@ -57,6 +57,10 @@ export interface FakeAiState {
   signal: string;
 }
 
+export function fakeAiDefaultRunId(itemId: string, agent: string): string {
+  return `${itemId}-${agent}`;
+}
+
 function serializeScenario(scenario: FakeAiScenario): string {
   const lines: string[] = [];
   lines.push(`behavior=${scenario.behavior ?? "success"}`);

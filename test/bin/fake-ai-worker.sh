@@ -2,7 +2,9 @@
 set -eu
 
 scenario_file="${NINTHWAVE_FAKE_AI_SCENARIO:-}"
-run_id="${NINTHWAVE_FAKE_AI_RUN_ID:-${NINTHWAVE_LAUNCH_ITEM_ID:-fake-ai-run}}"
+item_id="${NINTHWAVE_LAUNCH_ITEM_ID:-unknown}"
+agent_name="${NINTHWAVE_LAUNCH_AGENT:-worker}"
+run_id="${NINTHWAVE_FAKE_AI_RUN_ID:-${item_id}-${agent_name}}"
 state_dir="${NINTHWAVE_LAUNCH_STATE_DIR:?NINTHWAVE_LAUNCH_STATE_DIR is required}"
 artifact_dir="${state_dir}/fake-ai-worker/${run_id}"
 context_file="${artifact_dir}/context.env"
@@ -10,7 +12,7 @@ state_file="${artifact_dir}/state.env"
 prompt_copy="${artifact_dir}/prompt.txt"
 launches_file="${artifact_dir}/launches.log"
 heartbeat_dir="${state_dir}/heartbeats"
-heartbeat_file="${heartbeat_dir}/${NINTHWAVE_LAUNCH_ITEM_ID:-unknown}.json"
+heartbeat_file="${heartbeat_dir}/${item_id}.json"
 
 mkdir -p "${artifact_dir}"
 printf '%s|%s|%s\n' \
