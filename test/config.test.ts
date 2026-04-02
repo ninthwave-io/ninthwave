@@ -16,20 +16,26 @@ describe("loadConfig", () => {
     const config = loadConfig(repo);
     expect(config.review_external).toBe(false);
     expect(config.schedule_enabled).toBe(false);
+    expect(config.crew_url).toBeUndefined();
   });
 
-  it("parses valid JSON with both keys", () => {
+  it("parses valid JSON with both keys and crew_url", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(
       join(configDir, "config.json"),
-      JSON.stringify({ review_external: true, schedule_enabled: true }),
+      JSON.stringify({
+        review_external: true,
+        schedule_enabled: true,
+        crew_url: "wss://crew.example/ws",
+      }),
     );
 
     const config = loadConfig(repo);
     expect(config.review_external).toBe(true);
     expect(config.schedule_enabled).toBe(true);
+    expect(config.crew_url).toBe("wss://crew.example/ws");
   });
 
   it("defaults schedule_enabled when only review_external is set", () => {
@@ -44,6 +50,7 @@ describe("loadConfig", () => {
     const config = loadConfig(repo);
     expect(config.review_external).toBe(true);
     expect(config.schedule_enabled).toBe(false);
+    expect(config.crew_url).toBeUndefined();
   });
 
   it("returns defaults for malformed JSON", () => {
@@ -98,6 +105,27 @@ describe("loadConfig", () => {
     expect(config.schedule_enabled).toBe(false);
     // Only known keys in the result
     expect(Object.keys(config)).toEqual(["review_external", "schedule_enabled"]);
+  });
+
+  it("returns undefined for invalid or absent crew_url values", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+
+    const cases = [
+      {},
+      { crew_url: "https://crew.example/ws" },
+      { crew_url: "/relative" },
+      { crew_url: "not a url" },
+      { crew_url: 123 },
+      { crew_url: null },
+    ];
+
+    for (const value of cases) {
+      writeFileSync(join(configDir, "config.json"), JSON.stringify(value));
+      const config = loadConfig(repo);
+      expect(config.crew_url).toBeUndefined();
+    }
   });
 
   it("treats non-boolean review_external as false", () => {
@@ -187,6 +215,23 @@ describe("saveConfig", () => {
     expect(content.schedule_enabled).toBe(true);
   });
 
+  it("merges crew_url into existing config without clobbering unrelated keys", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ review_external: true, custom_key: "hello" }),
+    );
+
+    saveConfig(repo, { crew_url: "ws://crew.example/socket" });
+
+    const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
+    expect(content.review_external).toBe(true);
+    expect(content.custom_key).toBe("hello");
+    expect(content.crew_url).toBe("ws://crew.example/socket");
+  });
+
   it("overwrites existing stable setting values", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
@@ -207,12 +252,14 @@ describe("saveConfig", () => {
     saveConfig(repo, {
       review_external: true,
       schedule_enabled: true,
+      crew_url: "wss://crew.example/ws",
     });
 
     const config = loadConfig(repo);
     expect(config).toEqual({
       review_external: true,
       schedule_enabled: true,
+      crew_url: "wss://crew.example/ws",
     });
   });
 });
