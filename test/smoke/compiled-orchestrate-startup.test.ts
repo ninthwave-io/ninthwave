@@ -47,12 +47,13 @@ Key files: \`test/smoke/compiled-orchestrate-startup.test.ts\`
     });
 
     try {
-      const output = await waitForCapturedOutput(handle, "H-SMK-1", {
+      const output = await waitForCapturedOutput(handle, "Restoring runtime state", {
         timeoutMs: 20_000,
       });
 
-      expect(output).toContain("Starting orchestrator");
-      expect(output).toContain("H-SMK-1");
+      expect(output).toContain("Preparing runtime");
+      expect(output).toContain("Preparing work queue");
+      expect(output).toContain("Restoring runtime state");
       expect(output).not.toContain("Engine disconnected");
       expect(output).not.toContain('Module not found "/$bunfs/root/ninthwave"');
     } finally {
