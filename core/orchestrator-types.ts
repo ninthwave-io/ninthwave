@@ -222,6 +222,8 @@ export interface PollSnapshot {
     byKind: Partial<Record<GhFailureKind, number>>;
     primaryKind: GhFailureKind;
   };
+  /** Human-readable rate-limit backoff description for TUI display (e.g., "Rate limited -- resuming in 2m 15s"). */
+  rateLimitBackoffDescription?: string;
 }
 
 // ── Actions ──────────────────────────────────────────────────────────

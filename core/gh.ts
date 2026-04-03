@@ -501,6 +501,28 @@ export function apiGet(
   return result.stdout;
 }
 
+// ── Rate limit querying ────────────────────────────────────────────
+
+export interface RateLimitInfo {
+  limit: number;
+  remaining: number;
+  reset: number; // unix timestamp (seconds)
+  used: number;
+}
+
+/** Query the GitHub rate limit status. The rate_limit endpoint is exempt from rate limits. */
+export async function queryRateLimitAsync(repoRoot: string): Promise<RateLimitInfo | null> {
+  try {
+    const result = await ghInRepoAsync(repoRoot, ["api", "rate_limit", "--jq", ".rate"]);
+    if (result.exitCode !== 0 || !result.stdout?.trim()) return null;
+    const parsed = JSON.parse(result.stdout) as RateLimitInfo;
+    if (typeof parsed.reset !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve the GitHub token to use for gh CLI commands.
  * Only checks the NINTHWAVE_GITHUB_TOKEN env var.

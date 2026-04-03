@@ -99,6 +99,8 @@ export interface ViewOptions {
   apiErrorCount?: number;
   /** Optional summary of GitHub PR polling failure causes for footer copy. */
   apiErrorSummary?: PollSnapshot["apiErrorSummary"];
+  /** Human-readable rate-limit backoff description for the footer (overrides generic API error text). */
+  rateLimitBackoffDescription?: string;
   /** Passive startup update-check state for the TUI footer notice. */
   updateState?: PassiveUpdateState;
   /** Alternate empty-state copy for watch flows that are already armed. */
@@ -189,7 +191,9 @@ function formatShortcutChord(
 function formatGitHubApiWarningText(
   apiErrorCount?: number,
   apiErrorSummary?: PollSnapshot["apiErrorSummary"],
+  rateLimitBackoffDescription?: string,
 ): string {
+  if (rateLimitBackoffDescription) return `⚠ ${rateLimitBackoffDescription}`;
   if ((apiErrorCount ?? 0) <= 0) return "";
   if (!apiErrorSummary) return "⚠ GitHub API unreachable";
 
@@ -1958,7 +1962,7 @@ export function buildStatusLayout(
   footerLines.push(formatUnifiedProgress(items, termWidth));
 
   // Strategy indicator footer (or Ctrl+C confirmation)
-  const apiWarningText = formatGitHubApiWarningText(viewOptions?.apiErrorCount, viewOptions?.apiErrorSummary);
+  const apiWarningText = formatGitHubApiWarningText(viewOptions?.apiErrorCount, viewOptions?.apiErrorSummary, viewOptions?.rateLimitBackoffDescription);
   const apiWarning = renderGitHubApiWarning(apiWarningText);
   const updateNoticeText = formatUpdateNoticeText(viewOptions?.updateState);
   const updateNotice = renderUpdateNotice(updateNoticeText);

@@ -33,7 +33,8 @@ import { cleanStaleBranchForReuse } from "../branch-cleanup.ts";
 import { selectAiTools, detectInstalledAITools } from "../tool-select.ts";
 import { cleanSingleWorktree } from "./clean.ts";
 import { writeInbox } from "./inbox.ts";
-import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, getDefaultBranch as ghGetDefaultBranch, ensureDomainLabels, listPrComments, updatePrComment, ghFailureKindLabel, getPrBaseBranch as ghGetPrBaseBranch, retargetPrBase as ghRetargetPrBase } from "../gh.ts";
+import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, getDefaultBranch as ghGetDefaultBranch, ensureDomainLabels, listPrComments, updatePrComment, ghFailureKindLabel, getPrBaseBranch as ghGetPrBaseBranch, retargetPrBase as ghRetargetPrBase, queryRateLimitAsync as ghQueryRateLimitAsync } from "../gh.ts";
+import { RateLimitBackoff } from "../rate-limit-backoff.ts";
 import { fetchOrigin, ffMerge, gitAdd, gitCommit, gitPush, daemonRebase } from "../git.ts";
 import { run } from "../shell.ts";
 import { type Multiplexer, createMux, muxTypeForWorkspaceRef, resolveBackend } from "../mux.ts";
@@ -3113,6 +3114,8 @@ export interface OrchestrateLoopDeps {
   scheduleDeps?: ScheduleLoopDeps;
   /** Dynamic gate for schedule execution while keeping schedule deps wired. */
   isScheduleExecutionEnabled?: () => boolean;
+  /** Query GitHub rate limit status. Injectable for testing. */
+  queryRateLimit?: (repoRoot: string) => Promise<import("../gh.ts").RateLimitInfo | null>;
   /** Injectable clock for interactive watch timing tests. Defaults to Date.now. */
   nowMs?: () => number;
   /** Injectable timer hooks for event-loop lag sampling tests. */
@@ -3319,6 +3322,7 @@ export async function orchestrateLoop(
   const watchIntervalMs = config.watchIntervalMs ?? 30_000;
   let lastWatchScanMs = Date.now();
   const loopStartMs = Date.now();
+  const rateLimitBackoff = new RateLimitBackoff(config.pollIntervalMs ?? 2_000);
 
   const scanForNewWatchItems = (): WorkItem[] => {
     if (!config.watch || !deps.scanWorkItems) return [];
@@ -3574,16 +3578,51 @@ export async function orchestrateLoop(
         }
       }
 
-      // Build snapshot from external state
-      const pollStartMs = interactiveTiming ? nowMs() : 0;
-      const snapshot = await deps.buildSnapshot(orch, ctx.projectRoot, ctx.worktreeDir);
-      if (interactiveTiming) {
-        interactiveTiming.timingsMs.poll = elapsedMs(nowMs, pollStartMs);
+      // Build snapshot from external state (skip during rate-limit backoff)
+      let snapshot: PollSnapshot;
+      if (rateLimitBackoff.shouldSkipSnapshot()) {
+        const backoffState = rateLimitBackoff.getState();
+        snapshot = { items: __lastSnapshot?.items ?? [], readyIds: __lastSnapshot?.readyIds ?? [] };
+        log({
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "rate_limit_backoff",
+          consecutiveRateLimitCycles: backoffState.consecutiveRateLimitCycles,
+          resetAt: backoffState.resetAt ? new Date(backoffState.resetAt * 1000).toISOString() : undefined,
+          intervalMs: backoffState.intervalMs,
+          message: backoffState.description,
+        });
+      } else {
+        const pollStartMs = interactiveTiming ? nowMs() : 0;
+        snapshot = await deps.buildSnapshot(orch, ctx.projectRoot, ctx.worktreeDir);
+        if (interactiveTiming) {
+          interactiveTiming.timingsMs.poll = elapsedMs(nowMs, pollStartMs);
+        }
       }
       __lastSnapshot = snapshot;
 
-    // Log warning when GitHub API is unreachable for all polled items
-    if (snapshot.apiErrorCount && snapshot.apiErrorCount > 0) {
+      // Record rate-limit state and query reset time on first detection
+      rateLimitBackoff.recordPollResult(snapshot);
+      if (rateLimitBackoff.getState().active && rateLimitBackoff.getState().consecutiveRateLimitCycles === 1) {
+        try {
+          const queryRateLimit = deps.queryRateLimit ?? ghQueryRateLimitAsync;
+          const rateInfo = await queryRateLimit(ctx.projectRoot);
+          if (rateInfo) {
+            rateLimitBackoff.setResetTimestamp(rateInfo.reset);
+            log({
+              ts: new Date().toISOString(),
+              level: "info",
+              event: "rate_limit_reset_time",
+              resetAt: new Date(rateInfo.reset * 1000).toISOString(),
+              remaining: rateInfo.remaining,
+              limit: rateInfo.limit,
+            });
+          }
+        } catch { /* non-fatal -- fall back to exponential backoff */ }
+      }
+
+    // Log warning when GitHub API is unreachable (suppress during active rate-limit backoff)
+    if (snapshot.apiErrorCount && snapshot.apiErrorCount > 0 && !rateLimitBackoff.getState().active) {
       const primaryKind = snapshot.apiErrorSummary?.primaryKind;
       log({
         ts: new Date().toISOString(),
@@ -3769,6 +3808,10 @@ export async function orchestrateLoop(
       }
 
     // Sync cmux sidebar display for active workers
+      const backoffState = rateLimitBackoff.getState();
+      if (backoffState.active) {
+        snapshot.rateLimitBackoffDescription = backoffState.description;
+      }
       const displaySyncStartMs = interactiveTiming ? nowMs() : 0;
       try {
         deps.syncDisplay?.(orch, snapshot);
@@ -3808,8 +3851,10 @@ export async function orchestrateLoop(
       }
     }
 
-    // Sleep -- adaptive or fixed override
-      const interval = config.pollIntervalMs ?? adaptivePollInterval(orch);
+    // Sleep -- use backoff interval when rate-limited, otherwise adaptive or fixed override
+      const interval = rateLimitBackoff.getState().active
+        ? rateLimitBackoff.getNextIntervalMs()
+        : (config.pollIntervalMs ?? adaptivePollInterval(orch));
 
       // Persist state for daemon mode (or any caller that wants snapshots)
       // Pass interval so TUI can set countdown target and capture render timing.
@@ -4860,6 +4905,7 @@ export async function cmdOrchestrate(
       syncWorkerDisplay(o, snap, mux, projectRoot);
       tuiState.viewOptions.apiErrorCount = snap.apiErrorCount ?? 0;
       tuiState.viewOptions.apiErrorSummary = snap.apiErrorSummary;
+      tuiState.viewOptions.rateLimitBackoffDescription = snap.rateLimitBackoffDescription;
     },
     externalReviewDeps,
     ...(watchMode ? { scanWorkItems: () => {
