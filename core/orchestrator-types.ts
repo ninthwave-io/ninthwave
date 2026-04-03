@@ -591,6 +591,7 @@ export function statusDisplayForState(state: OrchestratorItemState, flags?: { re
     case "fix-forward-failed":
       return { text: "Fix Failed", icon: "xmark.circle", color: "#ef4444" };
     case "fixing-forward":
+      return { text: "Fixing Forward", icon: "wrench.and.screwdriver.fill", color: "#ef4444" };
     case "merged":
       return { text: "Verifying", icon: "clock.fill", color: "#06b6d4" };
     case "done":

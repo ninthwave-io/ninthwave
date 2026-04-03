@@ -851,7 +851,7 @@ describe("mapDaemonItemState", () => {
     expect(mapDaemonItemState("done")).toBe("done");
     expect(mapDaemonItemState("merged")).toBe("verifying");
     expect(mapDaemonItemState("forward-fix-pending")).toBe("verifying");
-    expect(mapDaemonItemState("fixing-forward")).toBe("verifying");
+    expect(mapDaemonItemState("fixing-forward")).toBe("fixing-forward");
     expect(mapDaemonItemState("blocked")).toBe("blocked");
   });
 
@@ -1179,15 +1179,15 @@ describe("formatStatusTable with queued items", () => {
     expect(output).not.toContain("Queue");
   });
 
-  it("counts verifying as active and excludes only done/queued items for active sessions", () => {
+  it("excludes verifying from active session count", () => {
     const items = [
       makeItem("A-1", "implementing", "Active"),
       makeItem("A-2", "verifying", "Verifying"),
       makeItem("Q-1", "queued", "Waiting"),
     ];
-    // A-1 and A-2 are both active because verifying is still in-flight.
+    // Only A-1 counts as active; verifying is post-merge and doesn't consume a WIP slot.
     const output = stripAnsi(formatStatusTable(items, 80, 3));
-    expect(output).toContain("2/3 active sessions");
+    expect(output).toContain("1/3 active sessions");
   });
 });
 

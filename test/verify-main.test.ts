@@ -549,9 +549,9 @@ describe("statusDisplayForState for fix-forward states", () => {
     expect(display.text).toBe("Fix Failed");
   });
 
-  it("returns Verifying for fixing-forward state", () => {
+  it("returns Fixing Forward for fixing-forward state", () => {
     const display = statusDisplayForState("fixing-forward");
-    expect(display.text).toBe("Verifying");
+    expect(display.text).toBe("Fixing Forward");
   });
 
   it("returns Done for done state", () => {

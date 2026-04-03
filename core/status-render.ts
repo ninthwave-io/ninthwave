@@ -234,6 +234,7 @@ export interface SessionMetrics {
 export type ItemState =
   | "merged"
   | "verifying"
+  | "fixing-forward"
   | "done"
   | "blocked"
   | "bootstrapping"
@@ -244,6 +245,20 @@ export type ItemState =
   | "review"
   | "in-progress"
   | "queued";
+
+/**
+ * Display states that correspond to ACTIVE_SESSION_STATES in the orchestrator.
+ * Used for the "X/Y active sessions" count in the queue header.
+ */
+export const ACTIVE_DISPLAY_STATES: Set<ItemState> = new Set([
+  "bootstrapping",
+  "implementing",
+  "ci-pending",
+  "ci-failed",
+  "rebasing",
+  "review",
+  "in-progress",
+]);
 
 export interface StatusItem {
   id: string;
@@ -359,6 +374,8 @@ export function stateColor(state: ItemState): string {
       return GREEN;
     case "verifying":
       return CYAN;
+    case "fixing-forward":
+      return RED;
     case "blocked":
       return YELLOW;
     case "bootstrapping":
@@ -387,6 +404,8 @@ export function stateIcon(state: ItemState): string {
       return "✓";
     case "verifying":
       return "◌";
+    case "fixing-forward":
+      return "⚡";
     case "blocked":
       return "⧗";
     case "bootstrapping":
@@ -415,6 +434,8 @@ export function stateLabel(state: ItemState): string {
       return "Merged";
     case "verifying":
       return "Verifying";
+    case "fixing-forward":
+      return "Fixing Forward";
     case "done":
       return "Done";
     case "blocked":
@@ -810,6 +831,7 @@ export function formatBatchProgress(items: StatusItem[]): string {
     "done",
     "merged",
     "verifying",
+    "fixing-forward",
     "review",
     "ci-pending",
     "rebasing",
@@ -1241,12 +1263,14 @@ export function formatStatusTable(
 
     // Queue section
     if (queuedItems.length > 0) {
-      const activeCount = items.filter(
-        (i) => i.state !== "queued" && i.state !== "done",
-      ).length;
+      const activeCount = items.filter((i) => ACTIVE_DISPLAY_STATES.has(i.state)).length;
+      const fixForwardCount = items.filter((i) => i.state === "fixing-forward").length;
       let queueHeader = `Queue (${queuedItems.length} waiting`;
       if (sessionLimit !== undefined) {
         queueHeader += `, ${activeCount}/${sessionLimit} active sessions`;
+      }
+      if (fixForwardCount > 0) {
+        queueHeader += `, ${fixForwardCount} fixing forward`;
       }
       queueHeader += ")";
 
@@ -1277,10 +1301,14 @@ export function formatStatusTable(
 
     // Queue section with header
     if (queuedItems.length > 0) {
-      const activeCount = activeItems.length;
+      const activeCount = items.filter((i) => ACTIVE_DISPLAY_STATES.has(i.state)).length;
+      const fixForwardCount = items.filter((i) => i.state === "fixing-forward").length;
       let queueHeader = `Queue (${queuedItems.length} waiting`;
       if (sessionLimit !== undefined) {
         queueHeader += `, ${activeCount}/${sessionLimit} active sessions`;
+      }
+      if (fixForwardCount > 0) {
+        queueHeader += `, ${fixForwardCount} fixing forward`;
       }
       queueHeader += ")";
 
@@ -1320,8 +1348,9 @@ export function mapDaemonItemState(orchState: string, flags?: { rebaseRequested?
   switch (orchState) {
     case "merged":
     case "forward-fix-pending":
-    case "fixing-forward":
       return "verifying";
+    case "fixing-forward":
+      return "fixing-forward";
     case "done":
       return "done";
     case "blocked":
@@ -1555,6 +1584,7 @@ export interface VisibleStatusQueueHeaderRow {
   type: "queue-header";
   queuedCount: number;
   activeCount: number;
+  fixForwardCount?: number;
 }
 
 export interface VisibleStatusQueueSeparatorRow {
@@ -1621,7 +1651,8 @@ export function buildVisibleStatusLayoutMetadata(
     rows.push({
       type: "queue-header",
       queuedCount: queuedItems.length,
-      activeCount: activeItems.length,
+      activeCount: items.filter((i) => ACTIVE_DISPLAY_STATES.has(i.state)).length,
+      fixForwardCount: items.filter((i) => i.state === "fixing-forward").length,
     });
     renderedLineIndex += 1;
     rows.push({ type: "queue-separator" });
@@ -1692,6 +1723,7 @@ export function formatUnifiedProgress(
     "done",
     "merged",
     "verifying",
+    "fixing-forward",
     "review",
     "ci-pending",
     "rebasing",
@@ -1909,6 +1941,7 @@ export function buildStatusLayout(
       case "queue-header": {
         let queueHeader = `Queue (${row.queuedCount} waiting`;
         if (sessionLimit !== undefined) queueHeader += `, ${row.activeCount}/${sessionLimit} active sessions`;
+        if (row.fixForwardCount && row.fixForwardCount > 0) queueHeader += `, ${row.fixForwardCount} fixing forward`;
         queueHeader += ")";
         itemLines.push(`  ${DIM}${queueHeader}${RESET}`);
         break;
@@ -2488,6 +2521,8 @@ export function formatItemDetail(
     lines.push(`  ${DIM}CI:${RESET}        ${CYAN}Pending${RESET}`);
   } else if (item.state === "verifying") {
     lines.push(`  ${DIM}CI:${RESET}        ${CYAN}Verifying${RESET}`);
+  } else if (item.state === "fixing-forward") {
+    lines.push(`  ${DIM}CI:${RESET}        ${RED}Fixing Forward${RESET}`);
   } else if (item.state === "done" || item.state === "merged" || item.state === "review") {
     lines.push(`  ${DIM}CI:${RESET}        ${GREEN}Passed${RESET}`);
   }

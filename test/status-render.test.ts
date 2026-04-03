@@ -1288,7 +1288,7 @@ describe("formatStatusTable", () => {
     expect(table).not.toContain("└");
   });
 
-  it("keeps verifying items in the active section and WIP counts", () => {
+  it("keeps verifying items in the active section but excludes from WIP count", () => {
     const items = [
       makeStatusItem({ id: "A-1", state: "verifying" }),
       makeStatusItem({ id: "A-2", state: "queued" }),
@@ -1297,7 +1297,8 @@ describe("formatStatusTable", () => {
     const table = stripAnsi(formatStatusTable(items, 100, 4));
     const verifyingIndex = table.indexOf("A-1");
     const doneIndex = table.indexOf("A-3");
-    const queueIndex = table.indexOf("Queue (1 waiting, 1/4 active sessions)");
+    // Verifying doesn't count toward active sessions (post-merge, no WIP slot consumed)
+    const queueIndex = table.indexOf("Queue (1 waiting, 0/4 active sessions)");
     expect(verifyingIndex).toBeGreaterThan(-1);
     expect(doneIndex).toBeGreaterThan(-1);
     expect(queueIndex).toBeGreaterThan(-1);
@@ -1451,7 +1452,7 @@ describe("mapDaemonItemState", () => {
   it("maps orchestrator states to display states correctly", () => {
     expect(mapDaemonItemState("merged")).toBe("verifying");
     expect(mapDaemonItemState("forward-fix-pending")).toBe("verifying");
-    expect(mapDaemonItemState("fixing-forward")).toBe("verifying");
+    expect(mapDaemonItemState("fixing-forward")).toBe("fixing-forward");
     expect(mapDaemonItemState("done")).toBe("done");
     expect(mapDaemonItemState("blocked")).toBe("blocked");
     expect(mapDaemonItemState("bootstrapping")).toBe("bootstrapping");
@@ -1827,7 +1828,7 @@ describe("orchestratorItemsToStatusItems", () => {
     const stateMappings: Array<[OrchestratorItem["state"], ItemState]> = [
       ["merged", "verifying"],
       ["forward-fix-pending", "verifying"],
-      ["fixing-forward", "verifying"],
+      ["fixing-forward", "fixing-forward"],
       ["done", "done"],
       ["blocked", "blocked"],
       ["bootstrapping", "bootstrapping"],
