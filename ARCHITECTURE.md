@@ -114,6 +114,8 @@ nw (orchestrator event loop, ~10s poll)
   │   └─ launch-review → launch.ts launchReviewWorker
 
 Post-merge
+  ├─ if merge-commit CI fails, forward-fixer launches and chooses the smallest safe repair PR
+  │   (fix-forward, disable a newly introduced feature flag, or revert)
   ├─ worktree and workspace cleaned up
   ├─ work item file removed from .ninthwave/work/
   ├─ stacked dependents retargeted to main

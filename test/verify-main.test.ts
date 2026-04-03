@@ -1348,13 +1348,15 @@ describe("forward-fixer agent file", () => {
     expect(content).toContain("nw watch");
   });
 
-  it("documents both fix-forward and revert repair outcomes without child work items", async () => {
+  it("documents fix-forward, disable-feature-flag, and revert repair outcomes without child work items", async () => {
     const { readFileSync } = await import("fs");
     const { join } = await import("path");
     const agentPath = join(import.meta.dir, "..", "agents", "forward-fixer.md");
     const content = readFileSync(agentPath, "utf-8");
     expect(content).toContain("ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID");
     expect(content).toContain("ninthwave/revert-YOUR_VERIFY_ITEM_ID");
+    expect(content).toContain("#### Option B: Disable a newly introduced feature flag");
+    expect(content).toContain("Do **not** invent a new feature flag");
     expect(content).toContain("Do **not** create a synthetic child work item");
     expect(content).toContain(".ninthwave/work/");
   });

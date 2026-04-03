@@ -535,6 +535,7 @@ describe("system: watch secondary workers", () => {
     harness.writeWorkItems(WORK_ITEMS);
     harness.commitAndPushWorkItems("Add secondary-worker test items");
     const mergeCommitSha = seedForwardFixPendingStates(harness, ["H-SWW-4"])["H-SWW-4"];
+    if (!mergeCommitSha) throw new Error("Expected merge commit SHA for H-SWW-4");
 
     const run = createFakeAiRun(
       harness.projectRoot,
@@ -568,6 +569,7 @@ describe("system: watch secondary workers", () => {
       expect(context.agent).toBe("ninthwave-forward-fixer");
       expect(prompt).toContain("YOUR_VERIFY_ITEM_ID: H-SWW-4");
       expect(prompt).toContain(`YOUR_VERIFY_MERGE_SHA: ${mergeCommitSha}`);
+      expect(prompt).toContain("REPAIR_PR_OUTCOMES: fix-forward,revert,disable-feature-flag");
     } finally {
       await harness.stop(processHandle);
     }
@@ -578,6 +580,7 @@ describe("system: watch secondary workers", () => {
     harness.writeWorkItems(WORK_ITEMS);
     harness.commitAndPushWorkItems("Add secondary-worker test items");
     const mergeCommitSha = seedForwardFixPendingStates(harness, ["H-SWW-5"])["H-SWW-5"];
+    if (!mergeCommitSha) throw new Error("Expected merge commit SHA for H-SWW-5");
 
     const run = createFakeAiRun(
       harness.projectRoot,

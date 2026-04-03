@@ -86,7 +86,21 @@ Treat `.ninthwave/work/` as the live queue of open work: `/decompose` populates 
 
    Templates are **not prescriptive** -- they improve consistency for common patterns while preserving flexibility for unique features. If no template matches (or the user skips), proceed with freeform decomposition.
 
-4. Present the delta summary to the user.
+4. Assess rollout sensitivity. Only AskUserQuestion about feature flags or kill switches when the work is rollout-sensitive, for example:
+   - risky user-facing behavior
+   - external integrations or third-party dependencies
+   - migrations or behavior switches that may need a fast rollback path
+   - specs that explicitly mention staged rollout, canaries, or kill switches
+   - repos that already show a local flag-like pattern
+
+   Do **not** ask this for routine refactors, isolated bug fixes, or straightforward additions with low rollout risk.
+
+   When you do ask:
+   - recommend **no flag** by default unless staged rollout or fast disablement would materially reduce risk
+   - offer options to ship unflagged, add a narrow feature flag / kill switch for this feature, or defer the decision
+   - if the user chooses a flag, decompose only the minimum feature-local flag work; do not invent a repo-wide flag framework
+
+5. Present the delta summary to the user.
 
 ---
 

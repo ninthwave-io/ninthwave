@@ -115,9 +115,10 @@ Decomposition is the process of breaking a feature into work items. Use the `/de
 Describe the feature you want to build, and the decomposer will:
 
 1. Explore your codebase to understand existing patterns
-2. Break the feature into PR-sized work items (200-400 LOC each)
-3. Map dependencies between items and assign batches
-4. Write each item as a markdown file in `.ninthwave/work/`
+2. Ask about rollout safeguards like a feature flag only when the work looks rollout-sensitive
+3. Break the feature into PR-sized work items (200-400 LOC each)
+4. Map dependencies between items and assign batches
+5. Write each item as a markdown file in `.ninthwave/work/`
 
 You can also create work items manually by writing markdown files directly.
 

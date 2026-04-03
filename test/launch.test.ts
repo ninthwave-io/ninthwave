@@ -1072,7 +1072,7 @@ describe("launchForwardFixerWorker", () => {
       "utf-8",
     );
     expect(prompt).toContain("REPO_DEFAULT_BRANCH: develop");
-    expect(prompt).toContain("REPAIR_PR_OUTCOMES: fix-forward,revert");
+    expect(prompt).toContain("REPAIR_PR_OUTCOMES: fix-forward,revert,disable-feature-flag");
     expect(prompt).toContain("CREATE_SYNTHETIC_CHILD_WORK_ITEM: false");
   });
 });

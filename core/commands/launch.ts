@@ -804,7 +804,7 @@ export function launchForwardFixerWorker(
 
   const hubRepoNwoLine = options.hubRepoNwo ? `HUB_REPO_NWO: ${options.hubRepoNwo}\n` : "";
   const defaultBranchLine = `REPO_DEFAULT_BRANCH: ${defaultBranch}\n`;
-  const repairPrOutcomesLine = "REPAIR_PR_OUTCOMES: fix-forward,revert\n";
+  const repairPrOutcomesLine = "REPAIR_PR_OUTCOMES: fix-forward,revert,disable-feature-flag\n";
   const syntheticChildWorkItemLine = "CREATE_SYNTHETIC_CHILD_WORK_ITEM: false\n";
   const systemPrompt = `YOUR_VERIFY_ITEM_ID: ${itemId}
 YOUR_VERIFY_MERGE_SHA: ${mergeCommitSha}
