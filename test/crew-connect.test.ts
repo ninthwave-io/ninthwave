@@ -123,6 +123,66 @@ describe("parseCrewStatusUpdate", () => {
     ]);
   });
 
+  it("accepts nested remote item payloads and forward-compatible states", () => {
+    const status = parseCrewStatusUpdate({
+      crewCode: "ABCD-EFGH",
+      daemonCount: 2,
+      availableCount: 1,
+      claimedCount: 1,
+      completedCount: 0,
+      daemonNames: ["local", "remote"],
+      remoteItems: [
+        {
+          workItem: {
+            id: "H-REVIEW-1",
+            title: "Nested review item",
+            state: "ci-passed",
+            prNumber: 77,
+            priorPrNumbers: [41],
+          },
+          owner: { daemonId: "daemon-review", name: "review-host" },
+        },
+        {
+          workItemId: "H-FUTURE-1",
+          workItemTitle: "Forward-compatible item",
+          state: "future-state",
+          pr: { number: 88, priorNumbers: [12] },
+          owner: null,
+        },
+        {
+          workItem: {
+            id: "H-LOCAL-2",
+            title: "Local nested item",
+            state: "implementing",
+          },
+          owner: { daemonId: "daemon-local", name: "local" },
+        },
+      ],
+    }, "daemon-local");
+
+    expect(status.claimedItems).toEqual(["H-REVIEW-1"]);
+    expect(status.remoteItems).toEqual([
+      {
+        id: "H-REVIEW-1",
+        state: "review",
+        ownerDaemonId: "daemon-review",
+        ownerName: "review-host",
+        title: "Nested review item",
+        prNumber: 77,
+        priorPrNumbers: [41],
+      },
+      {
+        id: "H-FUTURE-1",
+        state: "in-progress",
+        ownerDaemonId: null,
+        ownerName: null,
+        title: "Forward-compatible item",
+        prNumber: 88,
+        priorPrNumbers: [12],
+      },
+    ]);
+  });
+
   it("keeps queued broker snapshots without forcing an owner heuristic", () => {
     const status = parseCrewStatusUpdate({
       crewCode: "ABCD-EFGH",
@@ -291,5 +351,50 @@ describe("WebSocketCrewBroker system test", () => {
     expect(c1).not.toBeNull();
     expect(c2).not.toBeNull();
     expect(c1).not.toBe(c2);
+  });
+
+  it("rejects broker handshake failures like repo mismatches", async () => {
+    const projectRoot = createFakeProjectRoot("daemon-repo-mismatch");
+    // lint-ignore: no-leaked-server
+    const server = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        const url = new URL(req.url);
+        if (url.pathname.includes("/api/crews/") && url.pathname.endsWith("/ws")) {
+          const upgraded = srv.upgrade(req);
+          if (upgraded) return undefined;
+          return new Response("Upgrade failed", { status: 400 });
+        }
+        return new Response("Not found", { status: 404 });
+      },
+      websocket: {
+        open(ws) {
+          ws.send(JSON.stringify({
+            type: "error",
+            message: "Repo mismatch: broker session belongs to another repository",
+          }));
+          setTimeout(() => ws.close(), 10);
+        },
+        message() {},
+        close() {},
+      },
+    });
+
+    try {
+      const broker = new WebSocketCrewBroker(
+        projectRoot,
+        `ws://localhost:${server.port}`,
+        "ABCD-EFGH-IJKL-MNOP",
+        "https://github.com/test/repo",
+        { log: () => {} },
+        "repo-mismatch-client",
+      );
+      clients.push(broker);
+
+      await expect(broker.connect()).rejects.toThrow("Repo mismatch: broker session belongs to another repository");
+      expect(broker.isConnected()).toBe(false);
+    } finally {
+      server.stop(true);
+    }
   });
 });

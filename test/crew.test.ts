@@ -19,6 +19,7 @@ import {
   type ClientMessage,
   type ServerMessage,
 } from "../core/crew.ts";
+import { hashRepoUrl } from "../core/repo-ref.ts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -231,14 +232,18 @@ describe("WebSocketCrewBroker", () => {
     expect(broker2.isConnected()).toBe(false);
   });
 
-  it("sends daemonId as query param on connect", async () => {
+  it("sends daemonId, repoUrl, and repoHash query params on connect", async () => {
     let receivedDaemonId: string | null = null;
+    let receivedRepoUrl: string | null = null;
+    let receivedRepoHash: string | null = null;
     const customServer = Bun.serve({
       port: 0,
       fetch(req, srv) {
         const url = new URL(req.url);
         if (url.pathname.includes("/ws")) {
           receivedDaemonId = url.searchParams.get("daemonId");
+          receivedRepoUrl = url.searchParams.get("repoUrl");
+          receivedRepoHash = url.searchParams.get("repoHash");
           const upgraded = srv.upgrade(req);
           if (upgraded) return undefined;
         }
@@ -268,6 +273,8 @@ describe("WebSocketCrewBroker", () => {
       await connectPromise;
 
       expect(receivedDaemonId).toBe(broker.getDaemonId());
+      expect(receivedRepoUrl).toBe("https://github.com/test/repo");
+      expect(receivedRepoHash).toBe(hashRepoUrl("https://github.com/test/repo"));
       broker.disconnect();
     } finally {
       customServer.stop();
@@ -720,6 +727,7 @@ describe("report method", () => {
         crewCode: "test-crew",
         workItemIds: [],
         telemetrySettings: { sendTokenUsage: true },
+        privacySettings: { allowHostedRelay: false },
       },
       onMessage: (_ws, msg) => {
         if (msg.type === "report") {

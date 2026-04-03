@@ -9,6 +9,7 @@ import { randomUUID } from "crypto";
 import { execSync } from "node:child_process";
 import { hostname } from "os";
 import { userStateDir } from "./daemon.ts";
+import { hashRepoUrl } from "./repo-ref.ts";
 
 // ── Shared message types ────────────────────────────────────────────
 // Imported by mock-broker.ts for type-safe server implementation.
@@ -34,6 +35,7 @@ export interface SyncAckMessage {
   telemetrySettings?: {
     sendTokenUsage?: boolean;
   };
+  privacySettings?: Record<string, unknown>;
 }
 
 export interface ClaimMessage {
@@ -168,6 +170,7 @@ export type CrewRemoteItemState =
   | "merged"
   | "verifying"
   | "done"
+  | "blocked"
   | "bootstrapping"
   | "implementing"
   | "rebasing"
@@ -204,6 +207,7 @@ const CREW_REMOTE_ITEM_STATES: ReadonlySet<CrewRemoteItemState> = new Set([
   "merged",
   "verifying",
   "done",
+  "blocked",
   "bootstrapping",
   "implementing",
   "rebasing",
@@ -232,36 +236,93 @@ function numberArrayOrUndefined(value: unknown): number[] | undefined {
   return numbers.length > 0 ? numbers : undefined;
 }
 
+function resolveCrewRepoHash(repoUrl: string): string | null {
+  const trimmed = repoUrl.trim();
+  if (!trimmed) return null;
+  try {
+    return hashRepoUrl(trimmed);
+  } catch {
+    return null;
+  }
+}
+
 function parseCrewRemoteItemState(value: unknown): CrewRemoteItemState | null {
-  return typeof value === "string" && CREW_REMOTE_ITEM_STATES.has(value as CrewRemoteItemState)
-    ? value as CrewRemoteItemState
-    : null;
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim().replace(/_/g, "-").toLowerCase();
+  if (!normalized) return null;
+  if (CREW_REMOTE_ITEM_STATES.has(normalized as CrewRemoteItemState)) {
+    return normalized as CrewRemoteItemState;
+  }
+
+  switch (normalized) {
+    case "forward-fix-pending":
+    case "fixing-forward":
+      return "verifying";
+    case "launching":
+      return "implementing";
+    case "stuck":
+    case "fix-forward-failed":
+      return "ci-failed";
+    case "merging":
+      return "ci-pending";
+    case "review-pending":
+    case "reviewing":
+    case "ci-passed":
+      return "review";
+    case "ready":
+      return "queued";
+    default:
+      return "in-progress";
+  }
 }
 
 function parseCrewRemoteItemSnapshot(value: unknown): CrewRemoteItemSnapshot | null {
   const item = recordOrNull(value);
   if (!item) return null;
 
-  const nestedItem = recordOrNull(item.item);
-  const owner = recordOrNull(item.owner);
-  const id = stringOrNull(item.id) ?? stringOrNull(item.workItemId);
-  const state = parseCrewRemoteItemState(item.state);
+  const nestedItem = recordOrNull(item.item) ?? recordOrNull(item.workItem) ?? recordOrNull(item.snapshot);
+  const nestedOwner = recordOrNull(item.owner) ?? recordOrNull(item.claimedBy);
+  const nestedStatus = recordOrNull(item.status) ?? recordOrNull(nestedItem?.status);
+  const nestedPr = recordOrNull(item.pr) ?? recordOrNull(nestedItem?.pr);
+  const id = stringOrNull(item.id)
+    ?? stringOrNull(item.workItemId)
+    ?? stringOrNull(nestedItem?.id)
+    ?? stringOrNull(nestedItem?.workItemId);
+  const state = parseCrewRemoteItemState(item.state ?? item.workItemState ?? nestedItem?.state ?? nestedStatus?.state);
   if (!id || !state) return null;
 
   const ownerDaemonId =
     stringOrNull(item.ownerDaemonId)
     ?? stringOrNull(item.daemonId)
-    ?? stringOrNull(owner?.daemonId)
+    ?? stringOrNull(nestedOwner?.daemonId)
+    ?? stringOrNull(nestedOwner?.id)
     ?? null;
   const ownerName =
     stringOrNull(item.ownerName)
     ?? stringOrNull(item.daemonName)
-    ?? stringOrNull(owner?.name)
+    ?? stringOrNull(nestedOwner?.name)
+    ?? stringOrNull(nestedOwner?.displayName)
     ?? null;
-  const title = stringOrNull(item.title) ?? stringOrNull(item.workItemTitle) ?? stringOrNull(nestedItem?.title) ?? undefined;
-  const rawPrNumber = item.prNumber ?? nestedItem?.prNumber;
+  const title = stringOrNull(item.title)
+    ?? stringOrNull(item.workItemTitle)
+    ?? stringOrNull(nestedItem?.title)
+    ?? stringOrNull(nestedItem?.workItemTitle)
+    ?? undefined;
+  const rawPrNumber = item.prNumber
+    ?? item.pullRequestNumber
+    ?? nestedItem?.prNumber
+    ?? nestedItem?.pullRequestNumber
+    ?? nestedPr?.number;
   const prNumber = numberOrNull(rawPrNumber);
-  const priorPrNumbers = numberArrayOrUndefined(item.priorPrNumbers ?? nestedItem?.priorPrNumbers);
+  const priorPrNumbers = numberArrayOrUndefined(
+    item.priorPrNumbers
+    ?? item.previousPrNumbers
+    ?? nestedItem?.priorPrNumbers
+    ?? nestedItem?.previousPrNumbers
+    ?? nestedPr?.priorNumbers
+    ?? nestedPr?.numbers,
+  );
 
   return {
     id,
@@ -498,6 +559,7 @@ export class WebSocketCrewBroker implements CrewBroker {
   private operatorId: string;
   private url: string;
   private repoUrl: string;
+  private repoHash: string | null;
   private name: string;
   private deps: CrewBrokerDeps;
   private reconnectTimer: ReturnType<typeof setInterval> | null = null;
@@ -533,6 +595,7 @@ export class WebSocketCrewBroker implements CrewBroker {
     this.name = name ?? hostname();
     this.url = `${url}/api/crews/${crewCode}/ws`;
     this.repoUrl = repoUrl;
+    this.repoHash = resolveCrewRepoHash(repoUrl);
     this.deps = deps;
   }
 
@@ -555,8 +618,17 @@ export class WebSocketCrewBroker implements CrewBroker {
     return new Promise<void>((resolve, reject) => {
       this.connectPromise = { resolve, reject };
       this.sessionId ??= randomUUID();
-      const wsUrl = `${this.url}?daemonId=${this.daemonId}&name=${encodeURIComponent(this.name)}&operatorId=${encodeURIComponent(this.operatorId)}&repoUrl=${encodeURIComponent(this.repoUrl)}`;
-      this.ws = new WebSocket(wsUrl);
+      const wsUrl = new URL(this.url);
+      wsUrl.searchParams.set("daemonId", this.daemonId);
+      wsUrl.searchParams.set("name", this.name);
+      wsUrl.searchParams.set("operatorId", this.operatorId);
+      if (this.repoUrl.trim()) {
+        wsUrl.searchParams.set("repoUrl", this.repoUrl);
+      }
+      if (this.repoHash) {
+        wsUrl.searchParams.set("repoHash", this.repoHash);
+      }
+      this.ws = new WebSocket(wsUrl.toString());
 
       this.ws.onopen = () => {
         this.connected = true;
@@ -581,6 +653,11 @@ export class WebSocketCrewBroker implements CrewBroker {
         this.connected = false;
         this.stopHeartbeatTimer();
         this.rejectAllPendingClaims();
+
+        if (this.connectPromise) {
+          this.connectPromise.reject(new Error("Crew connection closed before the broker handshake completed"));
+          this.connectPromise = null;
+        }
 
         if (wasConnected) {
           this.deps.log("warn", "WebSocket disconnected");
@@ -795,6 +872,14 @@ export class WebSocketCrewBroker implements CrewBroker {
 
       case "error":
         this.deps.log("error", `Crew server error: ${data.message}`);
+        if (this.connectPromise) {
+          const pendingConnect = this.connectPromise;
+          this.connectPromise = null;
+          pendingConnect.reject(new Error(typeof data.message === "string" && data.message.length > 0
+            ? data.message
+            : "Crew server rejected the connection"));
+          this.disconnect();
+        }
         break;
 
       default:
