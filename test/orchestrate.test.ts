@@ -96,6 +96,7 @@ import {
 } from "../core/daemon.ts";
 import type { CrewBroker, CrewRemoteItemSnapshot, CrewStatus } from "../core/crew.ts";
 import { readCrewCode, crewCodePath } from "../core/crew.ts";
+import { hashRepoUrl } from "../core/repo-ref.ts";
 import {
   buildStartupPersistenceUpdates,
   shouldEnterInteractive,
@@ -6188,6 +6189,38 @@ describe("applyRuntimeCollaborationAction", () => {
     });
   });
 
+  it("sends repo reference metadata when creating a shared session", async () => {
+    const state = {
+      mode: "local" as const,
+      connectMode: false,
+    };
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({ code: "ABCD-1234" }),
+      text: async () => "",
+      ...(init ?? {}),
+    }));
+    const broker = makeBroker();
+
+    await applyRuntimeCollaborationAction(state, { action: "share" }, {
+      projectRoot: "/project",
+      crewRepoUrl: "git@github.com:test/repo.git",
+      log: () => {},
+      fetchFn: fetchFn as unknown as typeof fetch,
+      createBroker: vi.fn(() => broker),
+      saveCrewCodeFn: vi.fn(),
+      onBrokerChanged: vi.fn(),
+    });
+
+    const [, init] = fetchFn.mock.calls[0] ?? [];
+    expect(init).toMatchObject({ method: "POST" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      repoUrl: "git@github.com:test/repo.git",
+      repoHash: hashRepoUrl("git@github.com:test/repo.git"),
+      repoRef: hashRepoUrl("git@github.com:test/repo.git"),
+    });
+  });
+
   it("returns a broker connection failure without mutating startup collaboration state", async () => {
     const state = {
       mode: "local" as const,
@@ -6334,6 +6367,68 @@ describe("applyRuntimeCollaborationAction", () => {
       crewBroker: undefined,
       connectMode: false,
     });
+  });
+
+  it("sends repoUrl and repoHash websocket params when joining", async () => {
+    let receivedRepoUrl: string | null = null;
+    let receivedRepoHash: string | null = null;
+    const tmpDir = mkdtempSync(join(tmpdir(), "nw-crew-join-"));
+    // lint-ignore: no-leaked-server
+    const server = Bun.serve({
+      port: 0,
+      fetch(req, srv) {
+        const url = new URL(req.url);
+        if (url.pathname.includes("/api/crews/") && url.pathname.endsWith("/ws")) {
+          receivedRepoUrl = url.searchParams.get("repoUrl");
+          receivedRepoHash = url.searchParams.get("repoHash");
+          const upgraded = srv.upgrade(req);
+          if (upgraded) return undefined;
+          return new Response("Upgrade failed", { status: 400 });
+        }
+        return new Response("Not found", { status: 404 });
+      },
+      websocket: {
+        open(ws) {
+          ws.send(JSON.stringify({
+            type: "crew_update",
+            crewCode: "JOIN-5678",
+            daemonCount: 1,
+            availableCount: 0,
+            claimedCount: 0,
+            completedCount: 0,
+            daemonNames: ["remote"],
+          }));
+        },
+        message() {},
+        close() {},
+      },
+    });
+
+    try {
+      const state = {
+        mode: "local" as const,
+        connectMode: false,
+        crewUrl: `ws://localhost:${server.port}`,
+      };
+
+      const result = await applyRuntimeCollaborationAction(state, { action: "join", code: "JOIN-5678" }, {
+        projectRoot: tmpDir,
+        crewRepoUrl: "git@github.com:test/repo.git",
+        log: () => {},
+        saveCrewCodeFn: vi.fn(),
+        onBrokerChanged: vi.fn(),
+      });
+
+      expect(result).toEqual({ mode: "joined", code: "JOIN-5678" });
+      expect(receivedRepoUrl).toBe("git@github.com:test/repo.git");
+      expect(receivedRepoHash).toBe(hashRepoUrl("git@github.com:test/repo.git"));
+
+      state.crewBroker?.disconnect();
+    } finally {
+      server.stop(true);
+      rmSync(tmpDir, { recursive: true, force: true });
+      rmSync(join(crewCodePath(tmpDir), ".."), { recursive: true, force: true });
+    }
   });
 });
 

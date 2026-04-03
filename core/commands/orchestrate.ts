@@ -131,6 +131,7 @@ import {
 } from "../status-render.ts";
 import type { CrewBroker, CrewRemoteItemSnapshot, CrewStatus, SyncItem } from "../crew.ts";
 import { WebSocketCrewBroker, resolveOperatorId, saveCrewCode } from "../crew.ts";
+import { resolveRepoRef } from "../repo-ref.ts";
 import { AuthorCache } from "../git-author.ts";
 import {
   readScheduleState,
@@ -830,6 +831,22 @@ function resolveCrewHttpUrl(crewUrl?: string): string {
   return resolveCrewSocketUrl(crewUrl).replace(/^wss?:\/\//, "https://");
 }
 
+function buildCrewRepoReferencePayload(crewRepoUrl: string): Record<string, string> {
+  const trimmedRepoUrl = crewRepoUrl.trim();
+  if (!trimmedRepoUrl) return {};
+
+  try {
+    const resolved = resolveRepoRef({ repoUrl: trimmedRepoUrl });
+    return {
+      repoUrl: trimmedRepoUrl,
+      repoHash: resolved.repoHash,
+      repoRef: resolved.repoRef,
+    };
+  } catch {
+    return { repoUrl: trimmedRepoUrl };
+  }
+}
+
 async function createCrewCode(
   crewUrl: string | undefined,
   crewRepoUrl: string,
@@ -837,7 +854,7 @@ async function createCrewCode(
 ): Promise<string> {
   const response = await fetchFn(`${resolveCrewHttpUrl(crewUrl)}/api/crews`, {
     method: "POST",
-    body: JSON.stringify({ repoUrl: crewRepoUrl }),
+    body: JSON.stringify(buildCrewRepoReferencePayload(crewRepoUrl)),
     headers: { "Content-Type": "application/json" },
   });
 
@@ -948,6 +965,11 @@ export async function applyRuntimeCollaborationAction(
   try {
     await nextBroker.connect();
   } catch (error) {
+    try {
+      nextBroker.disconnect();
+    } catch {
+      // best effort -- failed startup brokers should not leak reconnect timers
+    }
     deps.log({
       ts: new Date().toISOString(),
       level: "warn",

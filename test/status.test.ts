@@ -1052,6 +1052,24 @@ describe("parseCrewStatusUpdate", () => {
       },
     ]);
   });
+
+  it("keeps legacy claimedItems payloads parsing cleanly when richer fields are absent", () => {
+    const status = parseCrewStatusUpdate({
+      crewCode: "ABCD-EFGH",
+      daemonCount: 2,
+      availableCount: 1,
+      claimedCount: 1,
+      completedCount: 0,
+      daemonNames: ["local", "remote"],
+      claimedItems: [
+        { id: "H-REMOTE-1", daemonId: "daemon-remote" },
+        { id: "H-LOCAL-1", daemonId: "daemon-local" },
+      ],
+    }, "daemon-local");
+
+    expect(status.claimedItems).toEqual(["H-REMOTE-1"]);
+    expect(status.remoteItems).toEqual([]);
+  });
 });
 
 // ─── Queued state support ─────────────────────────────────────────────────────
