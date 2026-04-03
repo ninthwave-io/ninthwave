@@ -78,15 +78,7 @@ Treat `.ninthwave/work/` as the live queue of open work: `/decompose` populates 
    - "Needs:" -- what must be added/changed
    - "Patterns to follow:" -- existing code to model after
 
-3. **Check decomposition templates.** Load templates from the `templates/` directory in the ninthwave bundle (resolve via `core/templates.ts`). Match the feature description against available templates using keyword scoring. If a template matches:
-   - Present it to the user as a suggested starting structure
-   - Show the template's typical breakdown and dependency graph
-   - Explain that the template is advisory -- the actual decomposition can deviate based on codebase analysis
-   - AskUserQuestion: "Use this template as a starting point, modify it, or skip?"
-
-   Templates are **not prescriptive** -- they improve consistency for common patterns while preserving flexibility for unique features. If no template matches (or the user skips), proceed with freeform decomposition.
-
-4. Assess rollout sensitivity. Only AskUserQuestion about feature flags or kill switches when the work is rollout-sensitive, for example:
+3. Assess rollout sensitivity. Only AskUserQuestion about feature flags or kill switches when the work is rollout-sensitive, for example:
    - risky user-facing behavior
    - external integrations or third-party dependencies
    - migrations or behavior switches that may need a fast rollback path
@@ -100,7 +92,7 @@ Treat `.ninthwave/work/` as the live queue of open work: `/decompose` populates 
    - offer options to ship unflagged, add a narrow feature flag / kill switch for this feature, or defer the decision
    - if the user chooses a flag, decompose only the minimum feature-local flag work; do not invent a repo-wide flag framework
 
-5. Present the delta summary to the user.
+4. Present the delta summary to the user.
 
 ---
 

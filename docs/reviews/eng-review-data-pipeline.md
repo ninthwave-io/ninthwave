@@ -4,7 +4,7 @@
 
 **Date:** 2026-03-24
 **Reviewer:** AI engineering review (M-ENG-3)
-**Modules:** `core/parser.ts`, `core/analytics.ts`, `core/commands/analytics.ts`, `core/webhooks.ts`, `core/templates.ts`, `core/cross-repo.ts`, `core/config.ts`
+**Modules:** `core/parser.ts`, `core/analytics.ts`, `core/commands/analytics.ts`, `core/webhooks.ts`, `core/cross-repo.ts`, `core/config.ts`
 
 ## Summary
 
@@ -182,37 +182,6 @@ The `switch (event)` on webhook event types doesn't have a `default` case. TypeS
 
 ---
 
-## 5. Template Extensibility (`core/templates.ts`)
-
-### 5.1 RegExp constructed per keyword per match
-
-**Severity:** Low
-**Type:** Performance
-
-In `matchTemplates`, a new `RegExp` is constructed for each single-word keyword on each call. For N templates with K keywords matched against M descriptions, this is O(N * K * M) regex compilations. Pre-compiling regexes at template load time would improve performance.
-
-**Recommendation:** Pre-compile keyword regexes in `parseTemplate` or `loadTemplates` and store them on the `DecompositionTemplate` object. Actionable -- see work item L-DP-12.
-
-### 5.2 Template body includes Keywords metadata
-
-**Severity:** Low
-**Type:** UX
-
-The `body` field stores the full markdown content, including the `## Keywords` section. When templates are rendered to the user (e.g., in `/decompose`), the keywords metadata section would be visible and confusing.
-
-**Recommendation:** Strip the `## Keywords` section from `body` during parsing. Actionable -- see work item L-DP-13.
-
-### 5.3 Multi-word keyword matching can have false positives
-
-**Severity:** Low
-**Type:** Accuracy
-
-Multi-word keywords use `descLower.includes(keyword)` which matches substrings. For example, keyword `"create table"` would match `"recreate tables"`. This is unlikely to cause real issues given the nature of decomposition descriptions, but it's not perfectly precise.
-
-**Observation only.** The current approach works well in practice. Word-boundary matching for multi-word phrases is complex and not worth the added complexity.
-
----
-
 ## 6. Cross-repo Edge Cases (`core/cross-repo.ts`)
 
 ### 6.1 `resolveRepo` calls `die()` instead of throwing
@@ -325,12 +294,10 @@ Unknown config keys (e.g., typos like `webhook_URL` instead of `webhook_url`) ar
 | 4.1 | webhooks | Medium | Resource leak | Yes (M-DP-9) |
 | 4.2 | webhooks | Low | Resilience | Yes (L-DP-10) |
 | 4.3 | webhooks | Low | Fail-fast | Yes (L-DP-11) |
-| 5.1 | templates | Low | Performance | Yes (L-DP-12) |
-| 5.2 | templates | Low | UX | Yes (L-DP-13) |
 | 6.1 | cross-repo | Medium | Error handling | Yes (M-DP-14) |
 | 6.2 | cross-repo | Low | Data integrity | Yes (L-DP-15) |
 | 7.2 | config | Low | Fail-fast | Yes (L-DP-16) |
 | 7.3 | config | Low | Code quality | Yes (L-DP-17) |
 
-**Actionable findings: 17** (3 medium, 14 low)
-**Observations only: 7** (documented above but no code change needed)
+**Actionable findings: 15** (3 medium, 12 low)
+**Observations only: 6** (documented above but no code change needed)
