@@ -189,6 +189,24 @@ import {
   type WatchEngineControlCommand,
   type WatchEngineSnapshotEvent,
 } from "../watch-engine-runner.ts";
+import {
+  createEventLoopLagSampler,
+  createInteractiveWatchTiming,
+  elapsedMs,
+  finalizeInteractiveWatchTiming,
+  type InteractiveWatchTiming,
+  type EventLoopLagSampler,
+} from "../orchestrate-timing.ts";
+import {
+  completionSummaryState,
+  formatExitSummary,
+  formatCompletionBanner,
+  waitForCompletionKey,
+  waitForEngineRecoveryKey,
+  type CompletionSummaryItem,
+  type CompletionAction,
+  type EngineRecoveryAction,
+} from "../orchestrate-completion.ts";
 // ── Re-exports for backward compatibility ────────────────────────────
 // These keep existing importers (tests, other modules) working without changes.
 export { buildSnapshotAsync, isWorkerAlive, isWorkerAliveWithCache, getWorktreeLastCommitTime, getWorktreeLastCommitTimeAsync } from "../snapshot.ts";
@@ -223,6 +241,31 @@ export {
 } from "../watch-engine-runner.ts";
 
 export { RESTART_RECOVERY_HOLD_REASON } from "../orchestrator-types.ts";
+// ── Re-exports: orchestrate-timing ───────────────────────────────────
+export {
+  INTERACTIVE_WATCH_STAGE_WARN_MS,
+  createEventLoopLagSampler,
+  createInteractiveWatchTiming,
+  elapsedMs,
+  finalizeInteractiveWatchTiming,
+  type InteractiveWatchStageName,
+  type InteractiveWatchTimingsMs,
+  type InteractiveWatchTiming,
+  type EventLoopLagSnapshot,
+  type EventLoopLagSamplerDeps,
+  type EventLoopLagSampler,
+} from "../orchestrate-timing.ts";
+// ── Re-exports: orchestrate-completion ───────────────────────────────
+export {
+  completionSummaryState,
+  formatExitSummary,
+  formatCompletionBanner,
+  waitForCompletionKey,
+  waitForEngineRecoveryKey,
+  type CompletionSummaryItem,
+  type CompletionAction,
+  type EngineRecoveryAction,
+} from "../orchestrate-completion.ts";
 
 interface ResolveRestartRecoveryOptions {
   interactive: boolean;
@@ -370,175 +413,7 @@ export function resolveScheduleExecutionEnabled(
   return projectConfig.schedule_enabled && isProjectScheduleEnabled(userConfig, projectRoot);
 }
 
-export const INTERACTIVE_WATCH_STAGE_WARN_MS = {
-  eventLoopLag: 150,
-  poll: 250,
-  actionExecution: 250,
-  mainRefresh: 250,
-  displaySync: 100,
-  render: 100,
-} as const;
-
-export type InteractiveWatchStageName = keyof typeof INTERACTIVE_WATCH_STAGE_WARN_MS;
-
-export interface InteractiveWatchTimingsMs {
-  eventLoopLag: number;
-  poll: number;
-  actionExecution: number;
-  mainRefresh: number;
-  displaySync: number;
-  render: number;
-  totalBlocking: number;
-}
-
-export interface InteractiveWatchTiming {
-  iteration: number;
-  actionCount: number;
-  actionTypes: Action["type"][];
-  timingsMs: InteractiveWatchTimingsMs;
-}
-
-export interface EventLoopLagSnapshot {
-  maxLagMs: number;
-  sampleCount: number;
-  lastSampleAtMs?: number;
-}
-
-export interface EventLoopLagSamplerDeps {
-  sampleIntervalMs?: number;
-  now?: () => number;
-  setTimeoutFn?: typeof setTimeout;
-  clearTimeoutFn?: typeof clearTimeout;
-}
-
-export interface EventLoopLagSampler {
-  start: () => void;
-  stop: () => void;
-  drain: () => EventLoopLagSnapshot;
-}
-
-const INTERACTIVE_WATCH_LAG_SAMPLE_INTERVAL_MS = 50;
-const INTERACTIVE_WATCH_STAGE_LOG_NAMES: Record<InteractiveWatchStageName, string> = {
-  eventLoopLag: "event_loop_lag",
-  poll: "poll",
-  actionExecution: "action_execution",
-  mainRefresh: "main_refresh",
-  displaySync: "display_sync",
-  render: "render",
-};
-
-function createInteractiveWatchTiming(iteration: number, actionTypes: Action["type"][]): InteractiveWatchTiming {
-  return {
-    iteration,
-    actionCount: actionTypes.length,
-    actionTypes,
-    timingsMs: {
-      eventLoopLag: 0,
-      poll: 0,
-      actionExecution: 0,
-      mainRefresh: 0,
-      displaySync: 0,
-      render: 0,
-      totalBlocking: 0,
-    },
-  };
-}
-
-function elapsedMs(nowMs: () => number, startMs: number): number {
-  return Math.max(0, nowMs() - startMs);
-}
-
-function finalizeInteractiveWatchTiming(
-  log: (entry: LogEntry) => void,
-  timing: InteractiveWatchTiming,
-  eventLoopLagMs: number,
-): void {
-  timing.timingsMs.eventLoopLag = eventLoopLagMs;
-  timing.timingsMs.totalBlocking = timing.timingsMs.poll
-    + timing.timingsMs.actionExecution
-    + timing.timingsMs.mainRefresh
-    + timing.timingsMs.displaySync
-    + timing.timingsMs.render;
-
-  log({
-    ts: new Date().toISOString(),
-    level: "info",
-    event: "interactive_watch_timing",
-    iteration: timing.iteration,
-    actionCount: timing.actionCount,
-    actionTypes: timing.actionTypes,
-    timingsMs: timing.timingsMs,
-  });
-
-  for (const stage of Object.keys(INTERACTIVE_WATCH_STAGE_WARN_MS) as InteractiveWatchStageName[]) {
-    const durationMs = timing.timingsMs[stage];
-    const thresholdMs = INTERACTIVE_WATCH_STAGE_WARN_MS[stage];
-    if (durationMs < thresholdMs) continue;
-    log({
-      ts: new Date().toISOString(),
-      level: "warn",
-      event: "interactive_watch_stall",
-      iteration: timing.iteration,
-      stage: INTERACTIVE_WATCH_STAGE_LOG_NAMES[stage],
-      durationMs,
-      thresholdMs,
-      actionCount: timing.actionCount,
-      actionTypes: timing.actionTypes,
-      timingsMs: timing.timingsMs,
-      message: `Interactive watch ${INTERACTIVE_WATCH_STAGE_LOG_NAMES[stage]} took ${durationMs}ms`,
-    });
-  }
-}
-
-export function createEventLoopLagSampler(
-  deps: EventLoopLagSamplerDeps = {},
-): EventLoopLagSampler {
-  const now = deps.now ?? Date.now;
-  const sampleIntervalMs = deps.sampleIntervalMs ?? INTERACTIVE_WATCH_LAG_SAMPLE_INTERVAL_MS;
-  const setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
-  const clearTimeoutFn = deps.clearTimeoutFn ?? clearTimeout;
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let expectedAtMs = 0;
-  let running = false;
-  let maxLagMs = 0;
-  let sampleCount = 0;
-  let lastSampleAtMs: number | undefined;
-
-  const schedule = () => {
-    expectedAtMs = now() + sampleIntervalMs;
-    timer = setTimeoutFn(() => {
-      const sampledAtMs = now();
-      const lagMs = Math.max(0, sampledAtMs - expectedAtMs);
-      maxLagMs = Math.max(maxLagMs, lagMs);
-      sampleCount += 1;
-      lastSampleAtMs = sampledAtMs;
-      if (running) schedule();
-    }, sampleIntervalMs);
-  };
-
-  return {
-    start: () => {
-      if (running) return;
-      running = true;
-      schedule();
-    },
-    stop: () => {
-      running = false;
-      if (timer) {
-        clearTimeoutFn(timer);
-        timer = undefined;
-      }
-    },
-    drain: () => {
-      const snapshot = { maxLagMs, sampleCount, lastSampleAtMs };
-      maxLagMs = 0;
-      sampleCount = 0;
-      lastSampleAtMs = undefined;
-      return snapshot;
-    },
-  };
-}
+// Timing types and functions extracted to core/orchestrate-timing.ts
 // ── Version helper ──────────────────────────────────────────────────
 
 let _cachedVersion: string | undefined;
@@ -2677,211 +2552,7 @@ function handleRunComplete(
  *
  * Format: "ninthwave: N merged, M stuck, K queued (Xm Ys) | Lead time: p50 Xm, p95 Ym"
  */
-export interface CompletionSummaryItem {
-  state: string;
-  startedAt?: string;
-  endedAt?: string;
-  remoteSnapshot?: { state: string };
-}
-
-function completionSummaryState(item: CompletionSummaryItem): "done" | "blocked" | "stuck" | "queued" | "active" {
-  const state = item.remoteSnapshot?.state ?? item.state;
-
-  if (state === "done") return "done";
-  if (state === "blocked") return "blocked";
-  if (state === "stuck") return "stuck";
-  if (state === "queued" || state === "ready") return "queued";
-  return "active";
-}
-
-export function formatExitSummary(
-  allItems: CompletionSummaryItem[],
-  runStartTime: string,
-): string {
-  const merged = allItems.filter((i) => completionSummaryState(i) === "done").length;
-  const blocked = allItems.filter((i) => completionSummaryState(i) === "blocked").length;
-  const stuck = allItems.filter((i) => completionSummaryState(i) === "stuck").length;
-  const queued = allItems.filter((i) => completionSummaryState(i) === "queued").length;
-  const active = allItems.filter((i) => completionSummaryState(i) === "active").length;
-
-  // Duration
-  const elapsed = Math.max(0, Date.now() - new Date(runStartTime).getTime());
-  const minutes = Math.floor(elapsed / 60_000);
-  const seconds = Math.floor((elapsed % 60_000) / 1000);
-  const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
-  const blockedSegment = blocked > 0 ? `, ${blocked} blocked` : "";
-  let line = active > 0
-    ? `ninthwave: ${merged} done, ${active} active, ${stuck} stuck, ${queued} queued${blockedSegment} (${durationStr})`
-    : `ninthwave: ${merged} merged, ${stuck} stuck, ${queued} queued${blockedSegment} (${durationStr})`;
-
-  // Lead time (time from start to done for each completed item)
-  const leadTimes = allItems
-    .filter((i) => completionSummaryState(i) === "done" && i.startedAt && i.endedAt)
-    .map((i) => new Date(i.endedAt!).getTime() - new Date(i.startedAt!).getTime())
-    .filter((ms) => ms > 0)
-    .sort((a, b) => a - b);
-
-  if (leadTimes.length > 0) {
-    const p50Idx = Math.max(0, Math.ceil(0.5 * leadTimes.length) - 1);
-    const p95Idx = Math.max(0, Math.ceil(0.95 * leadTimes.length) - 1);
-    const p50m = Math.round(leadTimes[p50Idx]! / 60_000);
-    const p95m = Math.round(leadTimes[p95Idx]! / 60_000);
-    line += ` | Lead time: p50 ${p50m}m, p95 ${p95m}m`;
-  }
-
-  return line;
-}
-
-// ── Completion prompt ───────────────────────────────────────────────
-
-/**
- * Action chosen at the post-completion prompt.
- * - "run-more": re-enter interactive selection flow
- * - "clean": clean up worktrees for done items
- * - "quit": exit the TUI
- */
-export type CompletionAction = "run-more" | "clean" | "quit";
-
-/**
- * Format the completion banner shown when all items reach terminal state.
- * Returns the banner text as an array of lines.
- */
-export function formatCompletionBanner(
-  allItems: CompletionSummaryItem[],
-  runStartTime: string,
-): string[] {
-  const merged = allItems.filter((i) => completionSummaryState(i) === "done").length;
-  const blocked = allItems.filter((i) => completionSummaryState(i) === "blocked").length;
-  const stuck = allItems.filter((i) => completionSummaryState(i) === "stuck").length;
-  const active = allItems.filter((i) => completionSummaryState(i) === "active").length;
-  const total = allItems.length;
-
-  const elapsed = Math.max(0, Date.now() - new Date(runStartTime).getTime());
-  const minutes = Math.floor(elapsed / 60_000);
-  const seconds = Math.floor((elapsed % 60_000) / 1000);
-  const durationStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
-  const lines: string[] = [];
-  lines.push("");
-  lines.push(
-    active > 0
-      ? `  Work still in progress. ${merged} done, ${active} active, ${stuck} stuck. (${durationStr})`
-      : blocked > 0
-        ? `  All runnable items complete. ${merged} merged, ${stuck} stuck, ${blocked} blocked. (${durationStr})`
-        : `  All ${total} items complete. ${merged} merged, ${stuck} stuck. (${durationStr})`,
-  );
-
-  const leadTimes = allItems
-    .filter((i) => completionSummaryState(i) === "done" && i.startedAt && i.endedAt)
-    .map((i) => new Date(i.endedAt!).getTime() - new Date(i.startedAt!).getTime())
-    .filter((ms) => ms > 0)
-    .sort((a, b) => a - b);
-  if (leadTimes.length > 0) {
-    const p50Idx = Math.max(0, Math.ceil(0.5 * leadTimes.length) - 1);
-    const p95Idx = Math.max(0, Math.ceil(0.95 * leadTimes.length) - 1);
-    const p50m = Math.round(leadTimes[p50Idx]! / 60_000);
-    const p95m = Math.round(leadTimes[p95Idx]! / 60_000);
-    lines.push(`  Lead time: p50 ${p50m}m, p95 ${p95m}m`);
-  }
-
-  lines.push("");
-  lines.push("  [r] Run more  [c] Clean up  [q] Quit");
-  lines.push("");
-  return lines;
-}
-
-/**
- * Wait for a completion prompt keypress (r, c, q, or Ctrl-C).
- * Returns the chosen action. Resolves when a valid key is pressed.
- *
- * @param stdin - Readable stream (must already be in raw mode)
- * @param signal - Optional abort signal (e.g., from Ctrl-C handler)
- */
-export function waitForCompletionKey(
-  stdin: NodeJS.ReadStream,
-  signal?: AbortSignal,
-): Promise<CompletionAction> {
-  return new Promise<CompletionAction>((resolve) => {
-    if (signal?.aborted) {
-      resolve("quit");
-      return;
-    }
-
-    const onAbort = () => {
-      cleanup();
-      resolve("quit");
-    };
-
-    const onData = (key: string) => {
-      switch (key) {
-        case "r":
-          cleanup();
-          resolve("run-more");
-          break;
-        case "c":
-          cleanup();
-          resolve("clean");
-          break;
-        case "q":
-        case "\x03": // Ctrl-C
-          cleanup();
-          resolve("quit");
-          break;
-        // Ignore other keys
-      }
-    };
-
-    function cleanup() {
-      stdin.removeListener("data", onData);
-      signal?.removeEventListener("abort", onAbort);
-    }
-
-    stdin.on("data", onData);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-export type EngineRecoveryAction = "restart" | "quit";
-
-export function waitForEngineRecoveryKey(
-  stdin: NodeJS.ReadStream,
-  signal?: AbortSignal,
-): Promise<EngineRecoveryAction> {
-  return new Promise<EngineRecoveryAction>((resolve) => {
-    if (signal?.aborted) {
-      resolve("quit");
-      return;
-    }
-
-    const onAbort = () => {
-      cleanup();
-      resolve("quit");
-    };
-
-    const onData = (key: string) => {
-      switch (key.toLowerCase()) {
-        case "r":
-          cleanup();
-          resolve("restart");
-          break;
-        case "q":
-        case "\x03":
-          cleanup();
-          resolve("quit");
-          break;
-      }
-    };
-
-    function cleanup() {
-      stdin.removeListener("data", onData);
-      signal?.removeEventListener("abort", onAbort);
-    }
-
-    stdin.on("data", onData);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
+// Completion types and functions extracted to core/orchestrate-completion.ts
 
 /**
  * Execute a single orchestrator action with logging, telemetry capture, and reconcile.
