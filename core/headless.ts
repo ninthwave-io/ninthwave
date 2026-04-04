@@ -214,7 +214,7 @@ export class HeadlessAdapter implements Multiplexer {
       }
 
       try {
-        this.deps.kill(pid, "SIGTERM");
+        this.deps.kill(-pid, "SIGTERM");
       } catch {
         this.deps.io.unlinkSync(pidPath);
         return true;
@@ -223,7 +223,7 @@ export class HeadlessAdapter implements Multiplexer {
       this.deps.sleep(5_000);
       if (isPidAlive(this.deps.kill, pid)) {
         try {
-          this.deps.kill(pid, "SIGKILL");
+          this.deps.kill(-pid, "SIGKILL");
         } catch {
           // best-effort -- process may have exited during grace period
         }

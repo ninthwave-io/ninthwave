@@ -99,8 +99,8 @@ describe("HeadlessAdapter", () => {
     const projectRoot = makeProjectRoot();
     let alive = true;
     const kill = vi.fn((pid: number, signal?: NodeJS.Signals | 0) => {
-      expect(pid).toBe(101);
       if (signal === 0) {
+        expect(pid).toBe(101);
         if (!alive) {
           const err = new Error("missing") as NodeJS.ErrnoException;
           err.code = "ESRCH";
@@ -109,6 +109,7 @@ describe("HeadlessAdapter", () => {
         return;
       }
       if (signal === "SIGTERM") {
+        expect(pid).toBe(-101);
         alive = false;
       }
     }) as unknown as typeof process.kill;
@@ -119,8 +120,8 @@ describe("HeadlessAdapter", () => {
     writeFileSync(headlessPidFilePath(projectRoot, "H-RSH-4"), "101");
 
     expect(adapter.closeWorkspace("headless:H-RSH-4")).toBe(true);
-    expect(kill).toHaveBeenCalledWith(101, "SIGTERM");
-    expect(kill).not.toHaveBeenCalledWith(101, "SIGKILL");
+    expect(kill).toHaveBeenCalledWith(-101, "SIGTERM");
+    expect(kill).not.toHaveBeenCalledWith(-101, "SIGKILL");
     expect(sleep).toHaveBeenCalledWith(5_000);
     expect(existsSync(headlessPidFilePath(projectRoot, "H-RSH-4"))).toBe(false);
   });
@@ -140,7 +141,7 @@ describe("HeadlessAdapter", () => {
     writeFileSync(headlessPidFilePath(projectRoot, "H-RSH-4"), "101");
 
     expect(adapter.closeWorkspace("headless:H-RSH-4")).toBe(true);
-    expect(kill).not.toHaveBeenCalledWith(101, "SIGTERM");
+    expect(kill).not.toHaveBeenCalledWith(-101, "SIGTERM");
     expect(existsSync(headlessPidFilePath(projectRoot, "H-RSH-4"))).toBe(false);
   });
 

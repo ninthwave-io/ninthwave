@@ -86,6 +86,9 @@ if [ -n "${scenario_file}" ] && [ -f "${scenario_file}" ]; then
   done < "${scenario_file}"
 fi
 
+trap 'write_state signaled TERM; exit 0' TERM HUP
+trap 'write_state signaled INT; exit 0' INT
+
 if [ -n "${NINTHWAVE_LAUNCH_PROMPT_FILE:-}" ] && [ -f "${NINTHWAVE_LAUNCH_PROMPT_FILE}" ]; then
   cp "${NINTHWAVE_LAUNCH_PROMPT_FILE}" "${prompt_copy}"
 fi
@@ -129,9 +132,6 @@ if [ "${sleep_before_heartbeat}" != "1" ] && [ "${sleep_ms}" -gt 0 ] 2>/dev/null
   sleep "$(awk "BEGIN { printf \"%.3f\", ${sleep_ms} / 1000 }")"
 fi
 
-trap 'write_state signaled TERM; exit 0' TERM
-trap 'write_state signaled INT; exit 0' INT
-
 case "${behavior}" in
   success)
     write_state completed
@@ -144,6 +144,7 @@ case "${behavior}" in
   hang)
     write_state hanging
     while :; do
+      kill -0 "$PPID" 2>/dev/null || exit 0
       sleep 1
     done
     ;;
