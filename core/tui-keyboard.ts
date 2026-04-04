@@ -84,6 +84,18 @@ function extractLogLevel(message: string): string {
   return match ? match[1]! : "info";
 }
 
+/**
+ * Pin logScrollOffset to the bottom when follow mode is active.
+ * Call before each render to implement tail-follow behavior.
+ */
+export function applyLogFollowMode(tuiState: TuiState, termRows: number): void {
+  if (!tuiState.logFollowMode || tuiState.panelMode !== "logs-only") return;
+  const filtered = filterLogsByLevel(tuiState.logBuffer, tuiState.logLevelFilter);
+  const footerHeight = 3; // separator + progress + shortcuts
+  const viewportHeight = Math.max(1, termRows - footerHeight);
+  tuiState.logScrollOffset = Math.max(0, filtered.length - viewportHeight);
+}
+
 // Re-export runtime control types from status-render for consumers
 export type { CollaborationIntent, CollaborationMode, ReviewMode } from "./tui-settings.ts";
 export { REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE } from "./tui-settings.ts";
@@ -167,6 +179,8 @@ export interface TuiState {
   logBuffer: PanelLogEntry[];
   /** Scroll offset within the log panel. */
   logScrollOffset: number;
+  /** Whether the log panel auto-scrolls to the latest entry. */
+  logFollowMode: boolean;
   /** Current log level filter. */
   logLevelFilter: LogLevelFilter;
   /** Item ID currently selected in the visible status list. */
@@ -943,6 +957,7 @@ export function setupKeyboardShortcuts(
           tuiState.detailScrollOffset = Math.max(0, (tuiState.detailScrollOffset ?? 0) - 1);
         } else if (tuiState.panelMode === "logs-only") {
           tuiState.logScrollOffset = Math.max(0, tuiState.logScrollOffset - 1);
+          tuiState.logFollowMode = false;
         } else {
           moveStatusSelection(-1);
         }
@@ -955,6 +970,7 @@ export function setupKeyboardShortcuts(
           tuiState.detailScrollOffset = Math.min(maxScroll, (tuiState.detailScrollOffset ?? 0) + 1);
         } else if (tuiState.panelMode === "logs-only") {
           tuiState.logScrollOffset += 1;
+          tuiState.logFollowMode = false;
         } else {
           moveStatusSelection(1);
         }
@@ -965,6 +981,9 @@ export function setupKeyboardShortcuts(
         const currentIdx = modes.indexOf(tuiState.panelMode);
         const nextIdx = (currentIdx + 1) % modes.length;
         tuiState.panelMode = modes[nextIdx]!;
+        if (tuiState.panelMode === "logs-only") {
+          tuiState.logFollowMode = true;
+        }
         tuiState.onPanelModeChange?.(tuiState.panelMode);
         break;
       }
@@ -974,6 +993,7 @@ export function setupKeyboardShortcuts(
           tuiState.detailScrollOffset = Math.min(maxScroll, (tuiState.detailScrollOffset ?? 0) + 1);
         } else if (tuiState.panelMode === "logs-only") {
           tuiState.logScrollOffset += 1;
+          tuiState.logFollowMode = false;
         } else {
           moveStatusSelection(1);
         }
@@ -983,6 +1003,7 @@ export function setupKeyboardShortcuts(
           tuiState.detailScrollOffset = Math.max(0, (tuiState.detailScrollOffset ?? 0) - 1);
         } else if (tuiState.panelMode === "logs-only") {
           tuiState.logScrollOffset = Math.max(0, tuiState.logScrollOffset - 1);
+          tuiState.logFollowMode = false;
         } else {
           moveStatusSelection(-1);
         }
@@ -991,8 +1012,7 @@ export function setupKeyboardShortcuts(
         const currentIdx = LOG_LEVEL_CYCLE.indexOf(tuiState.logLevelFilter);
         const nextIdx = (currentIdx + 1) % LOG_LEVEL_CYCLE.length;
         tuiState.logLevelFilter = LOG_LEVEL_CYCLE[nextIdx]!;
-        // Reset scroll when filter changes
-        tuiState.logScrollOffset = 0;
+        tuiState.logFollowMode = true;
         break;
       }
       case "G": { // Jump to end (detail overlay or log)
@@ -1004,6 +1024,7 @@ export function setupKeyboardShortcuts(
           const termRows = getTerminalHeight();
           const viewportHeight = Math.max(1, termRows - 10); // approximate
           tuiState.logScrollOffset = Math.max(0, filtered.length - viewportHeight);
+          tuiState.logFollowMode = true;
         } else {
           handled = false;
         }

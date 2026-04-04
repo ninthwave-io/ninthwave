@@ -32,15 +32,17 @@ function normalizePrStatusResult(result: string | null | PrStatusPollResult): Pr
   return result;
 }
 
-function summarizeApiErrors(byKind: Record<string, number>): PollSnapshot["apiErrorSummary"] {
+function summarizeApiErrors(byKind: Record<string, number>, firstErrorByKind: Record<string, string> = {}): PollSnapshot["apiErrorSummary"] {
   const entries = Object.entries(byKind)
     .filter(([, count]) => count > 0)
     .sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) return undefined;
+  const primaryKind = entries[0]![0] as NonNullable<PollSnapshot["apiErrorSummary"]>["primaryKind"];
   return {
     total: entries.reduce((sum, [, count]) => sum + count, 0),
     byKind,
-    primaryKind: entries[0]![0] as NonNullable<PollSnapshot["apiErrorSummary"]>["primaryKind"],
+    primaryKind,
+    representativeError: firstErrorByKind[primaryKind],
   };
 }
 
@@ -345,6 +347,7 @@ export function buildSnapshot(
   const heartbeatStates = new Set(["launching", "implementing", "ci-failed", "ci-pending", "ci-passed", "review-pending", "merging"]);
   let apiErrorCount = 0;
   const apiErrorByKind: Record<string, number> = {};
+  const firstErrorByKind: Record<string, string> = {};
   /** States that require PR polling -- used to count API errors only for items that actually poll GitHub. */
   const prPollStates = new Set(["implementing", "ci-pending", "ci-passed", "ci-failed", "review-pending", "reviewing", "rebasing", "merging", "launching"]);
 
@@ -390,6 +393,9 @@ export function buildSnapshot(
     if (prResult.failure && prPollStates.has(orchItem.state)) {
       apiErrorCount++;
       apiErrorByKind[prResult.failure.kind] = (apiErrorByKind[prResult.failure.kind] ?? 0) + 1;
+      if (!firstErrorByKind[prResult.failure.kind]) {
+        firstErrorByKind[prResult.failure.kind] = prResult.failure.error;
+      }
     }
     if (statusLine) {
       const parts = statusLine.split("\t");
@@ -553,7 +559,7 @@ export function buildSnapshot(
     items,
     readyIds,
     apiErrorCount: apiErrorCount > 0 ? apiErrorCount : undefined,
-    apiErrorSummary: summarizeApiErrors(apiErrorByKind),
+    apiErrorSummary: summarizeApiErrors(apiErrorByKind, firstErrorByKind),
   };
 }
 
@@ -583,6 +589,7 @@ export async function buildSnapshotAsync(
   const heartbeatStates = new Set(["launching", "implementing", "ci-failed", "ci-pending", "ci-passed", "review-pending", "merging"]);
   let apiErrorCount = 0;
   const apiErrorByKind: Record<string, number> = {};
+  const firstErrorByKind: Record<string, string> = {};
   const prPollStates = new Set(["implementing", "ci-pending", "ci-passed", "ci-failed", "review-pending", "reviewing", "rebasing", "merging", "launching"]);
 
   // Cache workspace listing once for all isWorkerAlive checks in this snapshot
@@ -628,6 +635,9 @@ export async function buildSnapshotAsync(
     if (prResult.failure && prPollStates.has(orchItem.state)) {
       apiErrorCount++;
       apiErrorByKind[prResult.failure.kind] = (apiErrorByKind[prResult.failure.kind] ?? 0) + 1;
+      if (!firstErrorByKind[prResult.failure.kind]) {
+        firstErrorByKind[prResult.failure.kind] = prResult.failure.error;
+      }
     }
     if (statusLine) {
       const parts = statusLine.split("\t");
@@ -781,7 +791,7 @@ export async function buildSnapshotAsync(
     items,
     readyIds,
     apiErrorCount: apiErrorCount > 0 ? apiErrorCount : undefined,
-    apiErrorSummary: summarizeApiErrors(apiErrorByKind),
+    apiErrorSummary: summarizeApiErrors(apiErrorByKind, firstErrorByKind),
   };
 }
 

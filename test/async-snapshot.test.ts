@@ -353,6 +353,7 @@ describe("buildSnapshotAsync", () => {
       total: 2,
       byKind: { auth: 2 },
       primaryKind: "auth",
+      representativeError: "bad credentials",
     });
     // PR data should be empty (hold state)
     for (const item of snapshot.items) {

@@ -69,6 +69,7 @@ function makeTuiState(overrides: Partial<TuiState> = {}): TuiState {
     panelMode: "status-only" as PanelMode,
     logBuffer: [],
     logScrollOffset: 0,
+    logFollowMode: true,
     logLevelFilter: "all" as LogLevelFilter,
     selectedItemId: undefined,
     visibleItemIds: [],

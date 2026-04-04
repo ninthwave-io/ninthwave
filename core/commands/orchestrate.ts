@@ -169,6 +169,7 @@ import {
   isTuiPaused,
   filterLogsByLevel,
   pushLogBuffer,
+  applyLogFollowMode,
   LOG_BUFFER_MAX,
   LOG_LEVEL_CYCLE,
   type TuiState,
@@ -206,7 +207,7 @@ export {
   type StartupItemsRefreshResult,
 } from "../startup-items.ts";
 export { parseWatchArgs, validateItemIds, type ParsedWatchArgs } from "./watch-args.ts";
-export { setupKeyboardShortcuts, applyRuntimeSnapshotToTuiState, isTuiPaused, filterLogsByLevel, pushLogBuffer, LOG_BUFFER_MAX, REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE, type TuiState, type TuiRuntimeSnapshot, type LogLevelFilter, type CollaborationMode, type ReviewMode } from "../tui-keyboard.ts";
+export { setupKeyboardShortcuts, applyRuntimeSnapshotToTuiState, isTuiPaused, filterLogsByLevel, pushLogBuffer, applyLogFollowMode, LOG_BUFFER_MAX, REVIEW_MODE_CYCLE, COLLABORATION_MODE_CYCLE, type TuiState, type TuiRuntimeSnapshot, type LogLevelFilter, type CollaborationMode, type ReviewMode } from "../tui-keyboard.ts";
 export { processExternalReviews, type ExternalReviewDeps } from "../external-review.ts";
 export { processScheduledTasks, type ScheduleLoopDeps } from "../schedule-processing.ts";
 export { forkDaemon } from "../daemon.ts";
@@ -1298,6 +1299,7 @@ export function renderTuiPanelFrameFromStatusItems(
     : tuiState.viewOptions;
 
   const renderDefaultPanel = () => {
+    applyLogFollowMode(tuiState, termRows);
     const filteredLogs = filterLogsByLevel(tuiState.logBuffer, tuiState.logLevelFilter);
     prepareStatusSelection(tuiState, statusItems);
     const panelLayout = buildPanelLayout(
@@ -1312,6 +1314,7 @@ export function renderTuiPanelFrameFromStatusItems(
         logScrollOffset: tuiState.logScrollOffset,
         statusScrollOffset: tuiState.scrollOffset,
         selectedItemId: tuiState.selectedItemId,
+        logFollowMode: tuiState.logFollowMode,
       },
     );
     syncStatusLayout(tuiState, panelLayout, termRows);
@@ -1887,6 +1890,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     panelMode,
     logBuffer,
     logScrollOffset: 0,
+    logFollowMode: true,
     logLevelFilter: "all",
     selectedItemId: undefined,
     visibleItemIds: [],
@@ -1924,6 +1928,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
     const write = (s: string) => process.stdout.write(s);
 
     const renderDefaultPanel = () => {
+      applyLogFollowMode(tuiState, termRows);
       const filteredLogs = filterLogsByLevel(logBuffer, tuiState.logLevelFilter);
 
       prepareStatusSelection(tuiState, data.items);
@@ -1939,6 +1944,7 @@ export async function runTUI(opts: RunTUIOptions): Promise<void> {
           logScrollOffset: tuiState.logScrollOffset,
           statusScrollOffset: tuiState.scrollOffset,
           selectedItemId: tuiState.selectedItemId,
+          logFollowMode: tuiState.logFollowMode,
         },
       );
       syncStatusLayout(tuiState, panelLayout, termRows);
@@ -2218,6 +2224,7 @@ async function runInteractiveOperatorParentSession(
     panelMode: readLayoutPreference(opts.projectRoot),
     logBuffer: opts.logBuffer,
     logScrollOffset: 0,
+    logFollowMode: true,
     logLevelFilter: "all",
     selectedItemId: undefined,
     visibleItemIds: [],
@@ -3652,6 +3659,9 @@ export async function orchestrateLoop(
         apiErrorSummary: snapshot.apiErrorSummary,
         message: primaryKind
           ? `GitHub ${ghFailureKindLabel(primaryKind)} errors, holding state`
+            + (snapshot.apiErrorSummary?.representativeError
+              ? ` -- ${snapshot.apiErrorSummary.representativeError}`
+              : "")
           : "GitHub API unreachable, holding state",
       });
     }
@@ -4677,6 +4687,7 @@ export async function cmdOrchestrate(
     panelMode: savedPanelMode,
     logBuffer,
     logScrollOffset: 0,
+    logFollowMode: true,
     logLevelFilter: "all",
     selectedItemId: undefined,
     visibleItemIds: [],

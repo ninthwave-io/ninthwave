@@ -201,14 +201,24 @@ function formatGitHubApiWarningText(
   const entries = Object.entries(apiErrorSummary.byKind)
     .filter(([, count]) => typeof count === "number" && count > 0)
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
-  if (entries.length === 0) return `⚠ GitHub ${ghFailureKindLabel(apiErrorSummary.primaryKind)} error (${apiErrorSummary.total})`;
-  if (entries.length === 1) {
-    return `⚠ GitHub ${ghFailureKindLabel(apiErrorSummary.primaryKind)} error (${apiErrorSummary.total})`;
+
+  let base: string;
+  if (entries.length <= 1) {
+    base = `⚠ GitHub ${ghFailureKindLabel(apiErrorSummary.primaryKind)} error (${apiErrorSummary.total})`;
+  } else {
+    const parts = entries
+      .slice(0, 2)
+      .map(([kind, count]) => `${ghFailureKindLabel(kind as NonNullable<PollSnapshot["apiErrorSummary"]>["primaryKind"])} ${count}`);
+    base = `⚠ GitHub errors: ${parts.join(", ")}`;
   }
-  const parts = entries
-    .slice(0, 2)
-    .map(([kind, count]) => `${ghFailureKindLabel(kind as NonNullable<PollSnapshot["apiErrorSummary"]>["primaryKind"])} ${count}`);
-  return `⚠ GitHub errors: ${parts.join(", ")}`;
+
+  const hint = apiErrorSummary.representativeError;
+  if (hint) {
+    const maxHintLen = 60;
+    const truncated = hint.length > maxHintLen ? hint.slice(0, maxHintLen - 3) + "..." : hint;
+    return `${base} -- ${truncated}`;
+  }
+  return base;
 }
 
 function renderGitHubApiWarning(text: string): string {
@@ -2332,6 +2342,8 @@ export function buildPanelLayout(
     statusScrollOffset?: number;
     /** Selected item id for highlight. */
     selectedItemId?: string;
+    /** Whether the log panel is in follow (auto-scroll) mode. */
+    logFollowMode?: boolean;
   },
 ): PanelLayout {
   const logScrollOffset = opts?.logScrollOffset ?? 0;
@@ -2372,7 +2384,7 @@ export function buildPanelLayout(
     };
   }
 
-  const footerLines = buildPanelFooter(items, logEntries.length, termWidth, opts?.viewOptions);
+  const footerLines = buildPanelFooter(items, logEntries.length, termWidth, opts?.viewOptions, mode, opts?.logFollowMode);
   const logViewHeight = Math.max(1, termRows - footerLines.length);
   const clampedLogOffset = clampScrollOffset(logScrollOffset, logEntries.length, logViewHeight);
   const visibleLogs = logEntries
@@ -2401,6 +2413,8 @@ function buildPanelFooter(
   logCount: number,
   termWidth: number,
   viewOptions?: ViewOptions,
+  panelMode?: PanelMode,
+  logFollowMode?: boolean,
 ): string[] {
   const footerLines: string[] = [];
   const sep = `  ${DIM}${"─".repeat(Math.max(1, termWidth - 4))}${RESET}`;
@@ -2419,8 +2433,12 @@ function buildPanelFooter(
         viewOptions.pendingStrategyCountdownSeconds,
       ),
     );
+  } else if (panelMode === "logs-only") {
+    const followHint = logFollowMode === false ? "  G follow" : "";
+    const shortcuts = `q quit  tab status  ↑/↓ scroll  l filter${followHint}`;
+    footerLines.push(`  ${DIM}${shortcuts}${RESET}`);
   } else {
-    const shortcuts = `q quit  tab switch  ↑/↓ page controls`;
+    const shortcuts = `q quit  tab logs  ↑/↓ select  enter detail`;
     footerLines.push(`  ${DIM}${shortcuts}${RESET}`);
   }
 

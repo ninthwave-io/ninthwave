@@ -8638,6 +8638,7 @@ describe("panel mode cycling (Tab key)", () => {
       panelMode: "status-only",
       logBuffer: [],
       logScrollOffset: 0,
+      logFollowMode: true,
       logLevelFilter: "all",
       ...overrides,
     };
@@ -8690,6 +8691,7 @@ describe("log panel scroll (j/k/G keys)", () => {
       panelMode: "logs-only",
       logBuffer: [],
       logScrollOffset: 0,
+      logFollowMode: true,
       logLevelFilter: "all",
       ...overrides,
     };
@@ -8818,15 +8820,15 @@ describe("log level filter cycling (l key)", () => {
     expect(tuiState.logLevelFilter).toBe("info");
   });
 
-  it("l resets logScrollOffset to 0 on filter change", () => {
+  it("l enables logFollowMode on filter change", () => {
     const ac = new AbortController();
     const stdin = mockStdin();
-    const tuiState = baseTuiState({ logLevelFilter: "all", logScrollOffset: 42 });
+    const tuiState = baseTuiState({ logLevelFilter: "all", logScrollOffset: 42, logFollowMode: false });
 
     setupKeyboardShortcuts(ac, () => {}, stdin, tuiState);
 
     (stdin as any)._emit("data", "l");
-    expect(tuiState.logScrollOffset).toBe(0);
+    expect(tuiState.logFollowMode).toBe(true);
   });
 });
 

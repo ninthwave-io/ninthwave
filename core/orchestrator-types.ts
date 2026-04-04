@@ -222,6 +222,8 @@ export interface PollSnapshot {
     total: number;
     byKind: Partial<Record<GhFailureKind, number>>;
     primaryKind: GhFailureKind;
+    /** First raw stderr from the primary error kind (for diagnostics). */
+    representativeError?: string;
   };
   /** Human-readable rate-limit backoff description for TUI display (e.g., "Rate limited -- resuming in 2m 15s"). */
   rateLimitBackoffDescription?: string;

@@ -1,6 +1,8 @@
-// Rate limit backoff for the orchestrator poll loop.
+// Rate limit and general error backoff for the orchestrator poll loop.
 // When GitHub returns rate-limit errors, backs off using the exact reset
 // timestamp (from `gh api rate_limit`) or exponential backoff as fallback.
+// For persistent non-rate-limit errors (3+ consecutive cycles), applies a
+// gentler backoff to avoid hammering GitHub with failing requests.
 
 import type { PollSnapshot } from "./orchestrator-types.ts";
 
@@ -8,6 +10,7 @@ export interface BackoffState {
   active: boolean;
   intervalMs: number;
   consecutiveRateLimitCycles: number;
+  consecutiveErrorCycles: number;
   resetAt: number | null; // unix timestamp (seconds)
   description: string;
 }
@@ -15,9 +18,14 @@ export interface BackoffState {
 const MAX_EXPONENTIAL_MS = 60_000;
 const MAX_RESET_WAIT_MS = 120_000;
 const RESET_BUFFER_MS = 5_000;
+/** Cap for general (non-rate-limit) error backoff. */
+const MAX_GENERAL_ERROR_MS = 30_000;
+/** Number of consecutive error cycles before general backoff engages. */
+const GENERAL_ERROR_THRESHOLD = 3;
 
 export class RateLimitBackoff {
   private consecutiveRateLimitCycles = 0;
+  private consecutiveErrorCycles = 0;
   private resetAt: number | null = null;
   private baseIntervalMs: number;
 
@@ -25,14 +33,20 @@ export class RateLimitBackoff {
     this.baseIntervalMs = baseIntervalMs;
   }
 
-  /** Record a poll cycle's result. Engages backoff only for rate-limit errors. */
+  /** Record a poll cycle's result. Engages backoff for rate-limit or persistent errors. */
   recordPollResult(snapshot: PollSnapshot): void {
     const hasRateLimitErrors =
       snapshot.apiErrorSummary?.primaryKind === "rate-limit" ||
       (snapshot.apiErrorSummary?.byKind?.["rate-limit"] ?? 0) > 0;
+    const hasAnyErrors = (snapshot.apiErrorCount ?? 0) > 0;
 
     if (hasRateLimitErrors) {
       this.consecutiveRateLimitCycles++;
+      this.consecutiveErrorCycles = 0;
+    } else if (hasAnyErrors) {
+      this.consecutiveRateLimitCycles = 0;
+      this.resetAt = null;
+      this.consecutiveErrorCycles++;
     } else {
       this.reset();
     }
@@ -50,24 +64,38 @@ export class RateLimitBackoff {
   getNextIntervalMs(nowMs: number = Date.now()): number {
     if (!this.isActive()) return this.baseIntervalMs;
 
-    // If we have a reset timestamp and it's in the future, sleep until then + buffer
-    if (this.resetAt !== null) {
-      const resetMs = this.resetAt * 1000;
-      const waitMs = resetMs - nowMs + RESET_BUFFER_MS;
-      if (waitMs > 0) {
-        return Math.min(waitMs, MAX_RESET_WAIT_MS);
+    // Rate-limit backoff takes priority
+    if (this.consecutiveRateLimitCycles > 0) {
+      // If we have a reset timestamp and it's in the future, sleep until then + buffer
+      if (this.resetAt !== null) {
+        const resetMs = this.resetAt * 1000;
+        const waitMs = resetMs - nowMs + RESET_BUFFER_MS;
+        if (waitMs > 0) {
+          return Math.min(waitMs, MAX_RESET_WAIT_MS);
+        }
+        // Reset time has passed -- try one more poll at base interval
+        return this.baseIntervalMs;
       }
-      // Reset time has passed -- try one more poll at base interval
-      return this.baseIntervalMs;
+
+      // Exponential backoff: base * 2^(cycles-1), capped
+      const backoff = this.baseIntervalMs * Math.pow(2, this.consecutiveRateLimitCycles - 1);
+      return Math.min(backoff, MAX_EXPONENTIAL_MS);
     }
 
-    // Exponential backoff: base * 2^(cycles-1), capped
-    const backoff = this.baseIntervalMs * Math.pow(2, this.consecutiveRateLimitCycles - 1);
-    return Math.min(backoff, MAX_EXPONENTIAL_MS);
+    // General error backoff: gentler curve, lower cap
+    if (this.consecutiveErrorCycles >= GENERAL_ERROR_THRESHOLD) {
+      const backoff = this.baseIntervalMs * Math.pow(2, this.consecutiveErrorCycles - GENERAL_ERROR_THRESHOLD);
+      return Math.min(backoff, MAX_GENERAL_ERROR_MS);
+    }
+
+    return this.baseIntervalMs;
   }
 
   /** Whether to skip the next buildSnapshot call entirely. */
   shouldSkipSnapshot(nowMs: number = Date.now()): boolean {
+    // Never skip for general errors -- we need to detect recovery
+    if (this.consecutiveErrorCycles > 0 && this.consecutiveRateLimitCycles === 0) return false;
+
     if (!this.isActive()) return false;
 
     // If we know the reset time and it has passed, don't skip -- time to retry
@@ -86,6 +114,7 @@ export class RateLimitBackoff {
       active: this.isActive(),
       intervalMs,
       consecutiveRateLimitCycles: this.consecutiveRateLimitCycles,
+      consecutiveErrorCycles: this.consecutiveErrorCycles,
       resetAt: this.resetAt,
       description: this.formatDescription(),
     };
@@ -94,24 +123,34 @@ export class RateLimitBackoff {
   /** Reset backoff state to normal. */
   reset(): void {
     this.consecutiveRateLimitCycles = 0;
+    this.consecutiveErrorCycles = 0;
     this.resetAt = null;
   }
 
   private isActive(): boolean {
-    return this.consecutiveRateLimitCycles > 0;
+    return this.consecutiveRateLimitCycles > 0 || this.consecutiveErrorCycles >= GENERAL_ERROR_THRESHOLD;
   }
 
   private formatDescription(nowMs: number = Date.now()): string {
     if (!this.isActive()) return "";
 
-    if (this.resetAt !== null) {
-      const remainingMs = this.resetAt * 1000 - nowMs + RESET_BUFFER_MS;
-      if (remainingMs <= 0) return "Rate limited -- retrying now";
-      return `Rate limited -- resuming in ${formatDuration(remainingMs)}`;
+    if (this.consecutiveRateLimitCycles > 0) {
+      if (this.resetAt !== null) {
+        const remainingMs = this.resetAt * 1000 - nowMs + RESET_BUFFER_MS;
+        if (remainingMs <= 0) return "Rate limited -- retrying now";
+        return `Rate limited -- resuming in ${formatDuration(remainingMs)}`;
+      }
+
+      const intervalMs = this.getNextIntervalMs(nowMs);
+      return `Rate limited -- backing off ${formatDuration(intervalMs)}`;
     }
 
-    const intervalMs = this.getNextIntervalMs(nowMs);
-    return `Rate limited -- backing off ${formatDuration(intervalMs)}`;
+    if (this.consecutiveErrorCycles >= GENERAL_ERROR_THRESHOLD) {
+      const intervalMs = this.getNextIntervalMs(nowMs);
+      return `GitHub errors -- slowing polls (${formatDuration(intervalMs)})`;
+    }
+
+    return "";
   }
 }
 

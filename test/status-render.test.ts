@@ -3902,8 +3902,9 @@ describe("buildPanelLayout", () => {
     it("shows footer controls for the log page", () => {
       const layout = buildPanelLayout("logs-only", items, logs, 80, 40);
       const footerText = layout.footerLines.map(stripAnsi).join("\n");
-      expect(footerText).toContain("tab switch");
-      expect(footerText).toContain("page controls");
+      expect(footerText).toContain("tab status");
+      expect(footerText).toContain("scroll");
+      expect(footerText).toContain("l filter");
     });
 
     it("returns status-only at 80x8 (below MIN_FULLSCREEN_ROWS overrides all)", () => {
