@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.4.0] - 2026-04-04
+
+### Added
+- surface inbox state in daemon snapshots and status UI (#610)
+- add foreground `nw broker` command for self-hosted crews (H-SHB-5) (#609)
+- detect and respawn unresponsive workers during CI failure recovery
+- add exponential backoff for GitHub rate limit errors
+- add persistent self-hosted broker runtime on shared core (H-SHB-4) (#608)
+- ship broker-safe review schedules (H-DIR-6) (#607)
+- align crew broker payload compatibility (H-SHB-3) (#606)
+- expose scheduled task controls in TUI (H-DIR-5) (#601)
+- add review-inbox command for friction and decisions (H-DIR-3) (#600)
+- add repo reference helpers (H-SHB-2) (#599)
+- add decisions inbox scaffolding (H-DIR-1) (#596)
+- add review GH maintenance helpers (H-DIR-2) (#595)
+- add per-item manual review gate
+- add feature-flag recovery guidance
+- add tmux dashboard layout
+- add inspectable worker inbox history (H-WIR-1) (#589)
+
+### Changed
+- extract crew, TUI render, and event loop modules from orchestrate.ts
+- extract timing and completion modules from orchestrate.ts
+- simplify orchestrator state machine for auditability
+- remove cross-repo hub orchestration capability
+- extract shared broker core (H-SHB-1) (#603)
+- add per-project schedule preference plumbing (H-DIR-4) (#598)
+- remove decomposition templates
+- standardize work item terminology
+- rename WIP limits to session limits
+- clean up detail modal description rendering (H-TDM-1) (#594)
+- extract durable startup persistence mapping (H-STS-1) (#590)
+
+### Fixed
+- prevent merging/ci-passed tight loop under GitHub rate limiting
+- watch-recovery test race condition reading stale state file
+- align help overlay descriptions and show version in footer
+- wire up detail modal scroll by exposing totalContentLines from render
+- mirror agent files from main checkout into worktrees instead of re-rendering
+- surface raw GH API errors, add general error backoff, and log follow mode
+- auto-recover restart-hold blocked items instead of requiring manual retry
+- wrap-around navigation and pause overlay UX improvements
+- restore spies in gh-pr-checks test to prevent mock leak
+- default session limit to 1, persist user's last selection
+- handle repos with no CI workflows in orchestrator state machine
+- prevent orphaned fake-ai-worker processes on parent exit
+- simplify mux detection to session-only, remove backend_mode config
+- only persist changed startup settings and plug test config leaks
+- active session count excludes verifying/fixing-forward and show fixing-forward as distinct state
+- lowercase backend "auto" label and default reviews to "off"
+- align startup settings labels and reduce option spacing
+- clear stale friction logs and split test suite for faster worker feedback
+- stop committing ignored generated mirrors
+- make inbox delivery targets explicit (H-WIR-2) (#604)
+- stabilize startup settings option chips (H-STUI-1) (#605)
+- confirm q before TUI shutdown (H-TUIQ-1) (#602)
+- hold unresolved restarted workers on restart (H-RSM-3) (#597)
+- reattach implementation workers on restart (H-RSM-2) (#593)
+- persist confirmed startup defaults (H-STS-2) (#592)
+- preserve watch restart state (H-RSM-1) (#591)
+- tighten implementer CI ownership (H-WIR-4) (#588)
+- ignore legacy no-lineage PR blockers
+
 ## [0.3.11] - 2026-04-02
 
 ### Added
