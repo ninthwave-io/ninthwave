@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   Orchestrator,
   statusDisplayForState,
+  STATE_TRANSITIONS,
   type OrchestratorItem,
   type OrchestratorItemState,
   type OrchestratorDeps,
@@ -65,6 +66,86 @@ function snapshotWith(items: ItemSnapshot[], readyIds: string[] = []): PollSnaps
 
 // Fixed timestamp to keep transition checks deterministic
 const NOW = new Date("2026-01-15T12:00:00Z");
+
+// ── STATE_TRANSITIONS table validation ──────────────────────────────
+
+describe("STATE_TRANSITIONS table", () => {
+  it("covers every OrchestratorItemState", () => {
+    // Verify every state in the union type has an entry in the table.
+    // If a new state is added to OrchestratorItemState but not the table,
+    // TypeScript will catch it (Record requires all keys), but this test
+    // provides a runtime safety net.
+    const allStates: OrchestratorItemState[] = [
+      "queued", "ready", "launching", "implementing",
+      "ci-pending", "ci-passed", "ci-failed", "rebasing",
+      "review-pending", "reviewing", "merging", "merged",
+      "forward-fix-pending", "fix-forward-failed", "fixing-forward",
+      "done", "blocked", "stuck",
+    ];
+    for (const state of allStates) {
+      expect(STATE_TRANSITIONS).toHaveProperty(state);
+    }
+    expect(Object.keys(STATE_TRANSITIONS)).toHaveLength(allStates.length);
+  });
+
+  it("validates observed transitions match the table", () => {
+    // Run a comprehensive set of transitions through the orchestrator
+    // and verify every observed transition is declared in the table.
+    const observed = new Set<string>();
+    const orch = new Orchestrator({
+      maxRetries: 1,
+      maxCiRetries: 2,
+      maxReviewRounds: 2,
+      maxMergeRetries: 1,
+      maxFixForwardRetries: 1,
+      gracePeriodMs: 0,
+      onTransition: (id, from, to) => {
+        observed.add(`${from} -> ${to}`);
+      },
+    });
+
+    // Drive through major paths
+    orch.addItem(makeWorkItem("A"));
+    orch.addItem(makeWorkItem("B"));
+
+    // queued -> ready -> launching
+    orch.processTransitions({ items: [], readyIds: ["A", "B"] }, NOW);
+
+    // launching -> implementing
+    orch.processTransitions(snapshotWith([
+      { id: "A", workerAlive: true },
+      { id: "B", workerAlive: true },
+    ]), NOW);
+
+    // implementing -> ci-pending (PR appears)
+    orch.processTransitions(snapshotWith([
+      { id: "A", prNumber: 1, prState: "open", ciStatus: "pending", workerAlive: true },
+      { id: "B", prNumber: 2, prState: "open", ciStatus: "fail", workerAlive: true, isMergeable: true },
+    ]), NOW);
+
+    // ci-pending -> ci-passed, ci-failed -> ci-pending (recovery)
+    orch.processTransitions(snapshotWith([
+      { id: "A", prNumber: 1, prState: "open", ciStatus: "pass", isMergeable: true, workerAlive: true },
+      { id: "B", prNumber: 2, prState: "open", ciStatus: "pending", isMergeable: true, workerAlive: true },
+    ]), NOW);
+
+    // Verify all observed transitions are in the table
+    for (const t of observed) {
+      const [from, to] = t.split(" -> ") as [OrchestratorItemState, OrchestratorItemState];
+      const allowed = STATE_TRANSITIONS[from];
+      expect(allowed, `Undeclared transition: ${t}`).toContain(to);
+    }
+
+    // Verify we actually observed some transitions
+    expect(observed.size).toBeGreaterThan(5);
+  });
+
+  it("terminal states have no outgoing transitions", () => {
+    expect(STATE_TRANSITIONS["done"]).toHaveLength(0);
+    expect(STATE_TRANSITIONS["blocked"]).toHaveLength(0);
+    expect(STATE_TRANSITIONS["stuck"]).toHaveLength(0);
+  });
+});
 
 // ── reconstructState ─────────────────────────────────────────────────
 

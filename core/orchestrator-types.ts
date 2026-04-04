@@ -553,6 +553,32 @@ export const STACKABLE_STATES: Set<OrchestratorItemState> = new Set([
   "merging",
 ]);
 
+// ── Declarative transition table ────────────────────────────────────
+// Documents every legal state transition. Validated by test suite to match
+// actual handler behavior. NOT used at runtime for dispatch -- handlers
+// remain the source of truth for transition logic.
+
+export const STATE_TRANSITIONS: Record<OrchestratorItemState, readonly OrchestratorItemState[]> = {
+  "queued":               ["ready"],
+  "ready":                ["launching"],
+  "launching":            ["implementing", "stuck", "ready"],
+  "implementing":         ["ci-pending", "merged", "stuck", "ready"],
+  "ci-pending":           ["ci-passed", "ci-failed", "merged"],
+  "ci-passed":            ["reviewing", "review-pending", "merging", "ci-pending", "merged"],
+  "ci-failed":            ["ci-pending", "ci-passed", "stuck", "ready", "merged"],
+  "rebasing":             ["ci-pending", "stuck"],
+  "reviewing":            ["ci-passed", "ci-failed", "ci-pending", "review-pending", "merged"],
+  "review-pending":       ["ci-pending", "ci-passed", "ci-failed", "merging", "merged"],
+  "merging":              ["merged", "ci-passed", "stuck"],
+  "merged":               ["forward-fix-pending", "fix-forward-failed", "done"],
+  "forward-fix-pending":  ["done", "fix-forward-failed"],
+  "fix-forward-failed":   ["fixing-forward", "stuck", "done"],
+  "fixing-forward":       ["done", "ci-pending", "merged", "stuck"],
+  "done":                 [],
+  "blocked":              [],
+  "stuck":                [],
+};
+
 // ── Status display mapping ──────────────────────────────────────────
 
 /** Cmux status pill properties for a given orchestrator state. */

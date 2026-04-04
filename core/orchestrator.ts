@@ -67,6 +67,39 @@ const MERGE_CI_GRACE_MS = 60_000; // 60 seconds
 /** Grace period when no push workflows detected (only third-party status checks). */
 const NO_CI_MERGE_GRACE_MS = 15_000; // 15 seconds
 
+// ── Declarative transition side-effects ─────────────────────────────
+// State-specific flag resets applied on entry to a state. Lookup table
+// replaces scattered conditionals in the transition() method.
+
+const TRANSITION_SIDE_EFFECTS: Partial<
+  Record<OrchestratorItemState, (item: OrchestratorItem, ts: string) => void>
+> = {
+  "ci-failed": (item) => {
+    // Reset reviewCompleted on CI failure -- requires fresh review after fixes.
+    item.reviewCompleted = false;
+  },
+  "ci-pending": (item) => {
+    // Clear CI failure notification flags on recovery so re-failures can be notified
+    item.ciFailureNotified = false;
+    item.ciFailureNotifiedAt = undefined;
+    item.ciNotifyWallAt = undefined;
+  },
+  "ci-passed": (item) => {
+    item.ciFailureNotified = false;
+    item.ciFailureNotifiedAt = undefined;
+    item.ciNotifyWallAt = undefined;
+  },
+  "implementing": (item, ts) => {
+    // Telemetry: record startedAt when worker begins implementing
+    if (!item.startedAt) item.startedAt = ts;
+  },
+};
+
+/** States where failureReason is preserved (not cleared on entry). */
+const FAILURE_REASON_STATES: Set<OrchestratorItemState> = new Set([
+  "ci-failed", "stuck", "fix-forward-failed",
+]);
+
 // ── Orchestrator class ───────────────────────────────────────────────
 
 export class Orchestrator {
@@ -268,35 +301,19 @@ export class Orchestrator {
     item.detectionLatencyMs = Number.isFinite(detectedMs) && Number.isFinite(eventMs)
       ? Math.max(0, detectedMs - eventMs)
       : 0;
-    // Clear rebase flag on any state change -- the worker pushed or CI restarted
+
+    // Always-clear on any transition
     item.rebaseRequested = false;
-    // Clear timeout grace period on any state change -- worker recovered or was killed
     item.timeoutDeadline = undefined;
     item.timeoutExtensionCount = undefined;
-    // Reset reviewCompleted on CI failure -- requires fresh review after fixes.
-    // ci-pending is not included: the initial ci-pending has reviewCompleted=false by default,
-    // and regressions always go through ci-failed first (which resets it).
-    if (state === "ci-failed") {
-      item.reviewCompleted = false;
-    }
-    // Clear CI failure notification flag on recovery so re-failures can be notified
-    if (state === "ci-pending" || state === "ci-passed") {
-      item.ciFailureNotified = false;
-      item.ciFailureNotifiedAt = undefined;
-      item.ciNotifyWallAt = undefined;
-    }
-    // Clear failureReason when recovering from a failure state
-    if (state !== "ci-failed" && state !== "stuck" && state !== "fix-forward-failed") {
-      item.failureReason = undefined;
-    }
-    // Telemetry: record startedAt when worker begins implementing
-    if (state === "implementing" && !item.startedAt) {
-      item.startedAt = detectedTime;
-    }
-    // Telemetry: record endedAt when worker reaches a terminal state
-    if (TERMINAL_STATES.has(state)) {
-      item.endedAt = detectedTime;
-    }
+
+    // State-specific side effects (declarative table lookup)
+    TRANSITION_SIDE_EFFECTS[state]?.(item, detectedTime);
+
+    // Conditional clears
+    if (!FAILURE_REASON_STATES.has(state)) item.failureReason = undefined;
+    if (TERMINAL_STATES.has(state)) item.endedAt = detectedTime;
+
     // Emit structured transition event
     this.config.onTransition?.(item.id, prevState, state, detectedTime, item.detectionLatencyMs);
   }
@@ -365,6 +382,112 @@ export class Orchestrator {
     }];
   }
 
+  // ── Shared helpers ────────────────────────────────────────────────
+
+  /**
+   * Check worker liveness with debouncing.
+   * Requires NOT_ALIVE_THRESHOLD consecutive false readings before declaring dead.
+   * Resets counter on alive. Returns current liveness assessment.
+   */
+  private checkWorkerLiveness(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+  ): "alive" | "dead" | "debouncing" | "unknown" {
+    if (snap?.workerAlive === true) {
+      item.notAliveCount = 0;
+      return "alive";
+    }
+    if (snap?.workerAlive === false) {
+      item.notAliveCount = (item.notAliveCount ?? 0) + 1;
+      return item.notAliveCount >= NOT_ALIVE_THRESHOLD ? "dead" : "debouncing";
+    }
+    return "unknown";
+  }
+
+  /**
+   * Emit a CI failure notification action and set the associated tracking flags.
+   * These 3 flags must always be set together (ciFailureNotified, ciFailureNotifiedAt, ciNotifyWallAt).
+   */
+  private emitCiFailureNotification(
+    item: OrchestratorItem,
+    now: Date,
+    message: string,
+  ): Action {
+    item.ciFailureNotified = true;
+    item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
+    item.ciNotifyWallAt = now.toISOString();
+    return {
+      type: "notify-ci-failure",
+      itemId: item.id,
+      prNumber: item.prNumber,
+      message,
+    };
+  }
+
+  // ── Cross-cutting interceptors ─────────────────────────────────────
+  // Run before state-specific handlers. Order matters:
+  // 1. External merge takes priority over everything
+  // 2. Rebase tracking updates state used by handlers
+
+  /** States where external merge detection applies. */
+  private static readonly EXTERNAL_MERGE_STATES: Set<OrchestratorItemState> = new Set([
+    "implementing", "ci-pending", "ci-passed", "ci-failed",
+    "review-pending", "reviewing", "merging",
+  ]);
+
+  /** States where rebase tracking preamble runs. */
+  private static readonly REBASE_TRACKING_STATES: Set<OrchestratorItemState> = new Set([
+    "ci-pending", "ci-passed", "ci-failed", "review-pending", "reviewing",
+  ]);
+
+  /**
+   * Intercept external merge (PR merged outside orchestrator).
+   * Returns actions if intercepted, null otherwise.
+   */
+  private interceptExternalMerge(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+  ): Action[] | null {
+    if (!Orchestrator.EXTERNAL_MERGE_STATES.has(item.state)) return null;
+    if (snap?.prState !== "merged") return null;
+
+    // Backfill PR number if discovered during merge (implementing state)
+    if (snap.prNumber && !item.prNumber) {
+      item.prNumber = snap.prNumber;
+    }
+
+    this.transition(item, "merged", snap?.eventTime);
+    const actions: Action[] = [{ type: "clean", itemId: item.id }];
+
+    // Clean subsidiary workers if running
+    if (item.reviewWorkspaceRef) {
+      actions.push({ type: "clean-review", itemId: item.id });
+    }
+    if (item.fixForwardWorkspaceRef) {
+      actions.push({ type: "clean-forward-fixer", itemId: item.id });
+    }
+
+    return actions;
+  }
+
+  /**
+   * Update rebase tracking state for PR-lifecycle states.
+   * Clears rebase retry state when PR becomes mergeable.
+   * Resets cooldown when commit progress detected since last nudge.
+   */
+  private updateRebaseTracking(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+  ): void {
+    if (!Orchestrator.REBASE_TRACKING_STATES.has(item.state)) return;
+
+    if (snap?.isMergeable === true) {
+      this.clearRebaseRetryState(item, { clearAttempts: (item.rebaseAttemptCount ?? 0) > 0 });
+    } else if (this.hasCommitProgressSinceLastRebaseNudge(item, snap)) {
+      this.resetRebaseRetryCooldown(item, snap?.lastCommitTime ?? snap?.eventTime);
+    }
+  }
+
   /** Transition a single item based on its snapshot. Returns actions. */
   private transitionItem(
     item: OrchestratorItem,
@@ -378,9 +501,18 @@ export class Orchestrator {
       item.defaultBranch = snap.defaultBranch;
     }
 
+    // --- Cross-cutting interceptors (order matters) ---
+    // 1. External merge takes priority over everything
+    const mergeActions = this.interceptExternalMerge(item, snap);
+    if (mergeActions) return mergeActions;
+
+    // 2. Rebase tracking housekeeping (before state-specific handlers)
+    this.updateRebaseTracking(item, snap);
+
     const prevState = item.state;
     let actions: Action[];
 
+    // --- State-specific handlers ---
     switch (item.state) {
       case "queued":
       case "ready":
@@ -388,19 +520,14 @@ export class Orchestrator {
         actions = [];
         break;
 
-      case "launching":
-        if (snap?.workerAlive) {
-          item.notAliveCount = 0;
+      case "launching": {
+        const liveness = this.checkWorkerLiveness(item, snap);
+        if (liveness === "alive") {
           this.transition(item, "implementing", snap?.eventTime);
           actions = [];
-        } else if (snap?.workerAlive === false) {
-          item.notAliveCount = (item.notAliveCount ?? 0) + 1;
-          if (item.notAliveCount >= NOT_ALIVE_THRESHOLD) {
-            actions = this.stuckOrRetry(item, "worker-crashed: session died during launch");
-          } else {
-            actions = [];
-          }
-        } else {
+        } else if (liveness === "dead") {
+          actions = this.stuckOrRetry(item, "worker-crashed: session died during launch");
+        } else if (liveness === "unknown") {
           // workerAlive is undefined -- session may not have registered yet.
           // Check for launching timeout to prevent indefinite stall.
           const sinceTransition = now.getTime() - new Date(item.lastTransition).getTime();
@@ -413,17 +540,26 @@ export class Orchestrator {
           } else {
             actions = [];
           }
+        } else {
+          actions = [];
         }
         break;
+      }
 
       case "implementing":
         actions = this.handleImplementing(item, snap, now);
         break;
 
       case "ci-pending":
+        actions = this.handleCiPending(item, snap, now);
+        break;
+
       case "ci-passed":
+        actions = this.handleCiPassed(item, snap, now);
+        break;
+
       case "ci-failed":
-        actions = this.handlePrLifecycle(item, snap, now);
+        actions = this.handleCiFailed(item, snap, now);
         break;
 
       case "rebasing":
@@ -523,12 +659,7 @@ export class Orchestrator {
     snap: ItemSnapshot | undefined,
     now: Date,
   ): Action[] {
-    // If PR was auto-merged between polls, skip straight to merged
-    if (snap?.prState === "merged") {
-      if (snap.prNumber) item.prNumber = snap.prNumber;
-      this.transition(item, "merged", snap?.eventTime);
-      return [{ type: "clean", itemId: item.id }];
-    }
+    // External merge handled by interceptExternalMerge.
     // If a PR appeared, transition directly to ci-pending and process CI status
     if (snap?.prNumber && snap.prState === "open") {
       item.prNumber = snap.prNumber;
@@ -539,18 +670,19 @@ export class Orchestrator {
         actions.push({ type: "sync-stack-comments", itemId: item.id });
       }
       // Fall through to handle CI status in the same cycle
-      actions.push(...this.handlePrLifecycle(item, snap, now));
+      actions.push(...this.handleCiPending(item, snap, now));
       return actions;
     }
     // If worker died without a PR, retry or mark stuck.
-    // Debounce: require 3 consecutive not-alive checks to avoid false positives
-    // from transient cmux listing failures or slow workspace registration.
-    if (snap && snap.workerAlive === false && !snap.prNumber) {
-      item.notAliveCount = (item.notAliveCount ?? 0) + 1;
-      if (item.notAliveCount >= NOT_ALIVE_THRESHOLD) {
+    if (!snap?.prNumber) {
+      const liveness = this.checkWorkerLiveness(item, snap);
+      if (liveness === "dead") {
         return this.stuckOrRetry(item, "worker-crashed: session died without creating PR");
       }
-    } else if (snap && snap.workerAlive === true) {
+      if (liveness === "alive") {
+        item.lastAliveAt = now.toISOString();
+      }
+    } else if (snap?.workerAlive === true) {
       item.notAliveCount = 0;
       item.lastAliveAt = now.toISOString();
     }
@@ -712,106 +844,85 @@ export class Orchestrator {
     return [{ type: "retry", itemId: item.id }];
   }
 
-  /**
-   * Unified handler for ci-pending / ci-passed / ci-failed.
-   * Chains transitions within a single cycle so CI pass → merge happens immediately.
-   */
-  private handlePrLifecycle(
+  /** Handle ci-failed state: retry circuit breaker, recovery, notification, unresponsive detection. */
+  private handleCiFailed(
     item: OrchestratorItem,
     snap: ItemSnapshot | undefined,
     now: Date,
   ): Action[] {
-    const actions: Action[] = [];
-
-    // Check for external merge first (takes priority)
-    if (snap?.prState === "merged") {
-      this.transition(item, "merged", snap?.eventTime);
-      actions.push({ type: "clean", itemId: item.id });
-      return actions;
+    // Circuit breaker: exceeded max CI retries
+    if (item.ciFailCount > this.config.maxCiRetries) {
+      this.transition(item, "stuck");
+      item.failureReason = `ci-failed: exceeded max CI retries (${this.config.maxCiRetries})`;
+      return [{ type: "workspace-close", itemId: item.id }];
     }
 
-    if (snap?.isMergeable === true) {
-      this.clearRebaseRetryState(item, { clearAttempts: (item.rebaseAttemptCount ?? 0) > 0 });
-    } else if (this.hasCommitProgressSinceLastRebaseNudge(item, snap)) {
-      this.resetRebaseRetryCooldown(item, snap?.lastCommitTime ?? snap?.eventTime);
-    }
-
-    // Resolve the effective CI status from the snapshot
     const ciStatus = snap?.ciStatus;
 
-    // Handle ci-failed special cases first
-    if (item.state === "ci-failed") {
-      if (item.ciFailCount > this.config.maxCiRetries) {
-        this.transition(item, "stuck");
-        item.failureReason = `ci-failed: exceeded max CI retries (${this.config.maxCiRetries})`;
-        return [{ type: "workspace-close", itemId: item.id }];
-      }
-      // If CI recovered, transition and continue processing
-      if (ciStatus === "pass") {
-        this.transition(item, "ci-passed", snap?.eventTime);
-      } else if (ciStatus === "pending") {
-        this.transition(item, "ci-pending", snap?.eventTime);
-        this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
-        return [];
-      } else {
-        if (snap?.isMergeable === false) {
-          actions.push(...this.planRebaseConflictAction(
-            item,
-            now,
-            "[ORCHESTRATOR] Rebase Request: CI failed due to merge conflicts with main. Please rebase onto latest main.",
-          ));
-          return actions;
-        }
-        // Reset notification flag if the worker pushed a new commit (fix attempt)
-        if (item.ciFailureNotified && item.lastCommitTime !== item.ciFailureNotifiedAt) {
-          item.ciFailureNotified = false;
-        }
-        // Still failing -- only notify once per failure cycle to avoid comment spam
-        if (!item.ciFailureNotified) {
-          item.ciFailureNotified = true;
-          item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
-          item.ciNotifyWallAt = now.toISOString();
-          actions.push({
-            type: "notify-ci-failure",
-            itemId: item.id,
-            prNumber: item.prNumber,
-            message: "[ORCHESTRATOR] CI Fix Request: CI is still failing -- please investigate and fix.",
-          });
-        }
+    // CI recovered to pass -- chain to handleCiPassed in the same cycle
+    if (ciStatus === "pass") {
+      this.transition(item, "ci-passed", snap?.eventTime);
+      return this.handleCiPassed(item, snap, now);
+    }
 
-        // ── Unresponsive worker detection ──
-        // Layer 1: Process dead (headless fast-path).
-        // Worker session is gone -- debounce to avoid false positives from transient listing failures.
-        if (snap?.workerAlive === false) {
-          item.notAliveCount = (item.notAliveCount ?? 0) + 1;
-          item.failureReason = `worker not responding (${item.notAliveCount}/${NOT_ALIVE_THRESHOLD})`;
-          if (item.notAliveCount >= NOT_ALIVE_THRESHOLD) {
-            return this.respawnCiFixWorker(item);
-          }
-        } else if (snap?.workerAlive === true) {
-          item.notAliveCount = 0;
-        }
+    // CI recovered to pending
+    if (ciStatus === "pending") {
+      this.transition(item, "ci-pending", snap?.eventTime);
+      this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
+      return [];
+    }
 
-        // Layer 2: No ack after notification (TUI -- process alive but AI exited).
-        // The implementer agent heartbeats immediately upon reading a CI fix request.
-        // If no heartbeat arrives within CI_FIX_ACK_TIMEOUT_MS, the worker is unresponsive.
-        if (item.ciFailureNotified && item.ciNotifyWallAt) {
-          const notifyMs = new Date(item.ciNotifyWallAt).getTime();
-          const heartbeatTs = snap?.lastHeartbeat?.ts
-            ? new Date(snap.lastHeartbeat.ts).getTime() : 0;
-          if (heartbeatTs <= notifyMs) {
-            const nowMs = now.getTime();
-            if (nowMs - notifyMs > CI_FIX_ACK_TIMEOUT_MS) {
-              return this.respawnCiFixWorker(item);
-            }
-          }
-        }
+    // Still failing -- check for merge conflicts first
+    if (snap?.isMergeable === false) {
+      return this.planRebaseConflictAction(
+        item, now,
+        "[ORCHESTRATOR] Rebase Request: CI failed due to merge conflicts with main. Please rebase onto latest main.",
+      );
+    }
 
-        return actions;
+    // Reset notification flag if the worker pushed a new commit (fix attempt)
+    if (item.ciFailureNotified && item.lastCommitTime !== item.ciFailureNotifiedAt) {
+      item.ciFailureNotified = false;
+    }
+
+    // Notify once per failure cycle to avoid comment spam
+    const actions: Action[] = [];
+    if (!item.ciFailureNotified) {
+      actions.push(this.emitCiFailureNotification(
+        item, now, "[ORCHESTRATOR] CI Fix Request: CI is still failing -- please investigate and fix.",
+      ));
+    }
+
+    // Unresponsive worker detection (Layer 1: process dead)
+    const liveness = this.checkWorkerLiveness(item, snap);
+    if (liveness === "dead") {
+      item.failureReason = `worker not responding (${item.notAliveCount}/${NOT_ALIVE_THRESHOLD})`;
+      return this.respawnCiFixWorker(item);
+    }
+
+    // Layer 2: no ack after notification (process alive but AI exited)
+    if (item.ciFailureNotified && item.ciNotifyWallAt) {
+      const notifyMs = new Date(item.ciNotifyWallAt).getTime();
+      const heartbeatTs = snap?.lastHeartbeat?.ts
+        ? new Date(snap.lastHeartbeat.ts).getTime() : 0;
+      if (heartbeatTs <= notifyMs) {
+        if (now.getTime() - notifyMs > CI_FIX_ACK_TIMEOUT_MS) {
+          return this.respawnCiFixWorker(item);
+        }
       }
     }
 
-    // Determine the new CI-based state
+    return actions;
+  }
+
+  /** Handle ci-pending state: detect CI status changes. */
+  private handleCiPending(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+    now: Date,
+  ): Action[] {
+    const ciStatus = snap?.ciStatus;
+
     if (ciStatus === "fail") {
       this.transition(item, "ci-failed", snap?.eventTime);
       item.ciFailCount++;
@@ -819,70 +930,79 @@ export class Orchestrator {
         ? "ci-failed: merge conflicts with main"
         : "ci-failed: CI checks failed";
 
-      // When CI fails due to merge conflicts with main, send a rebase
-      // message instead of a generic CI failure. The worker should rebase
-      // rather than investigate a code bug.
       const isMergeConflict = snap?.isMergeable === false;
-
       if (isMergeConflict) {
-        actions.push(...this.planRebaseConflictAction(
-          item,
-          now,
+        return this.planRebaseConflictAction(
+          item, now,
           "[ORCHESTRATOR] Rebase Request: CI failed due to merge conflicts with main. Please rebase onto latest main.",
-        ));
-      } else {
-        item.ciFailureNotified = true;
-        item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
-        item.ciNotifyWallAt = now.toISOString();
-        actions.push({
-          type: "notify-ci-failure",
-          itemId: item.id,
-          prNumber: item.prNumber,
-          message: "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
-        });
+        );
       }
-      return actions;
+      return [this.emitCiFailureNotification(
+        item, now, "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
+      )];
     }
 
-    if (ciStatus === "pending" && item.state !== "ci-pending") {
+    // Detect merge conflicts regardless of CI status
+    if (snap?.isMergeable === false) {
+      return this.planRebaseConflictAction(
+        item, now,
+        "[ORCHESTRATOR] Rebase Request: PR has merge conflicts with main. Please rebase onto latest main.",
+      );
+    }
+
+    if (ciStatus === "pass") {
+      this.transition(item, "ci-passed", snap?.eventTime);
+      return this.evaluateMerge(item, snap, snap?.eventTime);
+    }
+
+    return [];
+  }
+
+  /** Handle ci-passed state: evaluate merge, detect conflicts and CI regressions. */
+  private handleCiPassed(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+    now: Date,
+  ): Action[] {
+    const ciStatus = snap?.ciStatus;
+
+    if (ciStatus === "fail") {
+      this.transition(item, "ci-failed", snap?.eventTime);
+      item.ciFailCount++;
+      item.failureReason = snap?.isMergeable === false
+        ? "ci-failed: merge conflicts with main"
+        : "ci-failed: CI checks failed";
+
+      const isMergeConflict = snap?.isMergeable === false;
+      if (isMergeConflict) {
+        return this.planRebaseConflictAction(
+          item, now,
+          "[ORCHESTRATOR] Rebase Request: CI failed due to merge conflicts with main. Please rebase onto latest main.",
+        );
+      }
+      return [this.emitCiFailureNotification(
+        item, now, "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
+      )];
+    }
+
+    if (ciStatus === "pending") {
       this.transition(item, "ci-pending", snap?.eventTime);
       this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
       return [];
     }
 
-    // Detect merge conflicts regardless of CI status. Catches conflicts
-    // from other PRs merging to main between polls, including cases where
-    // stale CI results still show "pass". Regress ci-passed items to
-    // ci-pending since the branch needs updating before review/merge.
+    // Detect merge conflicts: another PR may have merged to main.
+    // Regress to ci-pending since the branch needs updating.
     if (snap?.isMergeable === false) {
-      if (item.state === "ci-passed") {
-        this.transition(item, "ci-pending", snap?.eventTime);
-      }
-      actions.push(...this.planRebaseConflictAction(
-        item,
-        now,
+      this.transition(item, "ci-pending", snap?.eventTime);
+      return this.planRebaseConflictAction(
+        item, now,
         "[ORCHESTRATOR] Rebase Request: PR has merge conflicts with main. Please rebase onto latest main.",
-      ));
-      return actions;
+      );
     }
 
-    if (ciStatus === "pass") {
-      if (item.state !== "ci-passed") {
-        this.transition(item, "ci-passed", snap?.eventTime);
-      }
-      // CI passed -- evaluate merge strategy (pass eventTime for chained transitions)
-      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
-      return actions;
-    }
-
-    // No CI status change or unknown -- stay in current state
-    // But if we're already in ci-passed, re-evaluate merge (another PR may
-    // have merged to main, changing the mergeable status)
-    if (item.state === "ci-passed") {
-      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
-    }
-
-    return actions;
+    // CI still passing -- evaluate merge
+    return this.evaluateMerge(item, snap, snap?.eventTime);
   }
 
   /** Handle review-pending state. */
@@ -892,19 +1012,7 @@ export class Orchestrator {
     now: Date,
   ): Action[] {
     const actions: Action[] = [];
-
-    if (snap?.isMergeable === true) {
-      this.clearRebaseRetryState(item, { clearAttempts: (item.rebaseAttemptCount ?? 0) > 0 });
-    } else if (this.hasCommitProgressSinceLastRebaseNudge(item, snap)) {
-      this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
-    }
-
-    // Check for external merge
-    if (snap?.prState === "merged") {
-      this.transition(item, "merged", snap?.eventTime);
-      actions.push({ type: "clean", itemId: item.id });
-      return actions;
-    }
+    // External merge and rebase tracking handled by interceptors.
 
     // If review approved and CI still passes, evaluate merge
     if (snap?.reviewDecision === "APPROVED" && snap?.ciStatus === "pass") {
@@ -936,14 +1044,9 @@ export class Orchestrator {
           "[ORCHESTRATOR] Rebase Request: CI failed due to merge conflicts with main. Please rebase onto latest main.",
         ));
       } else {
-        item.ciFailureNotified = true;
-        item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
-        actions.push({
-          type: "notify-ci-failure",
-          itemId: item.id,
-          prNumber: item.prNumber,
-          message: "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
-        });
+        actions.push(this.emitCiFailureNotification(
+          item, now, "[ORCHESTRATOR] CI Fix Request: CI failed -- please investigate and fix.",
+        ));
       }
       return actions;
     }
@@ -984,12 +1087,7 @@ export class Orchestrator {
     now: Date,
   ): Action[] {
     const actions: Action[] = [];
-
-    if (snap?.isMergeable === true) {
-      this.clearRebaseRetryState(item, { clearAttempts: (item.rebaseAttemptCount ?? 0) > 0 });
-    } else if (this.hasCommitProgressSinceLastRebaseNudge(item, snap)) {
-      this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
-    }
+    // External merge and rebase tracking handled by interceptors.
 
     // Drain: skipReview toggled on while item was in reviewing state.
     // reviewCompleted was set by setSkipReview(); clean up the review worker
@@ -998,16 +1096,6 @@ export class Orchestrator {
       this.transition(item, "ci-passed", snap?.eventTime);
       actions.push({ type: "clean-review", itemId: item.id });
       actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
-      return actions;
-    }
-
-    // External merge takes priority
-    if (snap?.prState === "merged") {
-      this.transition(item, "merged", snap?.eventTime);
-      actions.push({ type: "clean", itemId: item.id });
-      if (item.reviewWorkspaceRef) {
-        actions.push({ type: "clean-review", itemId: item.id });
-      }
       return actions;
     }
 
@@ -1125,13 +1213,10 @@ export class Orchestrator {
     }
 
     // Rebaser worker died without pushing
-    if (snap?.workerAlive === false && item.rebaserWorkspaceRef) {
-      item.notAliveCount = (item.notAliveCount ?? 0) + 1;
-      if (item.notAliveCount >= NOT_ALIVE_THRESHOLD) {
-        this.transition(item, "stuck");
-        item.failureReason = "rebase-failed: rebaser worker could not resolve rebase conflicts";
-        actions.push({ type: "clean-rebaser", itemId: item.id });
-      }
+    if (item.rebaserWorkspaceRef && this.checkWorkerLiveness(item, snap) === "dead") {
+      this.transition(item, "stuck");
+      item.failureReason = "rebase-failed: rebaser worker could not resolve rebase conflicts";
+      actions.push({ type: "clean-rebaser", itemId: item.id });
     }
 
     return actions;
@@ -1141,17 +1226,12 @@ export class Orchestrator {
     item: OrchestratorItem,
     snap: ItemSnapshot | undefined,
   ): Action[] {
-    const actions: Action[] = [];
-
-    if (snap?.prState === "merged") {
-      this.transition(item, "merged", snap?.eventTime);
-      actions.push({ type: "clean", itemId: item.id });
-    } else if (snap?.prState === "closed") {
+    // External merge handled by interceptor. Only handle non-merge close.
+    if (snap?.prState === "closed") {
       this.transition(item, "stuck");
       item.failureReason = "merge-aborted: PR was closed without merging";
     }
-
-    return actions;
+    return [];
   }
 
   /**
@@ -1271,7 +1351,7 @@ export class Orchestrator {
       }
 
       this.transition(item, "ci-pending", snap?.eventTime);
-      actions.push(...this.handlePrLifecycle(item, snap, new Date()));
+      actions.push(...this.handleCiPending(item, snap, new Date()));
       return actions;
     }
 
@@ -1285,13 +1365,10 @@ export class Orchestrator {
     }
 
     // Forward-fixer worker died without fixing
-    if (snap?.workerAlive === false && item.fixForwardWorkspaceRef) {
-      item.notAliveCount = (item.notAliveCount ?? 0) + 1;
-      if (item.notAliveCount >= NOT_ALIVE_THRESHOLD) {
-        this.transition(item, "stuck");
-        item.failureReason = `fix-forward-failed: forward-fixer worker died without fixing CI for merge commit ${item.mergeCommitSha}`;
-        actions.push({ type: "clean-forward-fixer", itemId: item.id });
-      }
+    if (item.fixForwardWorkspaceRef && this.checkWorkerLiveness(item, snap) === "dead") {
+      this.transition(item, "stuck");
+      item.failureReason = `fix-forward-failed: forward-fixer worker died without fixing CI for merge commit ${item.mergeCommitSha}`;
+      actions.push({ type: "clean-forward-fixer", itemId: item.id });
     }
 
     return actions;
