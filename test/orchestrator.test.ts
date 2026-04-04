@@ -924,7 +924,7 @@ describe("Orchestrator", () => {
   it("uses sensible defaults", () => {
     expect(DEFAULT_CONFIG.sessionLimit).toBe(4);
     expect(DEFAULT_CONFIG.mergeStrategy).toBe("auto");
-    expect(DEFAULT_CONFIG.maxCiRetries).toBe(2);
+    expect(DEFAULT_CONFIG.maxCiRetries).toBe(5);
   });
 
   // ── 18. PR merged from ci-failed state ─────────────────────────

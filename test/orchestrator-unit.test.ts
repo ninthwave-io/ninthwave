@@ -1410,7 +1410,7 @@ describe("stuck dep notification for stacked items", () => {
 
     orch.hydrateState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.reviewCompleted = true;
-    orch.getItem("H-1-1")!.ciFailCount = 5; // exceeds maxCiRetries
+    orch.getItem("H-1-1")!.ciFailCount = 6; // exceeds maxCiRetries
     orch.getItem("H-1-1")!.prNumber = 10;
 
     // H-1-2 is stacked and alive
@@ -1440,7 +1440,7 @@ describe("stuck dep notification for stacked items", () => {
 
     orch.hydrateState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.reviewCompleted = true;
-    orch.getItem("H-1-1")!.ciFailCount = 5;
+    orch.getItem("H-1-1")!.ciFailCount = 6;
     orch.getItem("H-1-1")!.prNumber = 10;
 
     // H-1-2 is stacked and in ready state (no worker yet)
@@ -1470,7 +1470,7 @@ describe("stuck dep notification for stacked items", () => {
 
     orch.hydrateState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.reviewCompleted = true;
-    orch.getItem("H-1-1")!.ciFailCount = 5;
+    orch.getItem("H-1-1")!.ciFailCount = 6;
     orch.getItem("H-1-1")!.prNumber = 10;
 
     // H-1-2 is stacked and in launching state (no worker yet)
@@ -1496,7 +1496,7 @@ describe("stuck dep notification for stacked items", () => {
 
     orch.hydrateState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.reviewCompleted = true;
-    orch.getItem("H-1-1")!.ciFailCount = 5;
+    orch.getItem("H-1-1")!.ciFailCount = 6;
     orch.getItem("H-1-1")!.prNumber = 10;
 
     // H-1-2 is stacked and implementing with active worker
@@ -1529,7 +1529,7 @@ describe("stuck dep notification for stacked items", () => {
 
     orch.hydrateState("H-1-1", "ci-failed");
     orch.getItem("H-1-1")!.reviewCompleted = true;
-    orch.getItem("H-1-1")!.ciFailCount = 5;
+    orch.getItem("H-1-1")!.ciFailCount = 6;
     orch.getItem("H-1-1")!.prNumber = 10;
 
     // H-1-2 depends on H-1-1 but has no baseBranch (not stacked)

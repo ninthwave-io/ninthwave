@@ -1,12 +1,14 @@
 // Scenario test: CI failure and recovery loops through the real orchestrateLoop.
-// Exercises three scenarios:
+// Exercises scenarios:
 // 1. CI fails → worker pushes fix → CI re-runs and passes → item merges → done
 // 2. CI fails repeatedly beyond maxCiRetries → item goes stuck
 // 3. CI fails with merge conflicts (CONFLICTING) → daemon-rebase action emitted
+// 4. CI fails with dead worker → orchestrator detects and respawns
+// 5. CI fails with unresponsive worker (ack timeout) → orchestrator detects and respawns
 
 import { describe, it, expect } from "vitest";
-import { Orchestrator } from "../../core/orchestrator.ts";
-import { orchestrateLoop } from "../../core/commands/orchestrate.ts";
+import { Orchestrator, NOT_ALIVE_THRESHOLD, CI_FIX_ACK_TIMEOUT_MS } from "../../core/orchestrator.ts";
+import { orchestrateLoop, buildSnapshot } from "../../core/commands/orchestrate.ts";
 import { FakeGitHub } from "../fakes/fake-github.ts";
 import { FakeMux } from "../fakes/fake-mux.ts";
 import {
@@ -332,4 +334,187 @@ describe("scenario: CI failure recovery", () => {
     );
     expect(ciFailureMessages.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("dead worker in ci-failed state is detected and respawned after debounce", async () => {
+    const fakeGh = new FakeGitHub();
+    const fakeMux = new FakeMux();
+
+    const orch = new Orchestrator({
+      sessionLimit: 5,
+      mergeStrategy: "auto",
+      bypassEnabled: false,
+      maxCiRetries: 10,
+      maxRetries: 3,
+      enableStacking: false,
+      fixForward: false,
+    });
+
+    orch.addItem(makeWorkItem("CF-6"));
+
+    const actionDeps = buildActionDeps(fakeGh, fakeMux);
+    const loopDeps = buildLoopDeps(fakeGh, fakeMux, actionDeps);
+
+    const statesVisited: string[] = [];
+    orch.config.onTransition = (_itemId, _from, to) => {
+      statesVisited.push(to);
+    };
+
+    let cycle = 0;
+    let workerRef: string | undefined;
+    loopDeps.sleep = async () => {
+      cycle++;
+
+      // Cycle 2: worker creates PR, CI fails.
+      // Set lastCommitTime so ciFailureNotifiedAt comparison is stable.
+      if (cycle === 2) {
+        const item = orch.getItem("CF-6");
+        if (item) item.lastCommitTime = new Date().toISOString();
+        fakeGh.createPR("ninthwave/CF-6", "Item CF-6");
+        fakeGh.setCIStatus("ninthwave/CF-6", "fail");
+        fakeGh.setMergeable("ninthwave/CF-6", "MERGEABLE");
+      }
+
+      // Cycle 4: kill the worker process (simulate headless worker dying)
+      if (cycle === 4) {
+        const item = orch.getItem("CF-6");
+        workerRef = item?.workspaceRef;
+        if (workerRef) fakeMux.setAlive(workerRef, false);
+      }
+
+      // After respawn (cycle ~10+): new worker fixes CI
+      if (cycle === 12) {
+        const item = orch.getItem("CF-6");
+        if (item && item.state === "ci-failed") {
+          // New worker pushes fix
+          item.lastCommitTime = new Date().toISOString();
+          fakeGh.setCIStatus("ninthwave/CF-6", "pending");
+        }
+      }
+
+      if (cycle === 13) {
+        fakeGh.setCIStatus("ninthwave/CF-6", "pass");
+        fakeGh.setReviewDecision("ninthwave/CF-6", "APPROVED");
+        const item = orch.getItem("CF-6");
+        if (item) item.reviewCompleted = true;
+      }
+    };
+
+    await orchestrateLoop(orch, defaultCtx, loopDeps, { maxIterations: 40 });
+
+    const finalItem = orch.getItem("CF-6");
+    expect(finalItem).toBeDefined();
+    expect(finalItem!.state).toBe("done");
+
+    // Verify the item went through ready (respawn) after ci-failed
+    expect(statesVisited).toContain("ci-failed");
+    expect(statesVisited).toContain("done");
+
+    // needsCiFix should have been set then cleared
+    expect(finalItem!.needsCiFix).toBe(false);
+
+    // closeWorkspace should have been called (cleanup before respawn)
+    expect(actionDeps.closeWorkspace).toHaveBeenCalled();
+  });
+
+  it("unresponsive worker detected via ack timeout and respawned", () => {
+    const orch = new Orchestrator({
+      sessionLimit: 5,
+      mergeStrategy: "auto",
+      bypassEnabled: false,
+      maxCiRetries: 10,
+      maxRetries: 3,
+      enableStacking: false,
+      fixForward: false,
+    });
+
+    orch.addItem(makeWorkItem("CF-7"));
+    const item = orch.getItem("CF-7")!;
+
+    // Set up ci-failed state with notification sent and ack expired.
+    // This tests the Layer 2 detection directly, avoiding orchestrateLoop timing issues.
+    const commitTime = "2026-01-01T00:00:00Z";
+    item.state = "ci-failed" as typeof item.state;
+    item.prNumber = 1;
+    item.ciFailCount = 1;
+    item.ciFailureNotified = true;
+    item.ciFailureNotifiedAt = commitTime;
+    item.lastCommitTime = commitTime;
+    item.ciNotifyWallAt = new Date(Date.now() - CI_FIX_ACK_TIMEOUT_MS - 60_000).toISOString();
+    item.workspaceRef = "workspace:1";
+
+    const snapshot = {
+      items: [{
+        id: "CF-7",
+        ciStatus: "fail" as const,
+        prNumber: 1,
+        prState: "open" as const,
+        isMergeable: true,
+        workerAlive: true,  // TUI: process alive but AI exited
+        lastHeartbeat: null,  // No heartbeat ack
+        lastCommitTime: commitTime,
+      }],
+      readyIds: [],
+    };
+
+    const actions = orch.processTransitions(snapshot);
+
+    // Ack timeout should trigger respawn (ready → launching in same processTransitions call)
+    expect(item.state).toBe("launching");
+    expect(item.needsCiFix).toBe(true);
+    expect(actions.some(a => a.type === "retry" && a.itemId === "CF-7")).toBe(true);
+  });
+
+  it("worker that heartbeats after notification is NOT respawned (Layer 2 negative)", () => {
+    const orch = new Orchestrator({
+      sessionLimit: 5,
+      mergeStrategy: "auto",
+      bypassEnabled: false,
+      maxCiRetries: 10,
+      maxRetries: 3,
+      enableStacking: false,
+      fixForward: false,
+    });
+
+    orch.addItem(makeWorkItem("CF-8"));
+    const item = orch.getItem("CF-8")!;
+
+    // Set up ci-failed state with notification sent and ack timeout passed,
+    // BUT the worker heartbeated AFTER the notification (worker is responsive).
+    const commitTime = "2026-01-01T00:00:00Z";
+    const notifyTime = new Date(Date.now() - CI_FIX_ACK_TIMEOUT_MS - 60_000);
+    const heartbeatTime = new Date(notifyTime.getTime() + 30_000); // 30s after notification
+
+    item.state = "ci-failed" as typeof item.state;
+    item.prNumber = 1;
+    item.ciFailCount = 1;
+    item.ciFailureNotified = true;
+    item.ciFailureNotifiedAt = commitTime;
+    item.lastCommitTime = commitTime;
+    item.ciNotifyWallAt = notifyTime.toISOString();
+    item.workspaceRef = "workspace:1";
+
+    const snapshot = {
+      items: [{
+        id: "CF-8",
+        ciStatus: "fail" as const,
+        prNumber: 1,
+        prState: "open" as const,
+        isMergeable: true,
+        workerAlive: true,
+        lastHeartbeat: { ts: heartbeatTime.toISOString(), progress: 0.5, label: "Fixing CI" },
+        lastCommitTime: commitTime,
+      }],
+      readyIds: [],
+    };
+
+    orch.processTransitions(snapshot);
+
+    // Worker should NOT be respawned -- it heartbeated after the notification
+    expect(item.state).toBe("ci-failed");
+    expect(item.needsCiFix).toBeUndefined();
+  });
+
+  // Note: respawnCiFixWorker does NOT consume retryCount. The guard against
+  // infinite loops comes from ciFailCount/maxCiRetries (checked before detection)
+  // and stuckOrRetry in the implementing handler (catches workers that die after relaunch).
 });

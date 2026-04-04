@@ -219,7 +219,9 @@ export function executeLaunch(
     return { success: false, error: validation.failureReason };
   }
 
-  if (validation.status === "skip-with-pr") {
+  // Skip the "existing PR detected" shortcut when needsCiFix is set --
+  // we need to launch a live worker to fix CI, not just track in ci-pending.
+  if (validation.status === "skip-with-pr" && !item.needsCiFix) {
     item.prNumber = validation.existingPrNumber;
     orch.transition(item, "ci-pending");
     return { success: true };
@@ -296,6 +298,20 @@ export function executeLaunch(
     item.workspaceRef = result.workspaceRef;
     item.worktreePath = result.worktreePath;
     item.aiTool = selectedTool;
+
+    // Deliver CI fix instruction AFTER launch (after cleanInbox runs inside launch).
+    // This ensures the worker gets the message -- writing before launch would be
+    // wiped by cleanInbox which clears stale messages from prior sessions.
+    // Use ctx.projectRoot (hub) not result.worktreePath -- workers resolve their
+    // inbox namespace from `git rev-parse --git-common-dir` which gives the hub path.
+    if (forceWorker) {
+      deps.writeInbox(
+        ctx.projectRoot,
+        item.id,
+        "[ORCHESTRATOR] CI Fix Request: CI failed on your PR -- please investigate the failure, fix the issue, and push a candidate fix.",
+      );
+    }
+
     return { success: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -930,9 +946,13 @@ export function executeRetry(
     } catch { /* best-effort */ }
   }
 
-  // Close the old workspace if it exists
+  // Close the old workspace if it exists -- must complete before relaunch to
+  // guarantee no two workers operate on the same branch simultaneously.
   if (item.workspaceRef) {
-    deps.closeWorkspace(item.workspaceRef);
+    const closed = deps.closeWorkspace(item.workspaceRef);
+    if (!closed) {
+      deps.warn?.(`[${item.id}] WARNING: failed to close workspace ${item.workspaceRef} before retry`);
+    }
     item.workspaceRef = undefined;
   }
 

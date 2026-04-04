@@ -428,6 +428,8 @@ Messages from the orchestrator daemon are usually prefixed with `[ORCHESTRATOR]`
 
 Some daemon nudges may be plain-language inbox messages instead of structured `[ORCHESTRATOR]` records. Treat those the same way when they clearly tell you to take action (for example, "branch is behind main; please rebase" or "please rebase onto BASE_BRANCH").
 
+**Important:** The `nw heartbeat` call in step 1 of each message handler below is your acknowledgment signal. The orchestrator uses it to detect whether you are alive. If you do not heartbeat within ~2 minutes of receiving a message, the orchestrator will assume you are unresponsive and replace your session. Always heartbeat immediately after reading any inbox message, before investigating or doing any work.
+
 When you are idle again after processing a message, re-enter wait mode:
 
 ```bash

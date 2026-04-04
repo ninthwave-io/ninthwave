@@ -94,6 +94,8 @@ export interface OrchestratorItem {
   ciFailureNotified?: boolean;
   /** The lastCommitTime when ciFailureNotified was set. Used to reset the flag when the worker pushes a fix. */
   ciFailureNotifiedAt?: string | null;
+  /** ISO wall-clock timestamp when CI failure notification was delivered. Used for ack-based timeout detection. */
+  ciNotifyWallAt?: string;
   /** ISO timestamp of the last comment check for this item's PR. Used to avoid duplicate comment relay. */
   lastCommentCheck?: string;
   /** Number of consecutive rebaser worker launches for rebase conflict resolution. Resets when conflicts resolve (isMergeable !== false). */
@@ -470,7 +472,7 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
   sessionLimit: 4,
   mergeStrategy: "auto",
   bypassEnabled: false,
-  maxCiRetries: 2,
+  maxCiRetries: 5,
   maxRetries: 1,
   launchTimeoutMs: 30 * 60 * 1000,   // 30 minutes
   activityTimeoutMs: 60 * 60 * 1000, // 60 minutes
@@ -516,6 +518,9 @@ export const HEARTBEAT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 /** Number of consecutive workerAlive=false polls required before declaring a worker dead. */
 export const NOT_ALIVE_THRESHOLD = 5;
+
+/** Timeout (ms) for worker to heartbeat after CI failure notification delivery. If no heartbeat arrives within this window, the worker is considered unresponsive. */
+export const CI_FIX_ACK_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 /** Timeout (ms) for items in launching state with no workerAlive signal. Default: 5 minutes. */
 export const LAUNCHING_TIMEOUT_MS = 5 * 60 * 1000;

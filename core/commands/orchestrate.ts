@@ -12,6 +12,7 @@ import { getAvailableMemory } from "../memory.ts";
 import {
   Orchestrator,
   DEFAULT_CONFIG,
+  CI_FIX_ACK_TIMEOUT_MS,
   calculateMemorySessionLimit,
   statusDisplayForState,
   TERMINAL_STATES,
@@ -1161,6 +1162,10 @@ export function orchestratorItemsToStatusItems(
       stderrTail: item.stderrTail,
       remote,
       workspaceRef: item.workspaceRef,
+      worktreePath: item.worktreePath,
+      respawnDeadlineMs: item.ciNotifyWallAt
+        ? new Date(item.ciNotifyWallAt).getTime() + CI_FIX_ACK_TIMEOUT_MS
+        : undefined,
       progress: heartbeat?.progress,
       progressLabel: heartbeat?.label,
       progressTs: heartbeat?.ts,
@@ -1588,6 +1593,7 @@ export async function runInteractiveWatchOperatorSession(
   };
 
   const abortController = opts.abortController ?? new AbortController();
+  let respawnCountdownTimer: ReturnType<typeof setInterval> | undefined;
   let cleanupKeyboard = () => {};
   let altScreenActive = false;
   let pendingCollaborationRequests = new Map<string, {
@@ -1674,6 +1680,22 @@ export async function runInteractiveWatchOperatorSession(
               ...(message.event.interactiveTiming ? { interactiveTiming: message.event.interactiveTiming } : {}),
             };
             applyRuntimeSnapshotToTuiState(opts.tuiState, message.event.runtime);
+
+            // Start/stop 1-second ticker for live respawn countdowns.
+            // The countdown text is computed at render time from respawnDeadlineMs.
+            const hasCountdown = message.event.state.items.some(
+              (i: { ciNotifyWallAt?: string; state: string }) =>
+                i.ciNotifyWallAt && i.state === "ci-failed",
+            );
+            if (hasCountdown && !respawnCountdownTimer) {
+              respawnCountdownTimer = setInterval(() => {
+                try { render(); } catch { /* non-fatal */ }
+              }, 1000);
+            } else if (!hasCountdown && respawnCountdownTimer) {
+              clearInterval(respawnCountdownTimer);
+              respawnCountdownTimer = undefined;
+            }
+
             render();
             continue;
           }
@@ -1793,6 +1815,7 @@ export async function runInteractiveWatchOperatorSession(
       render();
     }
   } finally {
+    if (respawnCountdownTimer) clearInterval(respawnCountdownTimer);
     bindControlSender(() => {});
     bindCollaborationRequester(async () => ({ error: "Collaboration engine unavailable." }));
     if (manageKeyboard) cleanupKeyboard();

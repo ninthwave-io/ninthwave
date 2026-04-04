@@ -12,6 +12,7 @@ import {
   RESET,
 } from "./output.ts";
 import type { DaemonState } from "./daemon.ts";
+import { CI_FIX_ACK_TIMEOUT_MS } from "./orchestrator-types.ts";
 import type { MergeStrategy, PollSnapshot } from "./orchestrator.ts";
 import { ghFailureKindLabel } from "./gh.ts";
 import {
@@ -294,6 +295,8 @@ export interface StatusItem {
   worktreePath?: string;
   /** Multiplexer workspace reference (e.g., "nw-myproject:nw_H-TM-1" for tmux). */
   workspaceRef?: string;
+  /** Epoch ms deadline for worker respawn (ack timeout or dead-worker debounce). */
+  respawnDeadlineMs?: number;
   /** Latest worker heartbeat progress from 0.0 to 1.0. */
   progress?: number;
   /** Latest worker heartbeat label. */
@@ -466,6 +469,44 @@ export function truncateTitle(title: string, maxWidth: number): string {
   if (maxWidth < 4) return title.slice(0, maxWidth);
   if (title.length <= maxWidth) return title;
   return title.slice(0, maxWidth - 3) + "...";
+}
+
+/**
+ * Truncate an ANSI-colored string to fit within maxWidth visible characters.
+ * Preserves ANSI escape sequences (colors, etc.) and adds RESET + "..." at the cut point.
+ */
+export function truncateAnsi(s: string, maxWidth: number): string {
+  if (maxWidth <= 0) return "";
+  // Reserve 3 chars for "..." when truncation is needed.
+  // First pass: check if truncation is needed at all.
+  const cutWidth = Math.max(0, maxWidth - 3);
+  let visible = 0;
+  let i = 0;
+  let cutPoint = 0; // byte index where visible chars == cutWidth
+  let cutReached = false;
+  while (i < s.length) {
+    // Skip ANSI CSI sequences
+    if (s[i] === "\x1b" && s[i + 1] === "[") {
+      const end = s.indexOf("m", i);
+      if (end !== -1) { i = end + 1; continue; }
+    }
+    // Skip OSC 8 hyperlink sequences
+    if (s[i] === "\x1b" && s[i + 1] === "]") {
+      const end = s.indexOf("\x07", i);
+      if (end !== -1) { i = end + 1; continue; }
+    }
+    visible++;
+    if (!cutReached && visible > cutWidth) {
+      cutPoint = i;
+      cutReached = true;
+    }
+    if (visible > maxWidth) {
+      // Truncation needed -- cut at cutWidth and append "..."
+      return s.slice(0, cutPoint) + `${RESET}...`;
+    }
+    i++;
+  }
+  return s; // No truncation needed
 }
 
 /**
@@ -700,6 +741,12 @@ export function formatDuration(item: StatusItem): string {
   if (item.timeoutRemainingMs !== undefined) {
     return formatCountdown(item.timeoutRemainingMs);
   }
+  // Live respawn countdown (computed at render time, updates every 1s via timer)
+  if (item.respawnDeadlineMs && item.state === "ci-failed") {
+    const remaining = Math.max(0, item.respawnDeadlineMs - Date.now());
+    if (remaining > 0) return `⟳ ${Math.ceil(remaining / 1000)}s`;
+    return "⟳ ...";
+  }
   if (item.state === "queued") return "-";
   if (item.startedAt) {
     const elapsed = formatElapsed(item);
@@ -730,9 +777,10 @@ export function formatTelemetrySuffix(item: StatusItem): string {
     }
   }
 
-  // Show preserved worktree path for stuck/failed items so users know where to find partial work
+  // Show preserved worktree path for stuck items so users know where to find partial work.
+  // ci-failed items show the worktree path in the detail modal instead (press Enter/i).
   const rawState = item.state as string;
-  if ((rawState === "stuck" || item.state === "ci-failed") && item.worktreePath) {
+  if (rawState === "stuck" && item.worktreePath) {
     parts.push(`worktree: ${item.worktreePath}`);
   }
 
@@ -755,6 +803,7 @@ export function formatItemRow(
   stateColWidth: number = 14,
   repoUrl?: string,
   isSelected?: boolean,
+  termWidth?: number,
 ): string {
   const gracePeriodActive = item.timeoutRemainingMs !== undefined;
   const icon = gracePeriodActive ? "⚠" : stateIcon(item.state);
@@ -794,7 +843,8 @@ export function formatItemRow(
   const progressSuffix = progressText ? ` ${DIM}${progressText}${RESET}` : "";
   const modeTag = headlessModeTag(item);
 
-  return `${prefix}${iconColor}${icon}${RESET} ${id}${color}${stateCell}${RESET}${remoteDot} ${durationCell}${timeoutExtensions} ${depCol}${marker}${title}${progressSuffix}${modeTag}${repo}${reason}${telemetry}`;
+  const row = `${prefix}${iconColor}${icon}${RESET} ${id}${color}${stateCell}${RESET}${remoteDot} ${durationCell}${timeoutExtensions} ${depCol}${marker}${title}${progressSuffix}${modeTag}${repo}${reason}${telemetry}`;
+  return termWidth ? truncateAnsi(row, termWidth) : row;
 }
 
 function pushWrappedDetailField(
@@ -1443,6 +1493,9 @@ export function daemonStateToStatusItems(state: DaemonState): StatusItem[] {
       stderrTail: item.stderrTail,
       worktreePath: item.worktreePath,
       workspaceRef: item.workspaceRef,
+      respawnDeadlineMs: item.ciNotifyWallAt
+        ? new Date(item.ciNotifyWallAt).getTime() + CI_FIX_ACK_TIMEOUT_MS
+        : undefined,
       progress: item.progress,
       progressLabel: item.progressLabel,
       progressTs: item.progressTs,
@@ -1970,6 +2023,7 @@ export function buildStatusLayout(
               stateColWidth,
               repoUrl,
               row.item.id === selectedItemId,
+              termWidth,
             ),
           );
         }

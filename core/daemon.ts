@@ -73,6 +73,8 @@ export interface DaemonStateItem {
   ciFailureNotified?: boolean;
   /** The lastCommitTime when ciFailureNotified was set. */
   ciFailureNotifiedAt?: string | null;
+  /** ISO wall-clock timestamp when CI failure notification was delivered. */
+  ciNotifyWallAt?: string;
   /** cmux workspace reference for the rebaser worker session (rebase-only). */
   rebaserWorkspaceRef?: string;
   /** SHA of the merge commit on the repo default branch (for post-merge CI fix-forward). */
@@ -695,6 +697,7 @@ export function serializeOrchestratorState(
         ...(item.rebaseNudgeCount != null ? { rebaseNudgeCount: item.rebaseNudgeCount } : {}),
         ...(item.ciFailureNotified ? { ciFailureNotified: item.ciFailureNotified } : {}),
         ...(item.ciFailureNotifiedAt ? { ciFailureNotifiedAt: item.ciFailureNotifiedAt } : {}),
+        ...(item.ciNotifyWallAt ? { ciNotifyWallAt: item.ciNotifyWallAt } : {}),
         ...(item.rebaserWorkspaceRef ? { rebaserWorkspaceRef: item.rebaserWorkspaceRef } : {}),
         ...(item.mergeCommitSha ? { mergeCommitSha: item.mergeCommitSha } : {}),
         ...(item.defaultBranch ? { defaultBranch: item.defaultBranch } : {}),

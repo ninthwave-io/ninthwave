@@ -2079,7 +2079,7 @@ describe("reconstructState", () => {
           prNumber: 99,
           title: "Test item",
           lastTransition: "2026-01-01T00:30:00Z",
-          ciFailCount: 3,
+          ciFailCount: 6,
           retryCount: 0,
         },
       ],
@@ -2088,8 +2088,8 @@ describe("reconstructState", () => {
     reconstructState(orch, tmpDir, wtDir, undefined, failingCheckPr, daemonState);
 
     const item = orch.getItem("REC-4")!;
-    // ciFailCount restored to 3 which exceeds maxCiRetries (default 2)
-    expect(item.ciFailCount).toBe(3);
+    // ciFailCount restored to 6 which exceeds maxCiRetries (default 5)
+    expect(item.ciFailCount).toBe(6);
     expect(item.state).toBe("ci-failed");
     // Verify the restored count exceeds the threshold
     expect(item.ciFailCount).toBeGreaterThan(orch.config.maxCiRetries);

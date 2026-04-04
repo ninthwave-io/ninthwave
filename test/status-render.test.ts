@@ -7,6 +7,7 @@ import {
   stateIcon,
   stateLabel,
   truncateTitle,
+  truncateAnsi,
   formatAge,
   formatDuration,
   formatTelemetrySuffix,
@@ -262,6 +263,58 @@ describe("truncateTitle", () => {
   });
 });
 
+describe("truncateAnsi", () => {
+  it("returns full string when within maxWidth", () => {
+    expect(truncateAnsi("Hello", 10)).toBe("Hello");
+  });
+
+  it("truncates plain text with ellipsis", () => {
+    expect(truncateAnsi("Hello World!", 8)).toBe("Hello...");
+  });
+
+  it("counts only visible chars when ANSI CSI sequences are present", () => {
+    const colored = `${RED}Hello${RESET} World`;
+    // "Hello World" = 11 visible chars. At maxWidth 8, cut at 5 + "..."
+    const result = truncateAnsi(colored, 8);
+    // Should include the RED escape, 5 visible chars, RESET, then "..."
+    expect(result).toContain("Hello");
+    expect(result).toContain("...");
+    // Strip ANSI to verify visible width
+    const visibleLen = result.replace(/\x1b\[[0-9;]*m/g, "").length;
+    expect(visibleLen).toBe(8); // 5 + 3 for "..."
+  });
+
+  it("does not truncate when ANSI codes inflate byte length but visible fits", () => {
+    const colored = `${RED}Hi${RESET}`;
+    // "Hi" = 2 visible chars, well under maxWidth 10
+    expect(truncateAnsi(colored, 10)).toBe(colored);
+  });
+
+  it("handles OSC 8 hyperlink sequences", () => {
+    // OSC 8 format: \x1b]8;;URL\x07LABEL\x1b]8;;\x07
+    const link = "\x1b]8;;https://example.com\x07Click\x1b]8;;\x07 here";
+    // Visible: "Click here" = 10 chars. At maxWidth 7, cut at 4 + "..."
+    const result = truncateAnsi(link, 7);
+    expect(result).toContain("...");
+    const visible = result.replace(/\x1b\][^\x07]*\x07/g, "").replace(/\x1b\[[0-9;]*m/g, "");
+    expect(visible.length).toBe(7);
+  });
+
+  it("returns empty string for zero maxWidth", () => {
+    expect(truncateAnsi("Hello", 0)).toBe("");
+  });
+
+  it("handles empty string", () => {
+    expect(truncateAnsi("", 10)).toBe("");
+  });
+
+  it("handles maxWidth smaller than 4 (ellipsis wouldn't fit)", () => {
+    // maxWidth 3: cutWidth = 0, so no visible chars before "..."
+    const result = truncateAnsi("Hello", 3);
+    expect(result).toBe("...");
+  });
+});
+
 describe("blockingIcon", () => {
   it("returns RED ⧗ for count >= 2", () => {
     expect(blockingIcon(2)).toBe(`${RED}⧗${RESET}`);
@@ -453,6 +506,29 @@ describe("formatDuration", () => {
       endedAt: "2026-01-01T01:00:00Z",
     });
     expect(formatDuration(item)).toBe("4m 30s");
+  });
+
+  it("shows respawn countdown for ci-failed items with respawnDeadlineMs", () => {
+    const item = makeStatusItem({
+      state: "ci-failed",
+      respawnDeadlineMs: Date.now() + 45_000, // 45 seconds from now
+      startedAt: "2026-01-01T00:00:00Z",
+    });
+    const result = formatDuration(item);
+    expect(result).toMatch(/^⟳ \d+s$/);
+    // Should be approximately 45s (allow 2s execution time)
+    const seconds = parseInt(result.replace("⟳ ", "").replace("s", ""));
+    expect(seconds).toBeGreaterThanOrEqual(43);
+    expect(seconds).toBeLessThanOrEqual(46);
+  });
+
+  it("shows expired respawn indicator when deadline has passed", () => {
+    const item = makeStatusItem({
+      state: "ci-failed",
+      respawnDeadlineMs: Date.now() - 5_000, // 5 seconds ago
+      startedAt: "2026-01-01T00:00:00Z",
+    });
+    expect(formatDuration(item)).toBe("⟳ ...");
   });
 });
 

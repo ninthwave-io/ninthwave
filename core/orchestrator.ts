@@ -27,6 +27,7 @@ import {
   DEFAULT_CONFIG,
   HEARTBEAT_TIMEOUT_MS,
   NOT_ALIVE_THRESHOLD,
+  CI_FIX_ACK_TIMEOUT_MS,
   LAUNCHING_TIMEOUT_MS,
   TERMINAL_STATES,
   ACTIVE_SESSION_STATES,
@@ -273,6 +274,7 @@ export class Orchestrator {
     if (state === "ci-pending" || state === "ci-passed") {
       item.ciFailureNotified = false;
       item.ciFailureNotifiedAt = undefined;
+      item.ciNotifyWallAt = undefined;
     }
     // Clear failureReason when recovering from a failure state
     if (state !== "ci-failed" && state !== "stuck" && state !== "fix-forward-failed") {
@@ -686,6 +688,28 @@ export class Orchestrator {
   }
 
   /**
+   * Respawn a worker for CI fix when the current worker is dead or unresponsive.
+   * Sets needsCiFix so the relaunched worker knows to fix CI.
+   *
+   * Does NOT consume retryCount -- the retry budget is shared with implementation
+   * crashes and may already be exhausted from earlier attempts. Guard against
+   * infinite loops comes from ciFailCount/maxCiRetries (checked at the top of the
+   * ci-failed handler) and stuckOrRetry in the implementing handler (catches
+   * workers that die immediately after relaunch).
+   */
+  private respawnCiFixWorker(item: OrchestratorItem): Action[] {
+    item.needsCiFix = true;
+    item.notAliveCount = 0;
+    item.lastAliveAt = undefined;
+    // Keep ciFailureNotified = true to prevent the ci-failed handler from
+    // re-sending a notification on this same cycle. The launch action writes
+    // the CI fix message to the inbox AFTER cleanInbox runs.
+    item.ciNotifyWallAt = undefined;
+    this.transition(item, "ready");
+    return [{ type: "retry", itemId: item.id }];
+  }
+
+  /**
    * Unified handler for ci-pending / ci-passed / ci-failed.
    * Chains transitions within a single cycle so CI pass → merge happens immediately.
    */
@@ -743,6 +767,7 @@ export class Orchestrator {
         if (!item.ciFailureNotified) {
           item.ciFailureNotified = true;
           item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
+          item.ciNotifyWallAt = now.toISOString();
           actions.push({
             type: "notify-ci-failure",
             itemId: item.id,
@@ -750,6 +775,35 @@ export class Orchestrator {
             message: "[ORCHESTRATOR] CI Fix Request: CI is still failing -- please investigate and fix.",
           });
         }
+
+        // ── Unresponsive worker detection ──
+        // Layer 1: Process dead (headless fast-path).
+        // Worker session is gone -- debounce to avoid false positives from transient listing failures.
+        if (snap?.workerAlive === false) {
+          item.notAliveCount = (item.notAliveCount ?? 0) + 1;
+          item.failureReason = `worker not responding (${item.notAliveCount}/${NOT_ALIVE_THRESHOLD})`;
+          if (item.notAliveCount >= NOT_ALIVE_THRESHOLD) {
+            return this.respawnCiFixWorker(item);
+          }
+        } else if (snap?.workerAlive === true) {
+          item.notAliveCount = 0;
+        }
+
+        // Layer 2: No ack after notification (TUI -- process alive but AI exited).
+        // The implementer agent heartbeats immediately upon reading a CI fix request.
+        // If no heartbeat arrives within CI_FIX_ACK_TIMEOUT_MS, the worker is unresponsive.
+        if (item.ciFailureNotified && item.ciNotifyWallAt) {
+          const notifyMs = new Date(item.ciNotifyWallAt).getTime();
+          const heartbeatTs = snap?.lastHeartbeat?.ts
+            ? new Date(snap.lastHeartbeat.ts).getTime() : 0;
+          if (heartbeatTs <= notifyMs) {
+            const nowMs = now.getTime();
+            if (nowMs - notifyMs > CI_FIX_ACK_TIMEOUT_MS) {
+              return this.respawnCiFixWorker(item);
+            }
+          }
+        }
+
         return actions;
       }
     }
@@ -776,6 +830,7 @@ export class Orchestrator {
       } else {
         item.ciFailureNotified = true;
         item.ciFailureNotifiedAt = item.lastCommitTime ?? null;
+        item.ciNotifyWallAt = now.toISOString();
         actions.push({
           type: "notify-ci-failure",
           itemId: item.id,
