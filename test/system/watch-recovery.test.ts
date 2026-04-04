@@ -19,6 +19,7 @@ import {
   fakeAiHangScenario,
   readFakeAiLaunches,
 } from "./helpers/fake-ai-scenario.ts";
+import { waitFor } from "../helpers.ts";
 
 const TEST_BIN_DIR = join(import.meta.dirname, "..", "bin");
 
@@ -250,11 +251,14 @@ describe("system: watch recovery", () => {
 
       const restarted = startRecoveryChild(harness, env);
       try {
-        // After restart, item should be auto-relaunched (not held as blocked)
-        await harness.waitForOrchestratorState((state) => {
-          const item = state.items.find((entry) => entry.id === "H-WRR-1");
-          return item?.state === "implementing" ? item : false;
-        }, 15_000);
+        // After restart, item should be auto-relaunched (not held as blocked).
+        // Wait for the second launch to appear rather than polling the state file,
+        // which still shows "implementing" from the pre-crash state and would
+        // match the predicate before the new orchestrator has started its event loop.
+        await waitFor(
+          () => readFakeAiLaunches(harness.stateDir, run.runId).length >= 2 || false,
+          { timeoutMs: 15_000, description: "second fake-AI launch" },
+        );
         expect(readFakeAiLaunches(harness.stateDir, run.runId)).toHaveLength(2);
       } finally {
         await harness.stop(restarted, "SIGKILL");
