@@ -74,6 +74,7 @@ Install [tmux](https://github.com/tmux/tmux/wiki) or [cmux](https://cmux.com) fo
 
    ```bash
    brew install ninthwave-sh/tap/ninthwave
+   nw init # in a repo
    ```
 
 2. Optional but recommended: install `cmux` or `tmux` so you can attach to worker sessions when needed.
