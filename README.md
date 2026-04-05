@@ -58,7 +58,7 @@ brew install ninthwave-sh/tap/ninthwave
 
 Requires [gh](https://cli.github.com).
 
-Install [tmux](https://github.com/tmux/tmux/wiki) or [cmux](https://cmux.com) for the best experience. Ninthwave can launch workers in headless mode, but attachable sessions are what let you jump straight into a worker when you need to inspect or steer it. If you are not already comfortable with tmux, start with cmux.
+Run inside [cmux](https://cmux.com) or [tmux](https://github.com/tmux/tmux/wiki) for the best experience. Ninthwave can launch workers in headless mode, but attachable sessions are what let you jump straight into a worker when you need to inspect or steer it. If you are not already comfortable with tmux, start with cmux.
 
 <p align="center">
   <img src="docs/assets/cmux-worker-panels.png" alt="cmux showing active Ninthwave worker sessions and in-flight task output one step away while Ninthwave runs" />
