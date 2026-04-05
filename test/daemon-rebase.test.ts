@@ -191,6 +191,40 @@ describe("daemon-rebase action escalation", () => {
     expect(item.rebaseAttemptCount).toBe(1);
   });
 
+  it("launches rebaser when worktree exists but no live worker (post-restart)", () => {
+    const { mkdirSync } = require("fs");
+    const { join } = require("path");
+    const tmpWorktreeDir = setupTempRepo();
+    // Create a worktree directory so resolveImplementerInboxTarget finds it
+    const hubWorktreePath = join(tmpWorktreeDir, "ninthwave-H-1-1");
+    mkdirSync(hubWorktreePath, { recursive: true });
+
+    const daemonRebaseDep = vi.fn(() => false);
+    const launchRebaser = vi.fn(() => ({ workspaceRef: "rebaser:1" }));
+    const deps = mockDeps({ daemonRebase: daemonRebaseDep, launchRebaser });
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "ci-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.workspaceRef = undefined; // No live worker (post-restart)
+
+    const ctx = { ...defaultCtx, worktreeDir: tmpWorktreeDir };
+    const result = orch.executeAction(
+      { type: "daemon-rebase", itemId: "H-1-1", message: "Rebase needed." },
+      ctx,
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(daemonRebaseDep).toHaveBeenCalled();
+    expect(deps.writeInbox).not.toHaveBeenCalled();
+    expect(launchRebaser).toHaveBeenCalledWith("H-1-1", 42, ctx.projectRoot, ctx.aiTool);
+    expect(item.state).toBe("rebasing");
+    expect(item.rebaseAttemptCount).toBe(1);
+  });
+
   it("honors the maxRebaseAttempts circuit breaker during escalation", () => {
     const launchRebaser = vi.fn(() => ({ workspaceRef: "rebaser:1" }));
     const deps = mockDeps({ daemonRebase: vi.fn(() => false), launchRebaser });

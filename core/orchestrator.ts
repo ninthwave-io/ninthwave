@@ -1014,8 +1014,15 @@ export class Orchestrator {
     const actions: Action[] = [];
     // External merge and rebase tracking handled by interceptors.
 
-    // If review approved and CI still passes, evaluate merge
-    if (snap?.reviewDecision === "APPROVED" && snap?.ciStatus === "pass") {
+    // Re-evaluate merge when:
+    // 1. GitHub review approved and CI passes, OR
+    // 2. AI review completed, CI passes, and merge strategy allows auto-merge
+    //    (handles items that entered review-pending with manual strategy but
+    //    strategy was later changed to auto, or startup flow defaulted to manual)
+    const canAutoMerge = item.reviewCompleted
+      && snap?.ciStatus === "pass"
+      && (this.config.mergeStrategy === "auto" || this.config.mergeStrategy === "bypass");
+    if ((snap?.reviewDecision === "APPROVED" && snap?.ciStatus === "pass") || canAutoMerge) {
       actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
       return actions;
     }
@@ -1204,19 +1211,33 @@ export class Orchestrator {
   ): Action[] {
     const actions: Action[] = [];
 
-    // Rebaser worker pushed -- CI re-triggered
-    if (snap?.ciStatus === "pending" || snap?.ciStatus === "pass" || snap?.ciStatus === "fail") {
-      this.transition(item, "ci-pending");
-      this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
-      actions.push({ type: "clean-rebaser", itemId: item.id });
-      return actions;
-    }
+    // Don't react to CI status while the rebaser is actively working.
+    // The pre-rebase PR still has its old CI status; transitioning on it
+    // immediately kills the rebaser before it can push.
+    const heartbeatTs = snap?.lastHeartbeat?.ts;
+    const hasActiveHeartbeat = heartbeatTs != null
+      && (Date.now() - new Date(heartbeatTs).getTime()) < HEARTBEAT_TIMEOUT_MS;
 
-    // Rebaser worker died without pushing
-    if (item.rebaserWorkspaceRef && this.checkWorkerLiveness(item, snap) === "dead") {
-      this.transition(item, "stuck");
-      item.failureReason = "rebase-failed: rebaser worker could not resolve rebase conflicts";
-      actions.push({ type: "clean-rebaser", itemId: item.id });
+    if (!hasActiveHeartbeat) {
+      // Rebaser is no longer sending heartbeats. Check if CI is from a post-rebase push.
+      const rebaseStartMs = new Date(item.lastTransition).getTime();
+      const eventMs = snap?.eventTime ? new Date(snap.eventTime).getTime() : 0;
+      const isFreshCi = Number.isFinite(rebaseStartMs) && Number.isFinite(eventMs)
+        && eventMs > rebaseStartMs;
+
+      if (isFreshCi && (snap?.ciStatus === "pending" || snap?.ciStatus === "pass" || snap?.ciStatus === "fail")) {
+        this.transition(item, "ci-pending");
+        this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
+        actions.push({ type: "clean-rebaser", itemId: item.id });
+        return actions;
+      }
+
+      // Rebaser worker died without pushing
+      if (item.rebaserWorkspaceRef && this.checkWorkerLiveness(item, snap) === "dead") {
+        this.transition(item, "stuck");
+        item.failureReason = "rebase-failed: rebaser worker could not resolve rebase conflicts";
+        actions.push({ type: "clean-rebaser", itemId: item.id });
+      }
     }
 
     return actions;
@@ -1624,6 +1645,18 @@ export class Orchestrator {
       .map((a) => ({ action: a, item: this.items.get(a.itemId)! }))
       .filter((entry) => entry.item != null)
       .sort((a, b) => {
+        // Items with unmerged dependencies go last. Their PRs target
+        // ninthwave/* branches and need retargeting after the dep merges --
+        // merging them first always fails and blocks the base item.
+        const aHasUnmergedDeps = a.item.workItem.dependencies.some(depId => {
+          const dep = this.items.get(depId);
+          return dep && dep.state !== "done" && dep.state !== "merged";
+        }) ? 1 : 0;
+        const bHasUnmergedDeps = b.item.workItem.dependencies.some(depId => {
+          const dep = this.items.get(depId);
+          return dep && dep.state !== "done" && dep.state !== "merged";
+        }) ? 1 : 0;
+        if (aHasUnmergedDeps !== bHasUnmergedDeps) return aHasUnmergedDeps - bHasUnmergedDeps;
         const aRank = PRIORITY_NUM[a.item.workItem.priority as Priority] ?? 999;
         const bRank = PRIORITY_NUM[b.item.workItem.priority as Priority] ?? 999;
         if (aRank !== bRank) return aRank - bRank;
@@ -1657,7 +1690,7 @@ export class Orchestrator {
 
     for (const depId of deps) {
       const dep = this.items.get(depId);
-      if (!dep) return { canStack: false }; // unknown dep -- can't stack
+      if (!dep) continue; // unknown dep -- likely completed and cleaned up; treat as done
 
       if (dep.state === "done" || (!this.config.fixForward && dep.state === "merged")) {
         continue; // this dep is finished (code is on main)

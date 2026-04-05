@@ -1651,7 +1651,7 @@ describe("adaptivePollInterval", () => {
     expect(adaptivePollInterval(orch)).toBe(2_000);
   });
 
-  it("scales linearly with active items, capped at 30s", () => {
+  it("scales linearly with active items, floor 10s, capped at 30s", () => {
     const orch = new Orchestrator();
     // Add 3 items in PR-polling states
     for (const id of ["A-1-1", "A-1-2", "A-1-3"]) {
@@ -1659,7 +1659,7 @@ describe("adaptivePollInterval", () => {
       orch.getItem(id)!.reviewCompleted = true;
       orch.hydrateState(id, "ci-pending");
     }
-    expect(adaptivePollInterval(orch)).toBe(9_000); // 3 * 3000
+    expect(adaptivePollInterval(orch)).toBe(12_000); // max(10000, 3 * 4000)
 
     // Add more to hit cap
     for (const id of ["A-1-4", "A-1-5", "A-1-6", "A-1-7", "A-1-8", "A-1-9", "A-1-10", "A-1-11"]) {
@@ -1667,8 +1667,19 @@ describe("adaptivePollInterval", () => {
       orch.getItem(id)!.reviewCompleted = true;
       orch.hydrateState(id, "implementing");
     }
-    // 11 items * 3000 = 33000, capped at 30000
+    // 11 items * 4000 = 44000, capped at 30000
     expect(adaptivePollInterval(orch)).toBe(30_000);
+  });
+
+  it("enforces 10s floor for 2 active items", () => {
+    const orch = new Orchestrator();
+    for (const id of ["A-1-1", "A-1-2"]) {
+      orch.addItem(makeWorkItem(id));
+      orch.getItem(id)!.reviewCompleted = true;
+      orch.hydrateState(id, "ci-pending");
+    }
+    // 2 * 4000 = 8000, floored to 10000
+    expect(adaptivePollInterval(orch)).toBe(10_000);
   });
 
   it("only counts PR-polling states, ignores queued/done", () => {

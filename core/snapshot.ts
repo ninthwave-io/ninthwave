@@ -351,7 +351,7 @@ export function buildSnapshot(
 ): PollSnapshot {
   const items: ItemSnapshot[] = [];
   const readyIds: string[] = [];
-  const heartbeatStates = new Set(["launching", "implementing", "ci-failed", "ci-pending", "ci-passed", "review-pending", "merging"]);
+  const heartbeatStates = new Set(["launching", "implementing", "ci-failed", "ci-pending", "ci-passed", "review-pending", "rebasing", "merging"]);
   let apiErrorCount = 0;
   const apiErrorByKind: Record<string, number> = {};
   const firstErrorByKind: Record<string, string> = {};
@@ -397,7 +397,11 @@ export function buildSnapshot(
 
     const prResult = pollTrackedPrStatus(orchItem, projectRoot, checkPr);
     const statusLine = prResult.statusLine;
-    if (prResult.failure && prPollStates.has(orchItem.state)) {
+    // Only count critical API errors (availability, prList, prView) toward the
+    // error backoff. prChecks failures are handled gracefully (treated as zero
+    // checks with grace period), so they shouldn't engage the global backoff
+    // and block actions for other healthy items.
+    if (prResult.failure && prResult.failure.stage !== "prChecks" && prPollStates.has(orchItem.state)) {
       apiErrorCount++;
       apiErrorByKind[prResult.failure.kind] = (apiErrorByKind[prResult.failure.kind] ?? 0) + 1;
       if (!firstErrorByKind[prResult.failure.kind]) {
@@ -600,7 +604,7 @@ export async function buildSnapshotAsync(
 ): Promise<PollSnapshot> {
   const items: ItemSnapshot[] = [];
   const readyIds: string[] = [];
-  const heartbeatStates = new Set(["launching", "implementing", "ci-failed", "ci-pending", "ci-passed", "review-pending", "merging"]);
+  const heartbeatStates = new Set(["launching", "implementing", "ci-failed", "ci-pending", "ci-passed", "review-pending", "rebasing", "merging"]);
   let apiErrorCount = 0;
   const apiErrorByKind: Record<string, number> = {};
   const firstErrorByKind: Record<string, string> = {};
@@ -646,7 +650,11 @@ export async function buildSnapshotAsync(
     // Check PR status via async gh -- yields to event loop per call
     const prResult = await pollTrackedPrStatusAsync(orchItem, projectRoot, checkPr);
     const statusLine = prResult.statusLine;
-    if (prResult.failure && prPollStates.has(orchItem.state)) {
+    // Only count critical API errors (availability, prList, prView) toward the
+    // error backoff. prChecks failures are handled gracefully (treated as zero
+    // checks with grace period), so they shouldn't engage the global backoff
+    // and block actions for other healthy items.
+    if (prResult.failure && prResult.failure.stage !== "prChecks" && prPollStates.has(orchItem.state)) {
       apiErrorCount++;
       apiErrorByKind[prResult.failure.kind] = (apiErrorByKind[prResult.failure.kind] ?? 0) + 1;
       if (!firstErrorByKind[prResult.failure.kind]) {

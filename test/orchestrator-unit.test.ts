@@ -3846,7 +3846,7 @@ describe("rebaser worker state transitions", () => {
     item.rebaseRequested = true;
 
     const snapshot: PollSnapshot = {
-      items: [{ id: "H-1-1", ciStatus: "pending", workerAlive: true }],
+      items: [{ id: "H-1-1", ciStatus: "pending", workerAlive: true, eventTime: new Date(Date.now() + 60_000).toISOString() }],
       readyIds: [],
     };
 
@@ -4145,9 +4145,12 @@ describe("rebase circuit breaker and worker message priority", () => {
       expect(item.state).toBe("rebasing");
 
       // 3. Rebaser worker pushes → CI restarts
-      const rebaserDoneAt = new Date(now.getTime() + 1_000);
+      // eventTime must be after item.lastTransition (real clock) to be treated as fresh CI
+      const transitionMs = new Date(item.lastTransition).getTime();
+      const freshEventTime = new Date(transitionMs + 5_000).toISOString();
+      const rebaserDoneAt = new Date(transitionMs + 5_000);
       const rebaserDoneSnap: PollSnapshot = {
-        items: [{ id: "H-1-1", ciStatus: "pending", workerAlive: true, eventTime: rebaserDoneAt.toISOString() }],
+        items: [{ id: "H-1-1", ciStatus: "pending", workerAlive: true, eventTime: freshEventTime }],
         readyIds: [],
       };
       orch.processTransitions(rebaserDoneSnap, rebaserDoneAt);

@@ -2906,13 +2906,16 @@ describe("Orchestrator", () => {
     // ── rebasing ──────────────────────────────────────────────────
 
     describe("rebasing →", () => {
+      // Fresh CI eventTime (after rebase started) is required for transition
+      const freshEventTime = new Date(Date.now() + 60_000).toISOString();
+
       it("→ ci-pending when rebaser worker pushes fix (CI restarts with pending)", () => {
         orch.addItem(makeWorkItem("X-1-1"));
         orch.getItem("X-1-1")!.reviewCompleted = true;
         orch.hydrateState("X-1-1", "rebasing");
         orch.getItem("X-1-1")!.rebaserWorkspaceRef = "workspace:rebaser-1";
         const actions = orch.processTransitions(
-          snapshotWith([{ id: "X-1-1", ciStatus: "pending", prState: "open" }]),
+          snapshotWith([{ id: "X-1-1", ciStatus: "pending", prState: "open", eventTime: freshEventTime }]),
         );
         expect(orch.getItem("X-1-1")!.state).toBe("ci-pending");
         expect(orch.getItem("X-1-1")!.rebaseRequested).toBe(false);
@@ -2925,7 +2928,7 @@ describe("Orchestrator", () => {
         orch.hydrateState("X-1-1", "rebasing");
         orch.getItem("X-1-1")!.rebaserWorkspaceRef = "workspace:rebaser-1";
         const actions = orch.processTransitions(
-          snapshotWith([{ id: "X-1-1", ciStatus: "pass", prState: "open" }]),
+          snapshotWith([{ id: "X-1-1", ciStatus: "pass", prState: "open", eventTime: freshEventTime }]),
         );
         // Even "pass" transitions to ci-pending first (re-evaluated on next tick)
         expect(orch.getItem("X-1-1")!.state).toBe("ci-pending");
@@ -2938,11 +2941,43 @@ describe("Orchestrator", () => {
         orch.hydrateState("X-1-1", "rebasing");
         orch.getItem("X-1-1")!.rebaserWorkspaceRef = "workspace:rebaser-1";
         const actions = orch.processTransitions(
-          snapshotWith([{ id: "X-1-1", ciStatus: "fail", prState: "open" }]),
+          snapshotWith([{ id: "X-1-1", ciStatus: "fail", prState: "open", eventTime: freshEventTime }]),
         );
         // Any CI status change means rebaser pushed -- transition to ci-pending for re-evaluation
         expect(orch.getItem("X-1-1")!.state).toBe("ci-pending");
         expect(actions.some((a) => a.type === "clean-rebaser")).toBe(true);
+      });
+
+      it("stays rebasing when CI is stale (pre-rebase eventTime)", () => {
+        orch.addItem(makeWorkItem("X-1-1"));
+        orch.getItem("X-1-1")!.reviewCompleted = true;
+        orch.hydrateState("X-1-1", "rebasing");
+        orch.getItem("X-1-1")!.rebaserWorkspaceRef = "workspace:rebaser-1";
+        // eventTime is hours before rebase started -- stale pre-rebase CI
+        const staleEventTime = new Date(Date.now() - 3_600_000).toISOString();
+        const actions = orch.processTransitions(
+          snapshotWith([{ id: "X-1-1", ciStatus: "pass", prState: "open", eventTime: staleEventTime }]),
+        );
+        expect(orch.getItem("X-1-1")!.state).toBe("rebasing");
+        expect(actions.some((a) => a.type === "clean-rebaser")).toBe(false);
+      });
+
+      it("stays rebasing while rebaser has active heartbeat even with CI status", () => {
+        orch.addItem(makeWorkItem("X-1-1"));
+        orch.getItem("X-1-1")!.reviewCompleted = true;
+        orch.hydrateState("X-1-1", "rebasing");
+        orch.getItem("X-1-1")!.rebaserWorkspaceRef = "workspace:rebaser-1";
+        const actions = orch.processTransitions(
+          snapshotWith([{
+            id: "X-1-1",
+            ciStatus: "pass",
+            prState: "open",
+            eventTime: freshEventTime,
+            lastHeartbeat: { id: "X-1-1", progress: 0.5, label: "Rebasing", ts: new Date().toISOString() },
+          }]),
+        );
+        expect(orch.getItem("X-1-1")!.state).toBe("rebasing");
+        expect(actions.some((a) => a.type === "clean-rebaser")).toBe(false);
       });
 
       it("→ stuck when rebaser worker dies without pushing (debounced)", () => {
@@ -3124,6 +3159,32 @@ describe("Orchestrator", () => {
         // CI fail is always detected from review-pending regardless of strategy (H-RX-1)
         expect(orch.getItem("X-1-1")!.state).toBe("ci-failed");
         expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(true);
+      });
+
+      it("→ merging when auto strategy and reviewCompleted, even without GitHub approval", () => {
+        orch = new Orchestrator({ mergeStrategy: "auto" });
+        orch.addItem(makeWorkItem("X-1-1"));
+        orch.getItem("X-1-1")!.reviewCompleted = true;
+        orch.hydrateState("X-1-1", "review-pending");
+        orch.getItem("X-1-1")!.prNumber = 10;
+        const actions = orch.processTransitions(
+          snapshotWith([{ id: "X-1-1", ciStatus: "pass", prState: "open" }]),
+        );
+        expect(orch.getItem("X-1-1")!.state).toBe("merging");
+        expect(actions.some((a) => a.type === "merge")).toBe(true);
+      });
+
+      it("stays review-pending for manual strategy even with reviewCompleted and CI pass", () => {
+        orch = new Orchestrator({ mergeStrategy: "manual" });
+        orch.addItem(makeWorkItem("X-1-1"));
+        orch.getItem("X-1-1")!.reviewCompleted = true;
+        orch.hydrateState("X-1-1", "review-pending");
+        orch.getItem("X-1-1")!.prNumber = 10;
+        const actions = orch.processTransitions(
+          snapshotWith([{ id: "X-1-1", ciStatus: "pass", prState: "open" }]),
+        );
+        expect(orch.getItem("X-1-1")!.state).toBe("review-pending");
+        expect(actions).toHaveLength(0);
       });
 
       it("→ merged when PR externally merged during CHANGES_REQUESTED review", () => {
@@ -5258,11 +5319,27 @@ describe("Orchestrator", () => {
         expect(result.canStack).toBe(false);
       });
 
-      it("returns canStack: false when dep is unknown (not tracked)", () => {
-        orch.addItem(makeWorkItem("A-1-2", ["A-1-1"])); // A-1-1 not added
+      it("treats unknown dep as done (completed and cleaned up)", () => {
+        orch.addItem(makeWorkItem("A-1-2", ["A-1-1"])); // A-1-1 not added -- likely completed
 
+        // With only unknown deps, all are treated as done, so no stackable dep exists
         const result = orch.canStackLaunch(orch.getItem("A-1-2")!);
         expect(result.canStack).toBe(false);
+      });
+
+      it("stacks when one dep is unknown (completed) and another is stackable", () => {
+        // A-1-1 is not tracked (completed, work item removed)
+        orch.addItem(makeWorkItem("A-1-2"));
+        orch.getItem("A-1-2")!.reviewCompleted = true;
+        orch.addItem(makeWorkItem("A-1-3", ["A-1-1", "A-1-2"]));
+        orch.hydrateState("A-1-2", "ci-passed");
+        orch.getItem("A-1-2")!.reviewCompleted = true;
+
+        const result = orch.canStackLaunch(orch.getItem("A-1-3")!);
+        expect(result.canStack).toBe(true);
+        if (result.canStack) {
+          expect(result.baseBranch).toBe("ninthwave/A-1-2");
+        }
       });
     });
 

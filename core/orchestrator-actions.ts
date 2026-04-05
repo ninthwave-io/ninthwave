@@ -21,7 +21,7 @@ import {
 
 type InboxTargetSource = "hub-worktree" | "item-worktree";
 type InboxTargetReason = "no-worktree-path" | "item-worktree-missing";
-type InboxDeliveryOutcome = "delivered" | "missing-target" | "relaunch-requested";
+type InboxDeliveryOutcome = "delivered" | "missing-target" | "no-live-worker" | "relaunch-requested";
 
 interface InboxTargetResolution {
   projectRoot: string | null;
@@ -838,11 +838,15 @@ export function executeDaemonRebase(
   if (!escalateToRebaser) {
     // Daemon rebase failed -- prefer sending message to the live worker first.
     // The original worker knows the code best and can resolve conflicts properly.
-    if (inboxTarget.projectRoot) {
+    // Guard on workspaceRef: after a fresh restart, worktrees persist on disk but
+    // the worker process is gone. Without this check, the inbox message goes to
+    // an empty worktree and the 15-minute cooldown blocks the rebaser launch.
+    if (inboxTarget.projectRoot && item.workspaceRef) {
       deliverToImplementerInbox(orch, item, "daemon-rebase", message, ctx, deps);
       return { success: true };
     }
-    logInboxDelivery(orch, item, "daemon-rebase", message, inboxTarget, "missing-target");
+    const outcome: InboxDeliveryOutcome = inboxTarget.projectRoot ? "no-live-worker" : "missing-target";
+    logInboxDelivery(orch, item, "daemon-rebase", message, inboxTarget, outcome);
   }
 
   // Circuit breaker: stop launching rebasers after maxRebaseAttempts
