@@ -66,7 +66,7 @@ describe("scenario: stuck detection", () => {
     expect(item.state).toBe("done");
     expect(item.retryCount).toBe(1);
     // Launch called twice: initial + retry relaunch
-    expect(actionDeps.launchSingleItem).toHaveBeenCalledTimes(2);
+    expect(actionDeps.workers.launchSingleItem).toHaveBeenCalledTimes(2);
   });
 
   it("worker dies and retry exhausted, item goes stuck with failureReason", async () => {
@@ -106,7 +106,7 @@ describe("scenario: stuck detection", () => {
     expect(item.failureReason).toContain("worker-crashed");
     expect(item.retryCount).toBe(1);
     // workspace-close action emitted on stuck transition
-    expect(actionDeps.closeWorkspace).toHaveBeenCalled();
+    expect(actionDeps.mux.closeWorkspace).toHaveBeenCalled();
   });
 
   it("worker dies during launching state, debounce and retry logic applies", async () => {
@@ -156,7 +156,7 @@ describe("scenario: stuck detection", () => {
     expect(item.state).toBe("done");
     expect(item.retryCount).toBe(1);
     // Launch called twice: initial + retry relaunch
-    expect(actionDeps.launchSingleItem).toHaveBeenCalledTimes(2);
+    expect(actionDeps.workers.launchSingleItem).toHaveBeenCalledTimes(2);
   });
 
   it("debounce: single not-alive poll does NOT trigger stuck", async () => {

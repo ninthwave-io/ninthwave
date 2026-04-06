@@ -30,6 +30,7 @@ import {
   type PollSnapshot,
   type ExecutionContext,
   type OrchestratorDeps,
+  type DeepPartial,
   type OrchestratorConfig,
   type OrchestratorItem,
 } from "../core/orchestrator.ts";
@@ -53,25 +54,42 @@ function makeWorkItem(id: string, deps: string[] = []): WorkItem {
   };
 }
 
-function mockActionDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps {
+function mockActionDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
   return {
-    launchSingleItem: vi.fn(() => {
-      const worktreePath = "/tmp/test/item-test";
-      mkdirSync(worktreePath, { recursive: true });
-      return {
-        worktreePath,
-        workspaceRef: "workspace:1",
-      };
-    }),
-    cleanSingleWorktree: vi.fn(() => true),
-    prMerge: vi.fn(() => true),
-    prComment: vi.fn(() => true),
-    sendMessage: vi.fn(() => true),
-    writeInbox: vi.fn(),
-    closeWorkspace: vi.fn(() => true),
-    fetchOrigin: vi.fn(),
-    ffMerge: vi.fn(),
-    ...overrides,
+    git: {
+      fetchOrigin: vi.fn(),
+      ffMerge: vi.fn(),
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: vi.fn(() => true),
+      prComment: vi.fn(() => true),
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: vi.fn(() => true),
+      closeWorkspace: vi.fn(() => true),
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: vi.fn(() => {
+        const worktreePath = "/tmp/test/item-test";
+        mkdirSync(worktreePath, { recursive: true });
+        return {
+          worktreePath,
+          workspaceRef: "workspace:1",
+        };
+      }),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: vi.fn(() => true),
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: vi.fn(),
+      ...overrides?.io,
+    },
   };
 }
 

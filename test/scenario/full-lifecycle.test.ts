@@ -61,8 +61,8 @@ describe("scenario: full lifecycle", () => {
     const finalItem = orch.getItem("H-1");
     expect(finalItem).toBeDefined();
     expect(finalItem!.state).toBe("done");
-    expect(actionDeps.launchSingleItem).toHaveBeenCalledTimes(1);
-    expect(actionDeps.prMerge).toHaveBeenCalled();
+    expect(actionDeps.workers.launchSingleItem).toHaveBeenCalledTimes(1);
+    expect(actionDeps.gh.prMerge).toHaveBeenCalled();
     expect(fakeGh.getPR("ninthwave/H-1")!.state).toBe("merged");
   });
 

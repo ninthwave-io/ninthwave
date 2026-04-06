@@ -10,6 +10,7 @@ import {
   statusDisplayForState,
   type OrchestratorItem,
   type OrchestratorDeps,
+  type DeepPartial,
   type ExecutionContext,
   type PollSnapshot,
   type ItemSnapshot,
@@ -449,16 +450,28 @@ describe("merge commit SHA retrieval in executeMerge", () => {
     };
 
     const deps: OrchestratorDeps = {
-      launchSingleItem: () => null,
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
-      fetchOrigin: () => {},
-      ffMerge: () => {},
-      getMergeCommitSha: (_repoRoot, _prNum) => "sha-merge-abc",
-      checkCommitCI: () => "pending",
+      git: {
+        fetchOrigin: () => {},
+        ffMerge: () => {},
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        getMergeCommitSha: (_repoRoot, _prNum) => "sha-merge-abc",
+        checkCommitCI: () => "pending",
+      },
+      mux: {
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
     };
 
     const result = orch.executeAction(
@@ -489,16 +502,28 @@ describe("merge commit SHA retrieval in executeMerge", () => {
     };
 
     const deps: OrchestratorDeps = {
-      launchSingleItem: () => null,
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
-      fetchOrigin: () => {},
-      ffMerge: () => {},
-      getMergeCommitSha: () => null,
-      checkCommitCI: () => "pending",
+      git: {
+        fetchOrigin: () => {},
+        ffMerge: () => {},
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        getMergeCommitSha: () => null,
+        checkCommitCI: () => "pending",
+      },
+      mux: {
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
     };
 
     orch.executeAction(
@@ -530,16 +555,28 @@ describe("merge commit SHA retrieval in executeMerge", () => {
     };
 
     const deps: OrchestratorDeps = {
-      launchSingleItem: () => null,
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
-      fetchOrigin: () => {},
-      ffMerge: () => {},
-      getMergeCommitSha: () => { throw new Error("API error"); },
-      checkCommitCI: () => "pending",
+      git: {
+        fetchOrigin: () => {},
+        ffMerge: () => {},
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        getMergeCommitSha: () => { throw new Error("API error"); },
+        checkCommitCI: () => "pending",
+      },
+      mux: {
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
     };
 
     orch.executeAction(
@@ -572,17 +609,29 @@ describe("merge commit SHA retrieval in executeMerge", () => {
     const fetchOrigin = vi.fn();
     const ffMerge = vi.fn();
     const deps: OrchestratorDeps = {
-      launchSingleItem: () => null,
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
-      fetchOrigin,
-      ffMerge,
-      getDefaultBranch: () => "develop",
-      getMergeCommitSha: () => "sha-merge-abc",
-      checkCommitCI: () => "pending",
+      git: {
+        fetchOrigin,
+        ffMerge,
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        getDefaultBranch: () => "develop",
+        getMergeCommitSha: () => "sha-merge-abc",
+        checkCommitCI: () => "pending",
+      },
+      mux: {
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
     };
 
     const result = orch.executeAction(
@@ -1241,15 +1290,27 @@ describe("executeLaunchForwardFixer action", () => {
   };
 
   const baseDeps: OrchestratorDeps = {
-    launchSingleItem: () => null,
-    cleanSingleWorktree: () => true,
-    prMerge: () => true,
-    prComment: () => true,
-    writeInbox: () => {},
-    closeWorkspace: () => true,
-    fetchOrigin: () => {},
-    ffMerge: () => {},
-  };
+      git: {
+        fetchOrigin: () => {},
+        ffMerge: () => {},
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+      },
+      mux: {
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
+    };
 
   it("sets fixForwardWorkspaceRef on successful launch", () => {
     const orch = new Orchestrator({ fixForward: true });
@@ -1261,13 +1322,15 @@ describe("executeLaunchForwardFixer action", () => {
 
     const deps: OrchestratorDeps = {
       ...baseDeps,
-      launchForwardFixer: (itemId, _sha, _repoRoot, _aiTool, defaultBranch) => {
+      workers: {
+        launchForwardFixer: (itemId, _sha, _repoRoot, _aiTool, defaultBranch) => {
         expect(itemId).toBe("H-1-1");
         expect(defaultBranch).toBe("develop");
         return ({
         worktreePath: "/tmp/proj/.ninthwave/.worktrees/ninthwave-fix-forward-H-1-1",
         workspaceRef: "workspace:7",
         });
+      },
       },
     };
 
@@ -1307,7 +1370,9 @@ describe("executeLaunchForwardFixer action", () => {
 
     const deps: OrchestratorDeps = {
       ...baseDeps,
-      launchForwardFixer: () => ({ worktreePath: "/tmp", workspaceRef: "workspace:7" }),
+      workers: {
+        launchForwardFixer: () => ({ worktreePath: "/tmp", workspaceRef: "workspace:7" }),
+      },
     };
 
     const result = orch.executeAction(
@@ -1332,15 +1397,27 @@ describe("executeCleanForwardFixer action", () => {
   };
 
   const baseDeps: OrchestratorDeps = {
-    launchSingleItem: () => null,
-    cleanSingleWorktree: () => true,
-    prMerge: () => true,
-    prComment: () => true,
-    writeInbox: () => {},
-    closeWorkspace: () => true,
-    fetchOrigin: () => {},
-    ffMerge: () => {},
-  };
+      git: {
+        fetchOrigin: () => {},
+        ffMerge: () => {},
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+      },
+      mux: {
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
+    };
 
   it("cleans up forward-fixer workspace and clears fixForwardWorkspaceRef", () => {
     const orch = new Orchestrator({ fixForward: true });
@@ -1352,9 +1429,11 @@ describe("executeCleanForwardFixer action", () => {
     let cleanCalled = false;
     const deps: OrchestratorDeps = {
       ...baseDeps,
-      cleanForwardFixer: (_itemId, _wsRef) => {
+      cleanup: {
+        cleanForwardFixer: (_itemId, _wsRef) => {
         cleanCalled = true;
         return true;
+      },
       },
     };
 

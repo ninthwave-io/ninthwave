@@ -21,6 +21,7 @@ import {
   type ItemSnapshot,
   type PollSnapshot,
   type OrchestratorDeps,
+  type DeepPartial,
   type ExecutionContext,
 } from "../core/orchestrator.ts";
 import {
@@ -88,19 +89,36 @@ function stubCtx(): ExecutionContext {
 }
 
 /** Create stub OrchestratorDeps with all required functions. */
-function stubDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
+function stubDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
   return {
-    launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "ws:1" }),
-    cleanSingleWorktree: () => true,
-    prMerge: () => true,
-    prComment: () => true,
-    sendMessage: () => true,
-    writeInbox: () => {},
-    closeWorkspace: () => true,
-    fetchOrigin: () => {},
-    ffMerge: () => {},
-    checkPrMergeable: () => true,
-    ...overrides,
+    git: {
+      fetchOrigin: () => {},
+      ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      checkPrMergeable: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "ws:1" }),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
   };
 }
 
@@ -438,10 +456,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
 
       const ctx = stubCtx();
       // prMerge always fails, checkPrMergeable returns true (not a conflict -- genuine failure)
-      const deps = stubDeps({
-        prMerge: () => false,
-        checkPrMergeable: () => true,
-      });
+      const deps = stubDeps({ gh: { prMerge: () => false, checkPrMergeable: () => true } });
 
       // Attempt 1: ci-passed → merging (via processTransitions) → executeMerge fails → ci-passed
       let snapshot = snapshotWith([
@@ -569,11 +584,7 @@ describe("Merge detection pipeline (end-to-end)", () => {
 
       const ctx = stubCtx();
       // prMerge fails AND checkPrMergeable returns false (conflict)
-      const deps = stubDeps({
-        prMerge: () => false,
-        checkPrMergeable: () => false,
-        daemonRebase: () => true, // daemon rebase succeeds
-      });
+      const deps = stubDeps({ git: { daemonRebase: () => true }, gh: { prMerge: () => false, checkPrMergeable: () => false } });
 
       // Get merge action
       const snapshot = snapshotWith([

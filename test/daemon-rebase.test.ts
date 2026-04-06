@@ -13,6 +13,7 @@ import {
   Orchestrator,
   type ExecutionContext,
   type OrchestratorDeps,
+  type DeepPartial,
 } from "../core/orchestrator.ts";
 import type { WorkItem } from "../core/types.ts";
 
@@ -146,21 +147,38 @@ const defaultCtx: ExecutionContext = {
   hubRepoNwo: "test-owner/test-repo",
 };
 
-function mockDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps {
+function mockDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
   return {
-    launchSingleItem: vi.fn(() => ({
-      worktreePath: "/tmp/test/ninthwave-test",
-      workspaceRef: "workspace:1",
-    })),
-    cleanSingleWorktree: vi.fn(() => true),
-    prMerge: vi.fn(() => true),
-    prComment: vi.fn(() => true),
-    sendMessage: vi.fn(() => true),
-    writeInbox: vi.fn(),
-    closeWorkspace: vi.fn(() => true),
-    fetchOrigin: vi.fn(),
-    ffMerge: vi.fn(),
-    ...overrides,
+    git: {
+      fetchOrigin: vi.fn(),
+      ffMerge: vi.fn(),
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: vi.fn(() => true),
+      prComment: vi.fn(() => true),
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: vi.fn(() => true),
+      closeWorkspace: vi.fn(() => true),
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: vi.fn(() => ({
+        worktreePath: "/tmp/test/ninthwave-test",
+        workspaceRef: "workspace:1",
+      })),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: vi.fn(() => true),
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: vi.fn(),
+      ...overrides?.io,
+    },
   };
 }
 
@@ -168,7 +186,7 @@ describe("daemon-rebase action escalation", () => {
   it("escalates stale conflicts to the rebaser even when the worker is alive", () => {
     const daemonRebaseDep = vi.fn(() => false);
     const launchRebaser = vi.fn(() => ({ workspaceRef: "rebaser:1" }));
-    const deps = mockDeps({ daemonRebase: daemonRebaseDep, launchRebaser });
+    const deps = mockDeps({ git: { daemonRebase: daemonRebaseDep }, workers: { launchRebaser } });
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -186,7 +204,7 @@ describe("daemon-rebase action escalation", () => {
     expect(result.success).toBe(true);
     expect(daemonRebaseDep).toHaveBeenCalled();
     expect(launchRebaser).toHaveBeenCalledWith("H-1-1", 42, defaultCtx.projectRoot, defaultCtx.aiTool);
-    expect(deps.writeInbox).not.toHaveBeenCalled();
+    expect(deps.io.writeInbox).not.toHaveBeenCalled();
     expect(item.state).toBe("rebasing");
     expect(item.rebaseAttemptCount).toBe(1);
   });
@@ -201,7 +219,7 @@ describe("daemon-rebase action escalation", () => {
 
     const daemonRebaseDep = vi.fn(() => false);
     const launchRebaser = vi.fn(() => ({ workspaceRef: "rebaser:1" }));
-    const deps = mockDeps({ daemonRebase: daemonRebaseDep, launchRebaser });
+    const deps = mockDeps({ git: { daemonRebase: daemonRebaseDep }, workers: { launchRebaser } });
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -219,7 +237,7 @@ describe("daemon-rebase action escalation", () => {
 
     expect(result.success).toBe(true);
     expect(daemonRebaseDep).toHaveBeenCalled();
-    expect(deps.writeInbox).not.toHaveBeenCalled();
+    expect(deps.io.writeInbox).not.toHaveBeenCalled();
     expect(launchRebaser).toHaveBeenCalledWith("H-1-1", 42, ctx.projectRoot, ctx.aiTool);
     expect(item.state).toBe("rebasing");
     expect(item.rebaseAttemptCount).toBe(1);
@@ -227,7 +245,7 @@ describe("daemon-rebase action escalation", () => {
 
   it("honors the maxRebaseAttempts circuit breaker during escalation", () => {
     const launchRebaser = vi.fn(() => ({ workspaceRef: "rebaser:1" }));
-    const deps = mockDeps({ daemonRebase: vi.fn(() => false), launchRebaser });
+    const deps = mockDeps({ git: { daemonRebase: vi.fn(() => false) }, workers: { launchRebaser } });
     const orch = new Orchestrator({ maxRebaseAttempts: 2 });
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;

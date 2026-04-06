@@ -196,7 +196,7 @@ describe("scenario: crew coordination", () => {
     expect(broker.completes).toContain("C-1");
 
     // Assert: launch was executed
-    expect(actionDeps.launchSingleItem).toHaveBeenCalledTimes(1);
+    expect(actionDeps.workers.launchSingleItem).toHaveBeenCalledTimes(1);
   });
 
   // ── Scenario 2: Broker disconnects -- launches blocked, resume on reconnect ──
@@ -251,7 +251,7 @@ describe("scenario: crew coordination", () => {
     expect(syncsBeforeReconnect).toBeGreaterThanOrEqual(1);
 
     // Verify launch was eventually called (after reconnect)
-    expect(actionDeps.launchSingleItem).toHaveBeenCalledTimes(1);
+    expect(actionDeps.workers.launchSingleItem).toHaveBeenCalledTimes(1);
 
     // Check blocked launches were logged
     const blockedLogs = loopDeps.__logs.filter(
@@ -435,7 +435,7 @@ describe("scenario: crew coordination", () => {
     expect(blockedLogs.length).toBeGreaterThanOrEqual(1);
 
     // After reconnect, launch and complete should succeed
-    expect(actionDeps.launchSingleItem).toHaveBeenCalledTimes(1);
+    expect(actionDeps.workers.launchSingleItem).toHaveBeenCalledTimes(1);
     expect(broker.completes).toContain("C-6");
   });
 

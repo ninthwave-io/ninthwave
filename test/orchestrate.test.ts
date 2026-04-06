@@ -78,6 +78,7 @@ import {
   type ItemSnapshot,
   type ExecutionContext,
   type OrchestratorDeps,
+  type DeepPartial,
 } from "../core/orchestrator.ts";
 import type { WorkItem } from "../core/types.ts";
 import type { ScheduledTask } from "../core/types.ts";
@@ -165,21 +166,38 @@ function makeStatusItem(overrides: Partial<StatusItem> = {}): StatusItem {
   };
 }
 
-function mockActionDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps {
+function mockActionDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
   return {
-    launchSingleItem: vi.fn(() => ({
-      worktreePath: "/tmp/test/item-test",
-      workspaceRef: "workspace:1",
-    })),
-    cleanSingleWorktree: vi.fn(() => true),
-    prMerge: vi.fn(() => true),
-    prComment: vi.fn(() => true),
-    sendMessage: vi.fn(() => true),
-    writeInbox: vi.fn(),
-    closeWorkspace: vi.fn(() => true),
-    fetchOrigin: vi.fn(),
-    ffMerge: vi.fn(),
-    ...overrides,
+    git: {
+      fetchOrigin: vi.fn(),
+      ffMerge: vi.fn(),
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: vi.fn(() => true),
+      prComment: vi.fn(() => true),
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: vi.fn(() => true),
+      closeWorkspace: vi.fn(() => true),
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: vi.fn(() => ({
+        worktreePath: "/tmp/test/item-test",
+        workspaceRef: "workspace:1",
+      })),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: vi.fn(() => true),
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: vi.fn(),
+      ...overrides?.io,
+    },
   };
 }
 
@@ -816,12 +834,10 @@ describe("orchestrateLoop", () => {
       return { items, readyIds };
     };
 
-    const actionDeps = mockActionDeps({
-      launchSingleItem: vi.fn((item: WorkItem) => {
+    const actionDeps = mockActionDeps({ workers: { launchSingleItem: vi.fn((item: WorkItem) => {
         launchedItems.push(item.id);
         return { worktreePath: `/tmp/test/ninthwave-${item.id}`, workspaceRef: `ws:${item.id}` };
-      }),
-    });
+      }) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1004,12 +1020,10 @@ describe("orchestrateLoop", () => {
       return { items, readyIds };
     };
 
-    const actionDeps = mockActionDeps({
-      cleanSingleWorktree: vi.fn((id: string) => {
+    const actionDeps = mockActionDeps({ cleanup: { cleanSingleWorktree: vi.fn((id: string) => {
         cleanedItemIds.push(id);
         return true; // simulate stale worktree found and cleaned
-      }),
-    });
+      }) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1057,9 +1071,7 @@ describe("orchestrateLoop", () => {
       return { items: [], readyIds: [] };
     };
 
-    const actionDeps = mockActionDeps({
-      cleanSingleWorktree: vi.fn(() => false), // no stale worktree found
-    });
+    const actionDeps = mockActionDeps({ cleanup: { cleanSingleWorktree: vi.fn(() => false) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1111,13 +1123,11 @@ describe("orchestrateLoop", () => {
     };
 
     let callCount = 0;
-    const actionDeps = mockActionDeps({
-      cleanSingleWorktree: vi.fn(() => {
+    const actionDeps = mockActionDeps({ cleanup: { cleanSingleWorktree: vi.fn(() => {
         callCount++;
         if (callCount === 1) throw new Error("git worktree remove failed");
         return true; // second item cleaned successfully
-      }),
-    });
+      }) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1177,13 +1187,10 @@ describe("orchestrateLoop", () => {
       return true;
     });
 
-    const actionDeps = mockActionDeps({
-      closeWorkspace,
-      cleanSingleWorktree: vi.fn((id: string) => {
+    const actionDeps = mockActionDeps({ mux: { closeWorkspace }, cleanup: { cleanSingleWorktree: vi.fn((id: string) => {
         callOrder.push(`clean:${id}`);
         return true;
-      }),
-    });
+      }) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1242,15 +1249,10 @@ describe("orchestrateLoop", () => {
     };
 
     const closeWorkspace = vi.fn(() => true);
-    const actionDeps = mockActionDeps({
-      closeWorkspace,
-      // Launch doesn't set workspaceRef (simulates case where it wasn't set)
-      launchSingleItem: vi.fn(() => ({
+    const actionDeps = mockActionDeps({ mux: { closeWorkspace }, workers: { launchSingleItem: vi.fn(() => ({
         worktreePath: "/tmp/test/item-test",
         workspaceRef: null,
-      })),
-      cleanSingleWorktree: vi.fn(() => true),
-    });
+      })) }, cleanup: { cleanSingleWorktree: vi.fn(() => true) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1314,12 +1316,10 @@ describe("orchestrateLoop", () => {
       return { items, readyIds };
     };
 
-    const actionDeps = mockActionDeps({
-      cleanSingleWorktree: vi.fn((id: string) => {
+    const actionDeps = mockActionDeps({ cleanup: { cleanSingleWorktree: vi.fn((id: string) => {
         cleanedItemIds.push(id);
         return true;
-      }),
-    });
+      }) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1384,7 +1384,7 @@ describe("orchestrateLoop", () => {
     };
 
     const closeWorkspace = vi.fn(() => true);
-    const actionDeps = mockActionDeps({ closeWorkspace });
+    const actionDeps = mockActionDeps({ mux: { closeWorkspace } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -1527,12 +1527,10 @@ describe("orchestrateLoop", () => {
         },
         sleep: () => Promise.resolve(),
         log: () => {},
-        actionDeps: mockActionDeps({
-          completeMergedWorkItem: (item, cleanupWorkDir, cleanupProjectRoot) =>
+        actionDeps: mockActionDeps({ cleanup: { completeMergedWorkItem: (item, cleanupWorkDir, cleanupProjectRoot) =>
             completeMergedWorkItemCleanup(item, cleanupWorkDir, cleanupProjectRoot, {
               commitRemoval: () => true,
-            }),
-        }),
+            }) } }),
       };
 
       await orchestrateLoop(orch, {
@@ -4116,7 +4114,7 @@ describe("orchestrateLoop post-merge conflict detection", () => {
       buildSnapshot,
       sleep: () => Promise.resolve(),
       log: () => {},
-      actionDeps: mockActionDeps({ checkPrMergeable, sendMessage, writeInbox, warn }),
+      actionDeps: mockActionDeps({ gh: { checkPrMergeable }, mux: { sendMessage }, io: { writeInbox, warn } }),
     };
 
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
@@ -4170,8 +4168,8 @@ describe("orchestrateLoop post-merge conflict detection", () => {
     const sendMessage = vi.fn(() => true);
 
     // Explicitly omit checkPrMergeable from deps
-    const actionDeps = mockActionDeps({ sendMessage });
-    delete actionDeps.checkPrMergeable;
+    const actionDeps = mockActionDeps({ mux: { sendMessage } });
+    delete actionDeps.gh.checkPrMergeable;
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot,
@@ -4503,7 +4501,7 @@ describe("executeClean readScreen diagnostics", () => {
       buildSnapshot,
       sleep: () => Promise.resolve(),
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({ readScreen, warn }),
+      actionDeps: mockActionDeps({ mux: { readScreen }, io: { warn } }),
     };
 
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
@@ -4553,7 +4551,7 @@ describe("executeClean readScreen diagnostics", () => {
       buildSnapshot,
       sleep: () => Promise.resolve(),
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({ readScreen, warn }),
+      actionDeps: mockActionDeps({ mux: { readScreen }, io: { warn } }),
     };
 
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 200 });
@@ -4988,12 +4986,10 @@ describe("orchestrateLoop watch mode", () => {
       },
       sleep: () => Promise.resolve(),
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({
-        launchSingleItem: vi.fn((workItem) => {
+      actionDeps: mockActionDeps({ workers: { launchSingleItem: vi.fn((workItem) => {
           launchCalls.push(workItem.id);
           return { worktreePath: "/tmp/test/item-empty-watch", workspaceRef: `workspace:${workItem.id}` };
-        }),
-      }),
+        }) } }),
       scanWorkItems: () => {
         discovered = true;
         return [makeWorkItem("E-1-1")];
@@ -5065,14 +5061,10 @@ describe("orchestrateLoop watch mode", () => {
       },
       sleep: () => Promise.resolve(),
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({
-        fetchOrigin: fetchOriginMock,
-        ffMerge: ffMergeMock,
-        launchSingleItem: vi.fn((workItem) => {
+      actionDeps: mockActionDeps({ git: { fetchOrigin: fetchOriginMock, ffMerge: ffMergeMock }, workers: { launchSingleItem: vi.fn((workItem) => {
           launchCalls.push(workItem.id);
           return { worktreePath: "/tmp/test/item-fast-watch", workspaceRef: `workspace:${workItem.id}` };
-        }),
-      }),
+        }) } }),
       scanWorkItems: () => [makeWorkItem("E-FAST-1")],
     };
 
@@ -5124,13 +5116,10 @@ describe("orchestrateLoop watch mode", () => {
       },
       sleep: () => Promise.resolve(),
       log: () => {},
-      actionDeps: mockActionDeps({
-        validatePickupCandidate,
-        launchSingleItem: vi.fn((workItem) => {
+      actionDeps: mockActionDeps({ workers: { validatePickupCandidate, launchSingleItem: vi.fn((workItem) => {
           launchCalls.push(workItem.id);
           return { worktreePath: "/tmp/test/blocked-queue", workspaceRef: `workspace:${workItem.id}` };
-        }),
-      }),
+        }) } }),
     };
 
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 3 });
@@ -5333,12 +5322,10 @@ describe("orchestrateLoop crew mode", () => {
     });
 
     const launchCalls: string[] = [];
-    const actionDepsOverride = mockActionDeps({
-      launchSingleItem: vi.fn((workItem) => {
+    const actionDepsOverride = mockActionDeps({ workers: { launchSingleItem: vi.fn((workItem) => {
         launchCalls.push(workItem.id);
         return { worktreePath: "/tmp/test", workspaceRef: `ws:${workItem.id}` };
-      }),
-    });
+      }) } });
 
     const deps: OrchestrateLoopDeps = {
       buildSnapshot: (): PollSnapshot => {
@@ -5421,7 +5408,7 @@ describe("orchestrateLoop crew mode", () => {
     await orchestrateLoop(orch, defaultCtx, deps, { maxIterations: 3 });
 
     // No items should have been launched
-    expect(deps.actionDeps.launchSingleItem).not.toHaveBeenCalled();
+    expect(deps.actionDeps.workers.launchSingleItem).not.toHaveBeenCalled();
     // Items should be back in ready state
     expect(orch.getItem("T-1")!.state).toBe("ready");
     expect(orch.getItem("T-2")!.state).toBe("ready");
@@ -6448,14 +6435,10 @@ describe("interactive watch instrumentation", () => {
         abortController.abort();
       },
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({
-        fetchOrigin: vi.fn(() => advance(mainRefreshMs)),
-        ffMerge: vi.fn(),
-        launchSingleItem: vi.fn(() => {
+      actionDeps: mockActionDeps({ git: { fetchOrigin: vi.fn(() => advance(mainRefreshMs)), ffMerge: vi.fn() }, workers: { launchSingleItem: vi.fn(() => {
           advance(actionExecutionMs);
           return { worktreePath: "/tmp/test/tui-stage-timing", workspaceRef: "workspace:T-TUI-1" };
-        }),
-      }),
+        }) } }),
       syncDisplay: () => {
         advance(displaySyncMs);
       },
@@ -6601,14 +6584,10 @@ describe("interactive watch instrumentation", () => {
         abortController.abort();
       },
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({
-        fetchOrigin: vi.fn(() => advance(mainRefreshMs)),
-        ffMerge: vi.fn(),
-        launchSingleItem: vi.fn(() => {
+      actionDeps: mockActionDeps({ git: { fetchOrigin: vi.fn(() => advance(mainRefreshMs)), ffMerge: vi.fn() }, workers: { launchSingleItem: vi.fn(() => {
           advance(actionExecutionMs);
           return { worktreePath: "/tmp/test/split-tui-stage-timing", workspaceRef: "workspace:T-SPLIT-TUI-1" };
-        }),
-      }),
+        }) } }),
       onPollComplete: () => {
         // Operator repaint happens in a separate foreground process and should not
         // be counted as an engine-side blocking stage.
@@ -9234,10 +9213,7 @@ describe("post-completion prompt (orchestrateLoop)", () => {
       },
       sleep: () => Promise.resolve(),
       log: (entry) => logs.push(entry),
-      actionDeps: mockActionDeps({
-        cleanSingleWorktree: vi.fn((id) => { cleanCalls.push(id); return true; }),
-        closeWorkspace: vi.fn((ref) => { closeCalls.push(ref); return true; }),
-      }),
+      actionDeps: mockActionDeps({ mux: { closeWorkspace: vi.fn((ref) => { closeCalls.push(ref); return true; }) }, cleanup: { cleanSingleWorktree: vi.fn((id) => { cleanCalls.push(id); return true; }) } }),
       completionPrompt: async () => "clean",
     };
 
@@ -9536,12 +9512,10 @@ describe("orchestrateLoop claims gating", () => {
       },
       sleep: () => Promise.resolve(),
       log: (e) => logs.push(e),
-      actionDeps: mockActionDeps({
-        launchSingleItem: vi.fn((workItem) => {
+      actionDeps: mockActionDeps({ workers: { launchSingleItem: vi.fn((workItem) => {
           launchCalls.push(workItem.id);
           return { worktreePath: "/tmp/test", workspaceRef: `ws:${workItem.id}` };
-        }),
-      }),
+        }) } }),
       getFreeMem: () => 16 * 1024 ** 3,
     };
 
@@ -9578,12 +9552,10 @@ describe("orchestrateLoop claims gating", () => {
       },
       sleep: () => Promise.resolve(),
       log: () => {},
-      actionDeps: mockActionDeps({
-        launchSingleItem: vi.fn((workItem) => {
+      actionDeps: mockActionDeps({ workers: { launchSingleItem: vi.fn((workItem) => {
           launchCalls.push(workItem.id);
           return { worktreePath: "/tmp/test", workspaceRef: `ws:${workItem.id}` };
-        }),
-      }),
+        }) } }),
       getFreeMem: () => 16 * 1024 ** 3,
     };
 
@@ -9635,12 +9607,10 @@ describe("orchestrateLoop claims gating", () => {
       },
       sleep: () => Promise.resolve(),
       log: () => {},
-      actionDeps: mockActionDeps({
-        launchSingleItem: vi.fn((workItem) => {
+      actionDeps: mockActionDeps({ workers: { launchSingleItem: vi.fn((workItem) => {
           launchCalls.push(workItem.id);
           return { worktreePath: "/tmp/test", workspaceRef: `ws:${workItem.id}` };
-        }),
-      }),
+        }) } }),
       crewBroker: broker,
       getFreeMem: () => 16 * 1024 ** 3,
     };

@@ -38,8 +38,8 @@ describe("scenario: stacking", () => {
 
     // Track launch calls to verify baseBranch parameter
     const launchCalls: Array<{ id: string; baseBranch?: string }> = [];
-    const origLaunch = actionDeps.launchSingleItem;
-    actionDeps.launchSingleItem = vi.fn((item, wd, wtd, pr, ai, bb) => {
+    const origLaunch = actionDeps.workers.launchSingleItem;
+    actionDeps.workers.launchSingleItem = vi.fn((item, wd, wtd, pr, ai, bb) => {
       launchCalls.push({ id: item.id, baseBranch: bb });
       return (origLaunch as Function)(item, wd, wtd, pr, ai, bb);
     });
@@ -189,7 +189,7 @@ describe("scenario: stacking", () => {
     expect(itemB.baseBranch).toBe("ninthwave/A-1");
 
     // Inbox delivery should queue a resume message for B
-    const inboxCalls = (actionDeps.writeInbox as ReturnType<typeof vi.fn>).mock.calls;
+    const inboxCalls = (actionDeps.io.writeInbox as ReturnType<typeof vi.fn>).mock.calls;
     const resumeMessages = inboxCalls.filter(
       (call) => {
         const [projectRoot, itemId, msg] = call as [string, string, string];
@@ -219,7 +219,7 @@ describe("scenario: stacking", () => {
     orch.addItem(makeWorkItem("B-1", ["A-1"]));
 
     const syncStackComments = vi.fn();
-    const actionDeps = buildActionDeps(fakeGh, fakeMux, { syncStackComments });
+    const actionDeps = buildActionDeps(fakeGh, fakeMux, { io: { syncStackComments } });
     const loopDeps = buildLoopDeps(fakeGh, fakeMux, actionDeps);
 
     let cycle = 0;
@@ -273,7 +273,7 @@ describe("scenario: stacking", () => {
     orch.getItem("B-1")!.reviewCompleted = true;
 
     const syncStackComments = vi.fn();
-    const actionDeps = buildActionDeps(fakeGh, fakeMux, { syncStackComments });
+    const actionDeps = buildActionDeps(fakeGh, fakeMux, { io: { syncStackComments } });
     const loopDeps = buildLoopDeps(fakeGh, fakeMux, actionDeps);
 
     let cycle = 0;
