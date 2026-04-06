@@ -1358,6 +1358,185 @@ describe("Orchestrator", () => {
       );
     });
 
+    it("merge: rebases stacked item when dep merged and GitHub retargeted (daemon rebase succeeds)", () => {
+      // Race condition: dep still in "merging" but GitHub already retargeted PR to main
+      const getPrBaseBranch = vi.fn(() => "main"); // GitHub retargeted to main
+      const retargetPrBase = vi.fn(() => false); // ninthwave/H-1-1 branch deleted
+      const daemonRebase = vi.fn(() => true);
+      const prMerge = vi.fn(() => true);
+      const warn = vi.fn();
+      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, daemonRebase, prMerge, warn });
+
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "merging"); // Not in DEP_DONE_STATES yet (race)
+      orch.addItem(makeWorkItem("H-1-2", ["H-1-1"]));
+      orch.getItem("H-1-2")!.reviewCompleted = true;
+      orch.hydrateState("H-1-2", "merging");
+      orch.getItem("H-1-2")!.prNumber = 42;
+      orch.getItem("H-1-2")!.baseBranch = "ninthwave/H-1-1";
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-2", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Dep ninthwave/H-1-1 merged");
+      expect(result.error).toContain("rebased");
+      expect(orch.getItem("H-1-2")!.state).toBe("ci-pending");
+      expect(orch.getItem("H-1-2")!.baseBranch).toBeUndefined();
+      expect(daemonRebase).toHaveBeenCalled();
+      expect(prMerge).not.toHaveBeenCalled();
+      // mergeFailCount should NOT be incremented
+      expect(orch.getItem("H-1-2")!.mergeFailCount ?? 0).toBe(0);
+    });
+
+    it("merge: sends worker rebase when dep merged/retargeted but daemon rebase fails", () => {
+      const getPrBaseBranch = vi.fn(() => "main");
+      const retargetPrBase = vi.fn(() => false);
+      const daemonRebase = vi.fn(() => false);
+      const prMerge = vi.fn(() => true);
+      const warn = vi.fn();
+      const writeInbox = vi.fn();
+      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, daemonRebase, prMerge, warn, writeInbox });
+
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "merging");
+      orch.addItem(makeWorkItem("H-1-2", ["H-1-1"]));
+      orch.getItem("H-1-2")!.reviewCompleted = true;
+      orch.hydrateState("H-1-2", "merging");
+      orch.getItem("H-1-2")!.prNumber = 42;
+      orch.getItem("H-1-2")!.baseBranch = "ninthwave/H-1-1";
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-2", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("rebase requested");
+      expect(orch.getItem("H-1-2")!.state).toBe("ci-pending");
+      expect(orch.getItem("H-1-2")!.baseBranch).toBeUndefined();
+      expect(orch.getItem("H-1-2")!.mergeFailCount ?? 0).toBe(0);
+    });
+
+    it("merge: rebases recently-unstacked item when merge fails with matching bases (mode B)", () => {
+      // Dep already in done state, bases match, but merge fails due to duplicate commits
+      const getPrBaseBranch = vi.fn(() => "main");
+      const prMerge = vi.fn(() => false); // Merge fails (duplicate commits)
+      const checkPrMergeable = vi.fn(() => true); // Not a conflict
+      const daemonRebase = vi.fn(() => true);
+      const warn = vi.fn();
+      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, daemonRebase, warn });
+
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "done"); // Dep done → expectedBase = main
+      orch.addItem(makeWorkItem("H-1-2", ["H-1-1"]));
+      orch.getItem("H-1-2")!.reviewCompleted = true;
+      orch.hydrateState("H-1-2", "merging");
+      orch.getItem("H-1-2")!.prNumber = 42;
+      orch.getItem("H-1-2")!.baseBranch = "ninthwave/H-1-1";
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-2", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("post-squash duplicate commits");
+      expect(orch.getItem("H-1-2")!.state).toBe("ci-pending");
+      expect(daemonRebase).toHaveBeenCalled();
+      expect(orch.getItem("H-1-2")!.mergeFailCount ?? 0).toBe(0);
+    });
+
+    it("merge: normal retry when merge fails and item is NOT recently unstacked", () => {
+      // No dep in done state → normal mergeFailCount increment
+      const getPrBaseBranch = vi.fn(() => "main");
+      const prMerge = vi.fn(() => false);
+      const checkPrMergeable = vi.fn(() => true);
+      const warn = vi.fn();
+      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, warn });
+
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "implementing"); // NOT in done states
+      orch.addItem(makeWorkItem("H-1-2", ["H-1-1"]));
+      orch.getItem("H-1-2")!.reviewCompleted = true;
+      orch.hydrateState("H-1-2", "merging");
+      orch.getItem("H-1-2")!.prNumber = 42;
+      // baseBranch still set but dep is in-flight, so bases match (main)
+      // Actually for this test the dep is in-flight, so expectedBase = ninthwave/H-1-1
+      // Let's use a simpler scenario: no dep dependency
+      orch.getItem("H-1-2")!.baseBranch = undefined;
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-2", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(orch.getItem("H-1-2")!.state).toBe("ci-passed");
+      expect(orch.getItem("H-1-2")!.mergeFailCount).toBe(1);
+    });
+
+    it("merge: rebases and waits for CI when PR is BLOCKED by branch protection", () => {
+      const getPrBaseBranch = vi.fn(() => "main");
+      const prMerge = vi.fn(() => false);
+      const checkPrMergeable = vi.fn(() => true);
+      const isPrBlocked = vi.fn(() => true);
+      const daemonRebase = vi.fn(() => true);
+      const warn = vi.fn();
+      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, isPrBlocked, daemonRebase, warn });
+
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.getItem("H-1-1")!.reviewCompleted = true;
+      orch.hydrateState("H-1-1", "merging");
+      orch.getItem("H-1-1")!.prNumber = 42;
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-1", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("blocked by branch protection");
+      expect(result.error).toContain("rebased");
+      expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
+      expect(orch.getItem("H-1-1")!.mergeFailCount ?? 0).toBe(0);
+      expect(daemonRebase).toHaveBeenCalled();
+    });
+
+    it("merge: escalates to worker rebase when BLOCKED and daemon rebase unavailable", () => {
+      const getPrBaseBranch = vi.fn(() => "main");
+      const prMerge = vi.fn(() => false);
+      const checkPrMergeable = vi.fn(() => true);
+      const isPrBlocked = vi.fn(() => true);
+      const warn = vi.fn();
+      const writeInbox = vi.fn();
+      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, isPrBlocked, warn, writeInbox });
+
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.getItem("H-1-1")!.reviewCompleted = true;
+      orch.hydrateState("H-1-1", "merging");
+      orch.getItem("H-1-1")!.prNumber = 42;
+
+      const result = orch.executeAction(
+        { type: "merge", itemId: "H-1-1", prNumber: 42 },
+        defaultCtx,
+        deps,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("blocked by branch protection");
+      expect(result.error).toContain("rebase requested");
+      expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
+      expect(orch.getItem("H-1-1")!.mergeFailCount ?? 0).toBe(0);
+    });
+
     it("merge: preserves legitimate stacked PR bases while parent is still in flight", () => {
       const getPrBaseBranch = vi.fn(() => "ninthwave/H-1-1");
       const retargetPrBase = vi.fn(() => true);

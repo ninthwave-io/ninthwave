@@ -934,7 +934,7 @@ describe("handleImplementing", () => {
     expect(actions.some((a) => a.type === "sync-stack-comments" && a.itemId === "H-1-1")).toBe(true);
   });
 
-  it("chains PR open through to CI handling in same cycle", () => {
+  it("chains PR open through to CI pass in same cycle (grace period allows pass)", () => {
     const orch = new Orchestrator({ mergeStrategy: "auto" });
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -945,9 +945,24 @@ describe("handleImplementing", () => {
       NOW,
     );
 
-    // Should chain through ci-pending → ci-passed → merging in one cycle
+    // CI pass is trusted immediately (grace period only blocks "fail")
     expect(orch.getItem("H-1-1")!.state).toBe("merging");
     expect(actions.some((a) => a.type === "merge")).toBe(true);
+  });
+
+  it("blocks same-cycle CI fail on PR open (grace period)", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "implementing");
+
+    orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", prNumber: 42, prState: "open", ciStatus: "fail" }]),
+      NOW,
+    );
+
+    // CI fail within grace period → stays in ci-pending (stale CI from previous commit)
+    expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
   });
 });
 
@@ -1232,6 +1247,74 @@ describe("handleCiPending", () => {
     expect(orch.getItem("H-1-1")!.state).toBe("ci-failed");
     expect(orch.getItem("H-1-1")!.ciFailCount).toBe(1);
     expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(true);
+  });
+
+  it("ignores CI fail within grace period after transitioning to ci-pending", () => {
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.prNumber = 42;
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
+
+    // First cycle: implementing → ci-pending (sets ciPendingSince)
+    orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", prNumber: 42, prState: "open", ciStatus: "fail" }]),
+    );
+    expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
+
+    // Second cycle: CI still shows fail (stale) -- should stay in ci-pending
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open", isMergeable: true }]),
+    );
+    expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
+    expect(actions).toEqual([]);
+  });
+
+  it("transitions ci-failed after grace period expires", () => {
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.prNumber = 42;
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
+
+    // Transition implementing → ci-pending (sets ciPendingSince)
+    orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", prNumber: 42, prState: "open", ciStatus: "fail" }]),
+    );
+    expect(orch.getItem("H-1-1")!.state).toBe("ci-pending");
+
+    // Backdate ciPendingSince to 2 minutes ago (past grace period)
+    orch.getItem("H-1-1")!.ciPendingSince = new Date(Date.now() - 120_000).toISOString();
+
+    // Now CI fail should be trusted
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open", isMergeable: true }]),
+    );
+    expect(orch.getItem("H-1-1")!.state).toBe("ci-failed");
+    expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(true);
+  });
+
+  it("honors CI pass immediately even within grace period", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.prNumber = 42;
+
+    // Transition implementing → ci-pending (sets ciPendingSince)
+    orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", prNumber: 42, prState: "open", ciStatus: "pass" }]),
+    );
+
+    // ci-pending, not yet evaluated. Next cycle:
+    orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", ciStatus: "pass", prState: "open" }]),
+    );
+
+    // CI pass is trusted immediately (if CI passes, it's for the current commit)
+    expect(["ci-passed", "review-pending"]).toContain(orch.getItem("H-1-1")!.state);
   });
 
   it("does not re-notify CI failure on subsequent ticks (deduplication)", () => {

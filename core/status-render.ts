@@ -252,6 +252,7 @@ export type ItemState =
   | "rebasing"
   | "ci-failed"
   | "ci-pending"
+  | "ci-passed"
   | "review"
   | "in-progress"
   | "queued";
@@ -265,6 +266,7 @@ export const ACTIVE_DISPLAY_STATES: Set<ItemState> = new Set([
   "ci-pending",
   "ci-failed",
   "rebasing",
+  "ci-passed",
   "review",
   "in-progress",
 ]);
@@ -405,6 +407,8 @@ export function stateColor(state: ItemState): string {
       return RED;
     case "ci-pending":
       return CYAN;
+    case "ci-passed":
+      return GREEN;
     case "review":
       return BLUE;
     case "queued":
@@ -435,6 +439,8 @@ export function stateIcon(state: ItemState): string {
       return "✗";
     case "ci-pending":
       return "◌";
+    case "ci-passed":
+      return "✓";
     case "review":
       return "●";
     case "queued":
@@ -465,6 +471,8 @@ export function stateLabel(state: ItemState): string {
       return "CI Failed";
     case "ci-pending":
       return "CI Pending";
+    case "ci-passed":
+      return "CI Passed";
     case "review":
       return "In Review";
     case "in-progress":
@@ -1428,9 +1436,10 @@ export function mapDaemonItemState(orchState: string, flags?: { rebaseRequested?
     case "ci-pending":
     case "merging":
       return "ci-pending";
+    case "ci-passed":
+      return "ci-passed";
     case "review-pending":
     case "reviewing":
-    case "ci-passed":
       return "review";
     case "queued":
     case "ready":

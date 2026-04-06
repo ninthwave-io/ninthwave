@@ -127,6 +127,8 @@ export interface OrchestratorItem {
   timeoutDeadline?: string;
   /** Number of user-initiated timeout extensions via extendTimeout(). */
   timeoutExtensionCount?: number;
+  /** ISO timestamp when the item entered ci-pending via transition(). Used for stale-CI grace period. Not set by hydrateState. */
+  ciPendingSince?: string;
 }
 
 export interface OrchestratorConfig {
@@ -160,6 +162,9 @@ export interface OrchestratorConfig {
   fixForward: boolean;
   /** Max CI fix-forward failures on main before marking stuck. Default: 2. */
   maxFixForwardRetries: number;
+  /** Grace period (ms) after entering ci-pending from implementing/launching before trusting a CI "fail".
+   *  Prevents stale CI from a previous commit from killing workers. Default: 60000 (60s). */
+  ciPendingFailGraceMs: number;
   /** When true, the AI review gate is bypassed -- ci-passed chains straight to merge evaluation. Default: false. */
   skipReview: boolean;
   /** Grace period (ms) before timeout kills proceed. On first timeout detection, a deadline is set this far in the future. 0 = immediate kill (no grace period). Default: 5 minutes. */
@@ -342,6 +347,8 @@ export interface OrchestratorDeps {
   retargetPrBase?: (repoRoot: string, prNumber: number, baseBranch: string) => boolean;
   /** Check if a PR is mergeable (no conflicts). Returns true if mergeable, false if conflicting. */
   checkPrMergeable?: (repoRoot: string, prNumber: number) => boolean;
+  /** Check if a PR is blocked by branch protection. Returns true if blocked. */
+  isPrBlocked?: (repoRoot: string, prNumber: number) => boolean;
   /**
    * Daemon-side rebase: fetch origin/main, rebase the branch, and force-push.
    * The worktreePath is the path to the worktree where the branch is checked out.
@@ -484,6 +491,7 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
   fixForward: true,
   maxFixForwardRetries: 2,
   skipReview: false,
+  ciPendingFailGraceMs: 60_000,
   gracePeriodMs: 5 * 60 * 1000,  // 5 minutes
   maxTimeoutExtensions: 3,
 };
@@ -520,6 +528,10 @@ export const NOT_ALIVE_THRESHOLD = 5;
 
 /** Timeout (ms) for worker to heartbeat after CI failure notification delivery. If no heartbeat arrives within this window, the worker is considered unresponsive. */
 export const CI_FIX_ACK_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
+/** Grace period (ms) after entering ci-pending before trusting a "fail" CI status.
+ *  Prevents stale CI results from a previous commit from causing premature ci-failed transitions. */
+export const CI_PENDING_FAIL_GRACE_MS = 60_000; // 60 seconds
 
 /** Timeout (ms) for items in launching state with no workerAlive signal. Default: 5 minutes. */
 export const LAUNCHING_TIMEOUT_MS = 5 * 60 * 1000;

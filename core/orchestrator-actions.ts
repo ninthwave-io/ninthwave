@@ -145,6 +145,67 @@ function resolveExpectedPrBase(
   return item.baseBranch;
 }
 
+/**
+ * Detect the "dep merged, GitHub retargeted" pattern and rebase instead of blocking.
+ *
+ * When a stacked item's dep is squash-merged, GitHub auto-retargets the PR to main
+ * and deletes the dep branch. The orchestrator sees a base mismatch (expected dep branch,
+ * actual main) and the retarget back to the deleted branch fails. Instead of blocking,
+ * clear the stacking state and rebase onto main.
+ *
+ * Returns an ActionResult if handled, null to fall through to existing behavior.
+ */
+function handleDepMergedRetarget(
+  orch: OrchestratorHandle,
+  item: OrchestratorItem,
+  prNum: number,
+  actualBase: string,
+  expectedBase: string,
+  defaultBranch: string,
+  ctx: ExecutionContext,
+  deps: OrchestratorDeps,
+): ActionResult | null {
+  if (!expectedBase.startsWith("ninthwave/") || actualBase !== defaultBranch) {
+    return null;
+  }
+
+  // Dep was merged and GitHub retargeted the PR to main. Clear stacking state.
+  item.baseBranch = undefined;
+
+  // Rebase to clean up duplicate commits from squash merge.
+  if (deps.daemonRebase) {
+    const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
+    const branch = `ninthwave/${item.id}`;
+    try {
+      if (deps.daemonRebase(worktreePath, branch)) {
+        deps.warn?.(`PR #${prNum} for ${item.id}: dep branch ${expectedBase} was merged; rebased onto ${defaultBranch}`);
+        orch.transition(item, "ci-pending");
+        return { success: false, error: `Dep ${expectedBase} merged; rebased PR #${prNum} onto ${defaultBranch}, waiting for CI` };
+      }
+    } catch { /* fall through to worker rebase */ }
+  }
+
+  // Daemon rebase unavailable or failed -- worker fallback
+  const msg = `[ORCHESTRATOR] Rebase Required: dependency branch ${expectedBase} was squash-merged to ${defaultBranch}. Please rebase onto latest ${defaultBranch}.`;
+  deliverToImplementerInbox(orch, item, "rebase", msg, ctx, deps);
+  deps.warn?.(`PR #${prNum} for ${item.id}: dep branch ${expectedBase} was merged; daemon rebase failed, sent worker rebase request`);
+  orch.transition(item, "ci-pending");
+  return { success: false, error: `Dep ${expectedBase} merged; daemon rebase failed for PR #${prNum}, rebase requested` };
+}
+
+/**
+ * Check if an item was recently unstacked (has a dependency in a done/merged state).
+ * Used to detect post-squash-merge duplicate-commit scenarios where bases match
+ * but the branch needs rebasing.
+ */
+function wasRecentlyUnstacked(orch: OrchestratorHandle, item: OrchestratorItem): boolean {
+  for (const depId of item.workItem.dependencies) {
+    const dep = orch.getItem(depId);
+    if (dep && DEP_DONE_STATES.has(dep.state)) return true;
+  }
+  return false;
+}
+
 /** Launch a worker for an item. Stores workspaceRef on success, marks stuck or schedules retry on failure. */
 export function executeLaunch(
   orch: OrchestratorHandle,
@@ -326,6 +387,10 @@ export function executeMerge(
         };
       }
 
+      // Check if this is a "dep merged, GitHub retargeted" pattern before blocking.
+      const depMergedResult = handleDepMergedRetarget(orch, item, prNum, actualBase, expectedBase, defaultBranch, ctx, deps);
+      if (depMergedResult) return depMergedResult;
+
       deps.warn?.(
         `PR #${prNum} for ${item.id} targets ${actualBase} but expected ${expectedBase}; blocking auto-merge`,
       );
@@ -357,6 +422,10 @@ export function executeMerge(
           error: `Retargeted PR #${prNum} from ${actualBase} to ${expectedBase}; waiting for CI`,
         };
       }
+
+      // Check if this is a "dep merged, GitHub retargeted" pattern before blocking.
+      const depMergedResult2 = handleDepMergedRetarget(orch, item, prNum, actualBase, expectedBase, defaultBranch, ctx, deps);
+      if (depMergedResult2) return depMergedResult2;
 
       deps.warn?.(
         `PR #${prNum} for ${item.id} targets ${actualBase} but expected ${expectedBase}; blocking auto-merge`,
@@ -424,6 +493,54 @@ export function executeMerge(
           ? `Merge failed for PR #${prNum} due to conflicts, rebase requested`
           : `Merge failed for PR #${prNum} due to conflicts, but no safe worker inbox target was available`,
       };
+    }
+
+    // Post-squash-merge duplicate commits: bases matched but merge fails because
+    // the branch has stale commits from a squash-merged dependency. Rebase instead
+    // of retrying blindly.
+    if (wasRecentlyUnstacked(orch, item)) {
+      if (deps.daemonRebase) {
+        const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
+        const branch = `ninthwave/${item.id}`;
+        try {
+          if (deps.daemonRebase(worktreePath, branch)) {
+            deps.warn?.(`Merge of PR #${prNum} for ${item.id} failed (likely duplicate commits from squash merge); rebased onto ${defaultBranch}`);
+            orch.transition(item, "ci-pending");
+            return { success: false, error: `Merge failed for PR #${prNum} (post-squash duplicate commits), rebased and waiting for CI` };
+          }
+        } catch { /* fall through to worker rebase */ }
+      }
+      const rebaseMsg = `[ORCHESTRATOR] Rebase Required: merge failed (likely duplicate commits from squash merge of dependency). Please rebase onto latest ${defaultBranch}.`;
+      deliverToImplementerInbox(orch, item, "rebase", rebaseMsg, ctx, deps);
+      deps.warn?.(`Merge of PR #${prNum} for ${item.id} failed (likely duplicate commits); daemon rebase failed, sent worker rebase request`);
+      orch.transition(item, "ci-pending");
+      return { success: false, error: `Merge failed for PR #${prNum} (post-squash duplicate commits), rebase requested` };
+    }
+
+    // Branch protection blocked: required checks not passing, required reviews missing, etc.
+    // The branch may be out-of-date (e.g., after a stacked dep was squash-merged and GitHub
+    // retargeted the PR). Rebase to bring it up to date so CI can run, then wait.
+    if (deps.isPrBlocked?.(repoRoot, prNum)) {
+      // The branch is likely out-of-date (e.g., after a stacked dep squash-merged).
+      // Rebase to bring it up to date so CI can run. Escalate to rebaser worker if
+      // daemon rebase fails (e.g., merge conflicts).
+      if (deps.daemonRebase) {
+        const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
+        const branch = `ninthwave/${item.id}`;
+        try {
+          if (deps.daemonRebase(worktreePath, branch)) {
+            deps.warn?.(`PR #${prNum} for ${item.id} is blocked by branch protection; rebased onto ${defaultBranch} and waiting for CI`);
+            orch.transition(item, "ci-pending");
+            return { success: false, error: `PR #${prNum} blocked by branch protection; rebased and waiting for CI` };
+          }
+        } catch { /* fall through to worker rebase */ }
+      }
+      // Daemon rebase unavailable or failed -- escalate to worker rebase
+      const rebaseMsg = `[ORCHESTRATOR] Rebase Required: PR is blocked by branch protection (branch may be out-of-date). Please rebase onto latest ${defaultBranch} and push.`;
+      deliverToImplementerInbox(orch, item, "rebase", rebaseMsg, ctx, deps);
+      deps.warn?.(`PR #${prNum} for ${item.id} is blocked by branch protection; daemon rebase failed, sent worker rebase request`);
+      orch.transition(item, "ci-pending");
+      return { success: false, error: `PR #${prNum} blocked by branch protection; daemon rebase failed, rebase requested` };
     }
 
     // Non-conflict merge failure -- normal retry behavior

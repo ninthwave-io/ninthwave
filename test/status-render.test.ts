@@ -181,7 +181,7 @@ describe("stateColor", () => {
   it("returns a string for every valid state", () => {
     const states: ItemState[] = [
       "merged", "verifying", "done", "blocked", "implementing", "rebasing", "ci-failed", "ci-pending",
-      "review", "in-progress", "queued",
+      "ci-passed", "review", "in-progress", "queued",
     ];
     for (const state of states) {
       expect(typeof stateColor(state)).toBe("string");
@@ -222,7 +222,7 @@ describe("stateIcon", () => {
   it("returns a string for every valid state", () => {
     const states: ItemState[] = [
       "merged", "verifying", "done", "blocked", "implementing", "rebasing", "ci-failed", "ci-pending",
-      "review", "in-progress", "queued",
+      "ci-passed", "review", "in-progress", "queued",
     ];
     for (const state of states) {
       expect(typeof stateIcon(state)).toBe("string");
@@ -241,6 +241,7 @@ describe("stateLabel", () => {
     expect(stateLabel("blocked")).toBe("Blocked");
     expect(stateLabel("ci-failed")).toBe("CI Failed");
     expect(stateLabel("ci-pending")).toBe("CI Pending");
+    expect(stateLabel("ci-passed")).toBe("CI Passed");
     expect(stateLabel("review")).toBe("In Review");
     expect(stateLabel("queued")).toBe("Queued");
   });
@@ -1527,7 +1528,7 @@ describe("mapDaemonItemState", () => {
     expect(mapDaemonItemState("ci-pending")).toBe("ci-pending");
     expect(mapDaemonItemState("merging")).toBe("ci-pending");
     expect(mapDaemonItemState("review-pending")).toBe("review");
-    expect(mapDaemonItemState("ci-passed")).toBe("review");
+    expect(mapDaemonItemState("ci-passed")).toBe("ci-passed");
     expect(mapDaemonItemState("pr-open")).toBe("in-progress");
     expect(mapDaemonItemState("queued")).toBe("queued");
     expect(mapDaemonItemState("ready")).toBe("queued");
@@ -1982,7 +1983,7 @@ describe("orchestratorItemsToStatusItems", () => {
       ["ci-pending", "ci-pending"],
       ["merging", "ci-pending"],
       ["review-pending", "review"],
-      ["ci-passed", "review"],
+      ["ci-passed", "ci-passed"],
       ["pr-open" as any, "in-progress"],
       ["queued", "queued"],
       ["ready", "queued"],
@@ -2056,7 +2057,7 @@ describe("orchestratorItemsToStatusItems", () => {
     const remoteIds = new Set(["R-1", "R-2"]);
     const result = orchestratorItemsToStatusItems(items, remoteIds);
 
-    expect(result[0]!.state).toBe("review");
+    expect(result[0]!.state).toBe("ci-passed");
     expect(result[0]!.remote).toBe(true);
     expect(result[1]!.state).toBe("review");
     expect(result[1]!.remote).toBe(true);

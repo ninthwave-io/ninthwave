@@ -101,6 +101,7 @@ describe("scenario: full lifecycle", () => {
       bypassEnabled: false,
       enableStacking: false,
       fixForward: false,
+      ciPendingFailGraceMs: 0, // Disable grace period for deterministic test
     });
 
     orch.addItem(makeWorkItem("H-3"));

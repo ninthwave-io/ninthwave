@@ -263,17 +263,23 @@ describe("orchestrateLoop analytics integration", () => {
           return { items: [], readyIds: ["T-1-1"] };
         case 2:
           return { items: [{ id: "T-1-1", workerAlive: true }], readyIds: [] };
-        case 3: // PR opened, CI fails
+        case 3: // PR opened, CI fails -- grace period blocks immediate ci-failed
           return {
             items: [{ id: "T-1-1", prNumber: 1, prState: "open", ciStatus: "fail" }],
             readyIds: [],
           };
-        case 4: // CI recovers
+        case 4: // Still in ci-pending (grace period). Expire it so next fail is trusted.
+          orch.getItem("T-1-1")!.ciPendingSince = new Date(Date.now() - 120_000).toISOString();
+          return {
+            items: [{ id: "T-1-1", prNumber: 1, prState: "open", ciStatus: "fail" }],
+            readyIds: [],
+          };
+        case 5: // CI fail after grace → ci-failed. Then CI recovers.
           return {
             items: [{ id: "T-1-1", prNumber: 1, prState: "open", ciStatus: "pass" }],
             readyIds: [],
           };
-        case 5: // Review approves (reviewCompleted was reset by CI failure)
+        case 7: // Review approves (reviewCompleted was reset by CI failure)
           return {
             items: [{ id: "T-1-1", prNumber: 1, prState: "open", ciStatus: "pass", reviewVerdict: { verdict: "approve" as const, summary: "OK", blockingCount: 0, nonBlockingCount: 0, architectureScore: 8, codeQualityScore: 9, performanceScore: 7, testCoverageScore: 8, unresolvedDecisions: 0, criticalGaps: 0, confidence: 9 } }],
             readyIds: [],

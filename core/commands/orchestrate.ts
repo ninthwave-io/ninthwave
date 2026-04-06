@@ -33,8 +33,8 @@ import { cleanStaleBranchForReuse } from "../branch-cleanup.ts";
 import { selectAiTools, detectInstalledAITools } from "../tool-select.ts";
 import { cleanSingleWorktree } from "./clean.ts";
 import { writeInbox, type InboxSnapshot } from "./inbox.ts";
-import { prMerge, prComment, checkPrMergeable, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, getDefaultBranch as ghGetDefaultBranch, ensureDomainLabels, listPrComments, updatePrComment, ghFailureKindLabel, getPrBaseBranch as ghGetPrBaseBranch, getPrBaseAndState as ghGetPrBaseAndState, retargetPrBase as ghRetargetPrBase, queryRateLimitAsync as ghQueryRateLimitAsync } from "../gh.ts";
-import { fetchOrigin, ffMerge, gitAdd, gitCommit, gitPush, daemonRebase } from "../git.ts";
+import { prMerge, prComment, checkPrMergeable, isPrBlocked, getRepoOwner, applyGithubToken, fetchTrustedPrCommentsAsync, upsertOrchestratorComment, setCommitStatus as ghSetCommitStatus, prHeadSha, getMergeCommitSha as ghGetMergeCommitSha, checkCommitCI as ghCheckCommitCI, checkCommitCIAsync as ghCheckCommitCIAsync, getDefaultBranch as ghGetDefaultBranch, ensureDomainLabels, listPrComments, updatePrComment, ghFailureKindLabel, getPrBaseBranch as ghGetPrBaseBranch, getPrBaseAndState as ghGetPrBaseAndState, retargetPrBase as ghRetargetPrBase, queryRateLimitAsync as ghQueryRateLimitAsync } from "../gh.ts";
+import { fetchOrigin, ffMerge, gitAdd, gitCommit, gitPush, daemonRebase, rebaseOnto, forcePush, resolveRef } from "../git.ts";
 import { run } from "../shell.ts";
 import { type Multiplexer, createMux, muxTypeForWorkspaceRef, resolveBackend } from "../mux.ts";
 import { resolveSessionName } from "../tmux.ts";
@@ -1850,7 +1850,11 @@ export async function cmdOrchestrate(
     getPrBaseAndState: (repoRoot, prNumber) => ghGetPrBaseAndState(repoRoot, prNumber),
     retargetPrBase: (repoRoot, prNumber, baseBranch) => ghRetargetPrBase(repoRoot, prNumber, baseBranch),
     checkPrMergeable,
+    isPrBlocked,
     daemonRebase,
+    rebaseOnto,
+    forcePush,
+    resolveRef,
     warn: (message) =>
       log({ ts: new Date().toISOString(), level: "warn", event: "orchestrator_warning", message }),
     launchReview: (itemId, prNumber, repoRoot, implementerWorktreePath, itemAiTool) => {

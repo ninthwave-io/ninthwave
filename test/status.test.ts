@@ -870,9 +870,12 @@ describe("mapDaemonItemState", () => {
     expect(mapDaemonItemState("merging")).toBe("ci-pending");
   });
 
-  it("maps review-pending/ci-passed to review", () => {
+  it("maps review-pending to review", () => {
     expect(mapDaemonItemState("review-pending")).toBe("review");
-    expect(mapDaemonItemState("ci-passed")).toBe("review");
+  });
+
+  it("maps ci-passed to ci-passed", () => {
+    expect(mapDaemonItemState("ci-passed")).toBe("ci-passed");
   });
 
   it("maps queued/ready to queued", () => {
@@ -926,7 +929,7 @@ describe("daemonStateToStatusItems", () => {
     expect(items[0]!.ageMs).toBeLessThan(70000);
 
     expect(items[1]!.id).toBe("T-1-2");
-    expect(items[1]!.state).toBe("review"); // ci-passed maps to review
+    expect(items[1]!.state).toBe("ci-passed"); // ci-passed maps to ci-passed
     expect(items[1]!.prNumber).toBe(42);
   });
 

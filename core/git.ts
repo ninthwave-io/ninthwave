@@ -334,6 +334,24 @@ export function rebaseOnto(
 }
 
 /**
+ * Force-push the current branch in a worktree using --force-with-lease.
+ * Returns true on success, false on failure.
+ */
+export function forcePush(worktreePath: string): boolean {
+  const result = run("git", ["-C", worktreePath, "push", "--force-with-lease"]);
+  return result.exitCode === 0;
+}
+
+/**
+ * Resolve a git ref to its SHA. Returns null if the ref doesn't exist.
+ */
+export function resolveRef(repoRoot: string, ref: string): string | null {
+  const result = run("git", ["-C", repoRoot, "rev-parse", ref]);
+  if (result.exitCode !== 0) return null;
+  return result.stdout.trim() || null;
+}
+
+/**
  * Get the set of work item file basenames that exist on origin/main
  * and have no local modifications (uncommitted, committed-but-not-pushed,
  * or locally modified).

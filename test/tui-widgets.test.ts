@@ -1108,6 +1108,27 @@ describe("runStartupSettingsScreen", () => {
     expect(result.scheduleEnabled).toBe(false);
   });
 
+  it("preserves auto merge strategy from persisted config on Enter", async () => {
+    const { io, sendKeys } = createMockIO();
+
+    const resultPromise = runStartupSettingsScreen(io, {
+      summaryLines: ["Items: A-1"],
+      defaultSessionLimit: 4,
+      defaultSettings: {
+        mergeStrategy: "auto",
+        reviewMode: "off",
+        collaborationMode: "local",
+        scheduleEnabled: false,
+      },
+    });
+
+    sendKeys(["\r"]);
+
+    const result = await resultPromise;
+    expect(result.cancelled).toBe(false);
+    expect(result.mergeStrategy).toBe("auto");
+  });
+
   it("defaults Scheduled tasks to off and allows toggling it on", async () => {
     const { io, sendKeys, getOutput } = createMockIO();
 

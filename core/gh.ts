@@ -507,6 +507,19 @@ export function checkPrMergeable(repoRoot: string, prNumber: number): boolean {
   return mergeable !== "CONFLICTING";
 }
 
+/**
+ * Check if a PR is blocked by branch protection rules (required checks not passing,
+ * required reviews missing, etc.). Returns true if blocked, false if not blocked
+ * or on API error (conservative: don't treat API failures as blocked).
+ */
+export function isPrBlocked(repoRoot: string, prNumber: number): boolean {
+  const result = prView(repoRoot, prNumber, ["mergeStateStatus"]);
+  if (!result.ok) return false;
+  const status = result.data.mergeStateStatus as string | undefined;
+  // GitHub returns "BLOCKED", "BEHIND", "CLEAN", "DIRTY", "HAS_HOOKS", "UNKNOWN", "UNSTABLE"
+  return status === "BLOCKED";
+}
+
 /** Make a gh api GET request, optionally with a jq filter. */
 export function apiGet(
   repoRoot: string,

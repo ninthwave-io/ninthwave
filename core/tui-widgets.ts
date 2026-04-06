@@ -935,7 +935,7 @@ export function runStartupSettingsScreen(
     let scrollOffset = 0;
     let mergeIndex = Math.max(
       0,
-      STARTUP_MERGE_STRATEGY_OPTIONS.findIndex((option) => option.runtimeValue === defaults.mergeStrategy),
+      STARTUP_MERGE_STRATEGY_OPTIONS.findIndex((option) => option.persistedValue === defaults.mergeStrategy),
     );
     let reviewIndex = Math.max(
       0,

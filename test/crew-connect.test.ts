@@ -164,7 +164,7 @@ describe("parseCrewStatusUpdate", () => {
     expect(status.remoteItems).toEqual([
       {
         id: "H-REVIEW-1",
-        state: "review",
+        state: "ci-passed",
         ownerDaemonId: "daemon-review",
         ownerName: "review-host",
         title: "Nested review item",

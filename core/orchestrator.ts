@@ -307,6 +307,15 @@ export class Orchestrator {
     item.timeoutDeadline = undefined;
     item.timeoutExtensionCount = undefined;
 
+    // Track when we enter ci-pending from states where CI may not have started yet.
+    // Only implementing/launching need a grace period (new PR, CI not triggered yet).
+    // Transitions from ci-failed/ci-passed/merging indicate CI is actively running.
+    if (state === "ci-pending" && (prevState === "implementing" || prevState === "launching")) {
+      item.ciPendingSince = detectedTime;
+    } else if (state !== "ci-pending") {
+      item.ciPendingSince = undefined;
+    }
+
     // State-specific side effects (declarative table lookup)
     TRANSITION_SIDE_EFFECTS[state]?.(item, detectedTime);
 
@@ -669,7 +678,8 @@ export class Orchestrator {
       if (item.baseBranch) {
         actions.push({ type: "sync-stack-comments", itemId: item.id });
       }
-      // Fall through to handle CI status in the same cycle
+      // Fall through to handle CI status in the same cycle.
+      // The grace period in handleCiPending guards against stale "fail" results.
       actions.push(...this.handleCiPending(item, snap, now));
       return actions;
     }
@@ -922,6 +932,16 @@ export class Orchestrator {
     now: Date,
   ): Action[] {
     const ciStatus = snap?.ciStatus;
+
+    // Grace period: ignore "fail" shortly after entering ci-pending from
+    // implementing/launching. CI may not have processed the latest commit yet
+    // (stale status from a previous run). "pass" and "pending" are honored immediately.
+    if (ciStatus === "fail" && item.ciPendingSince) {
+      const sinceEntry = now.getTime() - new Date(item.ciPendingSince).getTime();
+      if (sinceEntry < this.config.ciPendingFailGraceMs) {
+        return [];
+      }
+    }
 
     if (ciStatus === "fail") {
       this.transition(item, "ci-failed", snap?.eventTime);
