@@ -98,7 +98,7 @@ function deliverToImplementerInbox(
     return resolution;
   }
 
-  deps.writeInbox(resolution.projectRoot, item.id, message);
+  deps.io.writeInbox(resolution.projectRoot, item.id, message);
   logInboxDelivery(orch, item, actionType, message, resolution, "delivered");
   return resolution;
 }
@@ -111,7 +111,7 @@ function resolveDefaultBranch(
 ): string {
   if (item.defaultBranch) return item.defaultBranch;
   try {
-    const branch = deps.getDefaultBranch?.(repoRoot) ?? fallback;
+    const branch = deps.gh.getDefaultBranch?.(repoRoot) ?? fallback;
     if (branch) {
       item.defaultBranch = branch;
       return branch;
@@ -173,12 +173,12 @@ function handleDepMergedRetarget(
   item.baseBranch = undefined;
 
   // Rebase to clean up duplicate commits from squash merge.
-  if (deps.daemonRebase) {
+  if (deps.git.daemonRebase) {
     const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
     const branch = `ninthwave/${item.id}`;
     try {
-      if (deps.daemonRebase(worktreePath, branch)) {
-        deps.warn?.(`PR #${prNum} for ${item.id}: dep branch ${expectedBase} was merged; rebased onto ${defaultBranch}`);
+      if (deps.git.daemonRebase(worktreePath, branch)) {
+        deps.io.warn?.(`PR #${prNum} for ${item.id}: dep branch ${expectedBase} was merged; rebased onto ${defaultBranch}`);
         orch.transition(item, "ci-pending");
         return { success: false, error: `Dep ${expectedBase} merged; rebased PR #${prNum} onto ${defaultBranch}, waiting for CI` };
       }
@@ -188,7 +188,7 @@ function handleDepMergedRetarget(
   // Daemon rebase unavailable or failed -- worker fallback
   const msg = `[ORCHESTRATOR] Rebase Required: dependency branch ${expectedBase} was squash-merged to ${defaultBranch}. Please rebase onto latest ${defaultBranch}.`;
   deliverToImplementerInbox(orch, item, "rebase", msg, ctx, deps);
-  deps.warn?.(`PR #${prNum} for ${item.id}: dep branch ${expectedBase} was merged; daemon rebase failed, sent worker rebase request`);
+  deps.io.warn?.(`PR #${prNum} for ${item.id}: dep branch ${expectedBase} was merged; daemon rebase failed, sent worker rebase request`);
   orch.transition(item, "ci-pending");
   return { success: false, error: `Dep ${expectedBase} merged; daemon rebase failed for PR #${prNum}, rebase requested` };
 }
@@ -214,7 +214,7 @@ export function executeLaunch(
   ctx: ExecutionContext,
   deps: OrchestratorDeps,
 ): ActionResult {
-  const validation = (deps.validatePickupCandidate ?? validatePickupCandidate)(item.workItem, ctx.projectRoot);
+  const validation = (deps.workers.validatePickupCandidate ?? validatePickupCandidate)(item.workItem, ctx.projectRoot);
   if (validation.status === "blocked") {
     orch.transition(item, "blocked");
     item.failureReason = validation.failureReason;
@@ -232,13 +232,13 @@ export function executeLaunch(
   // Clean stale branches before launching (H-ORC-4).
   // When a work item ID is reused with different work, the old branch may have
   // merged PRs that cause workers to falsely exit as "done".
-  if (deps.cleanStaleBranch) {
+  if (deps.cleanup.cleanStaleBranch) {
     try {
-      deps.cleanStaleBranch(item.workItem, ctx.projectRoot);
+      deps.cleanup.cleanStaleBranch(item.workItem, ctx.projectRoot);
     } catch (e) {
       // Non-fatal -- log and attempt launch anyway
       const msg = e instanceof Error ? e.message : String(e);
-      deps.warn?.(`cleanStaleBranch failed for ${item.id}: ${msg}`);
+      deps.io.warn?.(`cleanStaleBranch failed for ${item.id}: ${msg}`);
     }
   }
 
@@ -255,7 +255,7 @@ export function executeLaunch(
     const depId = action.baseBranch.replace(/^ninthwave\//, "");
     const dep = orch.getItem(depId);
     if (!dep || DEP_DONE_STATES.has(dep.state)) {
-      deps.warn?.(`Dependency ${depId} is now ${dep?.state ?? "unknown"} -- clearing baseBranch for ${item.id} to launch from main`);
+      deps.io.warn?.(`Dependency ${depId} is now ${dep?.state ?? "unknown"} -- clearing baseBranch for ${item.id} to launch from main`);
       action.baseBranch = undefined;
       item.baseBranch = undefined;
     }
@@ -269,7 +269,7 @@ export function executeLaunch(
 
   const selectedTool = getNextTool(ctx);
   try {
-    const result = deps.launchSingleItem(
+    const result = deps.workers.launchSingleItem(
       item.workItem,
       ctx.workDir,
       ctx.worktreeDir,
@@ -307,7 +307,7 @@ export function executeLaunch(
     // Use ctx.projectRoot (hub) not result.worktreePath -- workers resolve their
     // inbox namespace from `git rev-parse --git-common-dir` which gives the hub path.
     if (forceWorker) {
-      deps.writeInbox(
+      deps.io.writeInbox(
         ctx.projectRoot,
         item.id,
         "[ORCHESTRATOR] CI Fix Request: CI failed on your PR -- please investigate the failure, fix the issue, and push a candidate fix.",
@@ -347,13 +347,13 @@ export function executeMerge(
 
   // Verify PR base branch before merge. Prefer getPrBaseAndState (single call
   // that also returns PR state for merged-PR detection) over getPrBaseBranch.
-  if (deps.getPrBaseAndState) {
-    const info = deps.getPrBaseAndState(repoRoot, prNum);
+  if (deps.gh.getPrBaseAndState) {
+    const info = deps.gh.getPrBaseAndState(repoRoot, prNum);
     if (!info) {
       // Total API failure (rate-limited or network error). Stay in "merging"
       // instead of regressing to "ci-passed" to prevent a tight retry loop.
       // handleMerging will retry when the next successful poll arrives.
-      deps.warn?.(`Could not reach GitHub API for PR #${prNum} (${item.id}); holding in merging state`);
+      deps.io.warn?.(`Could not reach GitHub API for PR #${prNum} (${item.id}); holding in merging state`);
       return { success: false, error: `GitHub API unavailable for PR #${prNum}; holding in merging` };
     }
 
@@ -361,8 +361,8 @@ export function executeMerge(
       // PR was already merged externally. Transition directly to merged.
       orch.transition(item, "merged");
       try {
-        deps.fetchOrigin(repoRoot, defaultBranch);
-        deps.ffMerge(repoRoot, defaultBranch);
+        deps.git.fetchOrigin(repoRoot, defaultBranch);
+        deps.git.ffMerge(repoRoot, defaultBranch);
       } catch { /* non-fatal */ }
       return { success: true, error: undefined };
     }
@@ -370,14 +370,14 @@ export function executeMerge(
     const actualBase = info.baseBranch;
     if (!actualBase) {
       // Got state but not base branch -- unusual. Hold in merging.
-      deps.warn?.(`PR #${prNum} base branch unknown for ${item.id}; holding in merging state`);
+      deps.io.warn?.(`PR #${prNum} base branch unknown for ${item.id}; holding in merging state`);
       return { success: false, error: `PR #${prNum} base branch unknown; holding in merging` };
     }
 
     if (actualBase !== expectedBase) {
-      if (deps.retargetPrBase?.(repoRoot, prNum, expectedBase)) {
+      if (deps.gh.retargetPrBase?.(repoRoot, prNum, expectedBase)) {
         item.baseBranch = expectedBase === defaultBranch ? undefined : expectedBase;
-        deps.warn?.(
+        deps.io.warn?.(
           `Retargeted PR #${prNum} for ${item.id} from ${actualBase} to ${expectedBase}; waiting for CI before merge`,
         );
         orch.transition(item, "ci-pending");
@@ -391,7 +391,7 @@ export function executeMerge(
       const depMergedResult = handleDepMergedRetarget(orch, item, prNum, actualBase, expectedBase, defaultBranch, ctx, deps);
       if (depMergedResult) return depMergedResult;
 
-      deps.warn?.(
+      deps.io.warn?.(
         `PR #${prNum} for ${item.id} targets ${actualBase} but expected ${expectedBase}; blocking auto-merge`,
       );
       orch.transition(item, "ci-passed");
@@ -402,18 +402,18 @@ export function executeMerge(
     }
 
     item.baseBranch = expectedBase === defaultBranch ? undefined : expectedBase;
-  } else if (deps.getPrBaseBranch) {
-    const actualBase = deps.getPrBaseBranch(repoRoot, prNum);
+  } else if (deps.gh.getPrBaseBranch) {
+    const actualBase = deps.gh.getPrBaseBranch(repoRoot, prNum);
     if (!actualBase) {
       // API failure. Stay in "merging" to prevent ci-passed → merging loop.
-      deps.warn?.(`Could not verify PR #${prNum} base branch for ${item.id}; holding in merging state`);
+      deps.io.warn?.(`Could not verify PR #${prNum} base branch for ${item.id}; holding in merging state`);
       return { success: false, error: `Could not verify base branch for PR #${prNum}; holding in merging` };
     }
 
     if (actualBase !== expectedBase) {
-      if (deps.retargetPrBase?.(repoRoot, prNum, expectedBase)) {
+      if (deps.gh.retargetPrBase?.(repoRoot, prNum, expectedBase)) {
         item.baseBranch = expectedBase === defaultBranch ? undefined : expectedBase;
-        deps.warn?.(
+        deps.io.warn?.(
           `Retargeted PR #${prNum} for ${item.id} from ${actualBase} to ${expectedBase}; waiting for CI before merge`,
         );
         orch.transition(item, "ci-pending");
@@ -427,7 +427,7 @@ export function executeMerge(
       const depMergedResult2 = handleDepMergedRetarget(orch, item, prNum, actualBase, expectedBase, defaultBranch, ctx, deps);
       if (depMergedResult2) return depMergedResult2;
 
-      deps.warn?.(
+      deps.io.warn?.(
         `PR #${prNum} for ${item.id} targets ${actualBase} but expected ${expectedBase}; blocking auto-merge`,
       );
       orch.transition(item, "ci-passed");
@@ -445,29 +445,29 @@ export function executeMerge(
   // oldBase in rebaseOnto for stacked dependents.
   const depBranch = `ninthwave/${item.id}`;
   let depBranchRef: string = depBranch;
-  if (deps.resolveRef) {
+  if (deps.git.resolveRef) {
     try {
-      const sha = deps.resolveRef(repoRoot, depBranch);
+      const sha = deps.git.resolveRef(repoRoot, depBranch);
       if (sha) depBranchRef = sha;
     } catch {
       // Fall back to branch name
     }
   }
 
-  const merged = deps.prMerge(repoRoot, prNum, { admin: action.admin });
+  const merged = deps.gh.prMerge(repoRoot, prNum, { admin: action.admin });
   if (!merged) {
     // Check if the failure is due to merge conflicts (another PR merged to the default branch while CI ran).
     // If conflicting, rebase and re-enter CI instead of blindly retrying the same failing merge.
-    const isMergeable = deps.checkPrMergeable?.(repoRoot, prNum) ?? true;
+    const isMergeable = deps.gh.checkPrMergeable?.(repoRoot, prNum) ?? true;
     if (!isMergeable) {
       // Conflict-caused failure -- rebase instead of retrying.
       // Do NOT increment mergeFailCount since this isn't a genuine merge failure.
       item.rebaseRequested = false; // Reset so the rebase path works correctly
-      if (deps.daemonRebase) {
+      if (deps.git.daemonRebase) {
         const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
         const branch = `ninthwave/${item.id}`;
         try {
-          const rebaseSuccess = deps.daemonRebase(worktreePath, branch);
+          const rebaseSuccess = deps.git.daemonRebase(worktreePath, branch);
           if (rebaseSuccess) {
             orch.transition(item, "ci-pending");
             return { success: false, error: `Merge failed for PR #${prNum} due to conflicts, rebased and waiting for CI` };
@@ -499,12 +499,12 @@ export function executeMerge(
     // the branch has stale commits from a squash-merged dependency. Rebase instead
     // of retrying blindly.
     if (wasRecentlyUnstacked(orch, item)) {
-      if (deps.daemonRebase) {
+      if (deps.git.daemonRebase) {
         const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
         const branch = `ninthwave/${item.id}`;
         try {
-          if (deps.daemonRebase(worktreePath, branch)) {
-            deps.warn?.(`Merge of PR #${prNum} for ${item.id} failed (likely duplicate commits from squash merge); rebased onto ${defaultBranch}`);
+          if (deps.git.daemonRebase(worktreePath, branch)) {
+            deps.io.warn?.(`Merge of PR #${prNum} for ${item.id} failed (likely duplicate commits from squash merge); rebased onto ${defaultBranch}`);
             orch.transition(item, "ci-pending");
             return { success: false, error: `Merge failed for PR #${prNum} (post-squash duplicate commits), rebased and waiting for CI` };
           }
@@ -512,7 +512,7 @@ export function executeMerge(
       }
       const rebaseMsg = `[ORCHESTRATOR] Rebase Required: merge failed (likely duplicate commits from squash merge of dependency). Please rebase onto latest ${defaultBranch}.`;
       deliverToImplementerInbox(orch, item, "rebase", rebaseMsg, ctx, deps);
-      deps.warn?.(`Merge of PR #${prNum} for ${item.id} failed (likely duplicate commits); daemon rebase failed, sent worker rebase request`);
+      deps.io.warn?.(`Merge of PR #${prNum} for ${item.id} failed (likely duplicate commits); daemon rebase failed, sent worker rebase request`);
       orch.transition(item, "ci-pending");
       return { success: false, error: `Merge failed for PR #${prNum} (post-squash duplicate commits), rebase requested` };
     }
@@ -520,16 +520,16 @@ export function executeMerge(
     // Branch protection blocked: required checks not passing, required reviews missing, etc.
     // The branch may be out-of-date (e.g., after a stacked dep was squash-merged and GitHub
     // retargeted the PR). Rebase to bring it up to date so CI can run, then wait.
-    if (deps.isPrBlocked?.(repoRoot, prNum)) {
+    if (deps.gh.isPrBlocked?.(repoRoot, prNum)) {
       // The branch is likely out-of-date (e.g., after a stacked dep squash-merged).
       // Rebase to bring it up to date so CI can run. Escalate to rebaser worker if
       // daemon rebase fails (e.g., merge conflicts).
-      if (deps.daemonRebase) {
+      if (deps.git.daemonRebase) {
         const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
         const branch = `ninthwave/${item.id}`;
         try {
-          if (deps.daemonRebase(worktreePath, branch)) {
-            deps.warn?.(`PR #${prNum} for ${item.id} is blocked by branch protection; rebased onto ${defaultBranch} and waiting for CI`);
+          if (deps.git.daemonRebase(worktreePath, branch)) {
+            deps.io.warn?.(`PR #${prNum} for ${item.id} is blocked by branch protection; rebased onto ${defaultBranch} and waiting for CI`);
             orch.transition(item, "ci-pending");
             return { success: false, error: `PR #${prNum} blocked by branch protection; rebased and waiting for CI` };
           }
@@ -538,7 +538,7 @@ export function executeMerge(
       // Daemon rebase unavailable or failed -- escalate to worker rebase
       const rebaseMsg = `[ORCHESTRATOR] Rebase Required: PR is blocked by branch protection (branch may be out-of-date). Please rebase onto latest ${defaultBranch} and push.`;
       deliverToImplementerInbox(orch, item, "rebase", rebaseMsg, ctx, deps);
-      deps.warn?.(`PR #${prNum} for ${item.id} is blocked by branch protection; daemon rebase failed, sent worker rebase request`);
+      deps.io.warn?.(`PR #${prNum} for ${item.id} is blocked by branch protection; daemon rebase failed, sent worker rebase request`);
       orch.transition(item, "ci-pending");
       return { success: false, error: `PR #${prNum} blocked by branch protection; daemon rebase failed, rebase requested` };
     }
@@ -563,9 +563,9 @@ export function executeMerge(
   orch.transition(item, "merged");
 
   // Capture merge commit SHA for post-merge CI verification
-  if (orch.config.fixForward && deps.getMergeCommitSha) {
+  if (orch.config.fixForward && deps.gh.getMergeCommitSha) {
     try {
-      const sha = deps.getMergeCommitSha(repoRoot, prNum);
+      const sha = deps.gh.getMergeCommitSha(repoRoot, prNum);
       if (sha) {
         item.mergeCommitSha = sha;
       }
@@ -575,31 +575,31 @@ export function executeMerge(
   }
 
   // Audit trail
-  if (deps.upsertOrchestratorComment) {
-    deps.upsertOrchestratorComment(repoRoot, prNum, item.id, `Auto-merged PR #${prNum}.`);
+  if (deps.gh.upsertOrchestratorComment) {
+    deps.gh.upsertOrchestratorComment(repoRoot, prNum, item.id, `Auto-merged PR #${prNum}.`);
   } else {
-    deps.prComment(repoRoot, prNum, `**[Orchestrator](${ORCHESTRATOR_LINK})** Auto-merged PR #${prNum} for ${item.id}.`);
+    deps.gh.prComment(repoRoot, prNum, `**[Orchestrator](${ORCHESTRATOR_LINK})** Auto-merged PR #${prNum} for ${item.id}.`);
   }
 
   // Pull latest default branch in the target repo (where the PR was merged)
   try {
-    deps.fetchOrigin(repoRoot, defaultBranch);
-    deps.ffMerge(repoRoot, defaultBranch);
+    deps.git.fetchOrigin(repoRoot, defaultBranch);
+    deps.git.ffMerge(repoRoot, defaultBranch);
   } catch {
     // Non-fatal -- default branch will be pulled on next cycle
   }
 
-  if (deps.completeMergedWorkItem) {
+  if (deps.cleanup.completeMergedWorkItem) {
     try {
-      const cleanupResult = deps.completeMergedWorkItem(item.workItem, ctx.workDir, ctx.projectRoot);
+      const cleanupResult = deps.cleanup.completeMergedWorkItem(item.workItem, ctx.workDir, ctx.projectRoot);
       if (cleanupResult.status === "skipped" || cleanupResult.status === "failed") {
         const detail = cleanupResult.reason ?? `cleanup status=${cleanupResult.status}`;
         const matchMode = cleanupResult.matchMode ? ` (match mode: ${cleanupResult.matchMode})` : "";
-        deps.warn?.(`Merged work item cleanup for ${item.id} ${cleanupResult.status}: ${detail}${matchMode}`);
+        deps.io.warn?.(`Merged work item cleanup for ${item.id} ${cleanupResult.status}: ${detail}${matchMode}`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      deps.warn?.(`Merged work item cleanup for ${item.id} threw: ${msg}`);
+      deps.io.warn?.(`Merged work item cleanup for ${item.id} threw: ${msg}`);
     }
   }
 
@@ -623,7 +623,7 @@ export function executeMerge(
       ?? join(ctx.worktreeDir, `ninthwave-${other.id}`);
     const otherBranch = `ninthwave/${other.id}`;
 
-    if (!deps.rebaseOnto || !deps.forcePush) {
+    if (!deps.git.rebaseOnto || !deps.git.forcePush) {
       // rebaseOnto or forcePush not available -- send worker manual rebase instructions
       const restackMsg = `[ORCHESTRATOR] Restack Required: dependency ${item.id} was squash-merged. Run: git rebase --onto ${defaultBranch} ${depBranch} ${otherBranch} && git push --force-with-lease`;
       deliverToImplementerInbox(orch, other, "rebase", restackMsg, ctx, deps);
@@ -631,9 +631,9 @@ export function executeMerge(
     }
 
     try {
-      const success = deps.rebaseOnto(otherWorktreePath, defaultBranch, depBranchRef, otherBranch);
+      const success = deps.git.rebaseOnto(otherWorktreePath, defaultBranch, depBranchRef, otherBranch);
       if (success) {
-        deps.forcePush(otherWorktreePath);
+        deps.git.forcePush(otherWorktreePath);
         other.baseBranch = undefined; // no longer stacked
         successfulRestacks.add(other.id);
       } else {
@@ -674,9 +674,9 @@ export function executeMerge(
 
     // Try daemon-rebase first for all siblings
     let daemonSuccess = false;
-    if (deps.daemonRebase) {
+    if (deps.git.daemonRebase) {
       try {
-        daemonSuccess = deps.daemonRebase(otherWorktreePath, otherBranch);
+        daemonSuccess = deps.git.daemonRebase(otherWorktreePath, otherBranch);
       } catch {
         // Fall through to conflict check
       }
@@ -685,8 +685,8 @@ export function executeMerge(
     if (daemonSuccess) continue; // CI re-runs automatically on force-push
 
     // Daemon rebase failed or unavailable -- check if actually conflicting
-    if (deps.checkPrMergeable) {
-      const mergeable = deps.checkPrMergeable(repoRoot, other.prNumber);
+    if (deps.gh.checkPrMergeable) {
+      const mergeable = deps.gh.checkPrMergeable(repoRoot, other.prNumber);
       if (!mergeable) {
         // Actually conflicting -- send worker rebase message as fallback
         const siblingMsg = `Sibling PR #${other.prNumber} has merge conflicts after ${item.id} was merged. Please rebase onto latest ${defaultBranch}.`;
@@ -699,7 +699,7 @@ export function executeMerge(
           deps,
         );
         if (!delivery.projectRoot) {
-          deps.warn?.(
+          deps.io.warn?.(
             `[Orchestrator] PR #${other.prNumber} (${other.id}) has merge conflicts but daemon rebase failed and worker has no workspace reference. Manual rebase needed.`,
           );
         }
@@ -710,7 +710,7 @@ export function executeMerge(
 
   // Update stack navigation comments on remaining stacked PRs.
   // After restacking, the merged item is gone and the chain has changed.
-  if (deps.syncStackComments && successfulRestacks.size > 0) {
+  if (deps.io.syncStackComments && successfulRestacks.size > 0) {
     const synced = new Set<string>();
     for (const id of successfulRestacks) {
       const chain = orch.buildStackChain(id);
@@ -718,7 +718,7 @@ export function executeMerge(
       const rootKey = chain[0]!.id;
       if (synced.has(rootKey)) continue; // already synced this chain
       synced.add(rootKey);
-      deps.syncStackComments(defaultBranch, chain);
+      deps.io.syncStackComments(defaultBranch, chain);
     }
   }
 
@@ -746,15 +746,15 @@ export function executeNotifyCiFailure(
     return { success: true };
   }
 
-  deps.writeInbox(delivery.projectRoot, item.id, message);
+  deps.io.writeInbox(delivery.projectRoot, item.id, message);
   logInboxDelivery(orch, item, "notify-ci-failure", message, delivery, "delivered");
 
   if (item.prNumber) {
     const repoRoot = ctx.projectRoot;
-    if (deps.upsertOrchestratorComment) {
-      deps.upsertOrchestratorComment(repoRoot, item.prNumber, item.id, "CI failure detected. Worker notified.");
+    if (deps.gh.upsertOrchestratorComment) {
+      deps.gh.upsertOrchestratorComment(repoRoot, item.prNumber, item.id, "CI failure detected. Worker notified.");
     } else {
-      deps.prComment(repoRoot, item.prNumber, `**[Orchestrator](${ORCHESTRATOR_LINK})** CI failure detected for ${item.id}. Worker notified.`);
+      deps.gh.prComment(repoRoot, item.prNumber, `**[Orchestrator](${ORCHESTRATOR_LINK})** CI failure detected for ${item.id}. Worker notified.`);
     }
   }
 
@@ -785,21 +785,21 @@ export function executeClean(
   deps: OrchestratorDeps,
 ): ActionResult {
   // Read screen before closing -- capture error output for stuck diagnostics
-  if (item.workspaceRef && deps.readScreen && item.state === "stuck") {
+  if (item.workspaceRef && deps.mux.readScreen && item.state === "stuck") {
     try {
-      const screen = deps.readScreen(item.workspaceRef, 50);
+      const screen = deps.mux.readScreen(item.workspaceRef, 50);
       if (screen) {
         item.lastScreenOutput = screen;
-        deps.warn?.(`[${item.id}] Permanently stuck. Screen output:\n${screen}`);
+        deps.io.warn?.(`[${item.id}] Permanently stuck. Screen output:\n${screen}`);
       }
     } catch { /* best-effort */ }
   }
 
   const workspaceClosed = item.workspaceRef
-    ? deps.closeWorkspace(item.workspaceRef)
+    ? deps.mux.closeWorkspace(item.workspaceRef)
     : null; // null = not attempted (no workspace to close)
 
-  const worktreeCleaned = deps.cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
+  const worktreeCleaned = deps.cleanup.cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
 
   // Clean up heartbeat file (best-effort)
   try {
@@ -840,19 +840,19 @@ export function executeWorkspaceClose(
   deps: OrchestratorDeps,
 ): ActionResult {
   // Read screen before closing -- capture error output for stuck diagnostics
-  if (item.workspaceRef && deps.readScreen) {
+  if (item.workspaceRef && deps.mux.readScreen) {
     try {
-      const screen = deps.readScreen(item.workspaceRef, 50);
+      const screen = deps.mux.readScreen(item.workspaceRef, 50);
       if (screen) {
         item.lastScreenOutput = screen;
-        deps.warn?.(`[${item.id}] Permanently stuck. Screen output:\n${screen}`);
+        deps.io.warn?.(`[${item.id}] Permanently stuck. Screen output:\n${screen}`);
       }
     } catch { /* best-effort */ }
   }
 
   // Close workspace but do NOT remove worktree -- preserve for manual inspection
   if (item.workspaceRef) {
-    const closed = deps.closeWorkspace(item.workspaceRef);
+    const closed = deps.mux.closeWorkspace(item.workspaceRef);
     if (!closed) {
       return { success: false, error: `Failed to close workspace for ${item.id}` };
     }
@@ -885,7 +885,7 @@ export function executeSetCommitStatus(
   ctx: ExecutionContext,
   deps: OrchestratorDeps,
 ): ActionResult {
-  if (!deps.setCommitStatus) {
+  if (!deps.gh.setCommitStatus) {
     return { success: true }; // no-op when not wired
   }
 
@@ -898,7 +898,7 @@ export function executeSetCommitStatus(
   const description = action.statusDescription ?? "";
   const repoRoot = ctx.projectRoot;
 
-  const ok = deps.setCommitStatus(repoRoot, prNum, state, "Ninthwave / Review", description);
+  const ok = deps.gh.setCommitStatus(repoRoot, prNum, state, "Ninthwave / Review", description);
   return ok
     ? { success: true }
     : { success: false, error: `Failed to set commit status for ${item.id}` };
@@ -937,10 +937,10 @@ export function executeDaemonRebase(
   const inboxTarget = resolveImplementerInboxTarget(item, ctx);
 
   // Try daemon-side rebase if the dep is available
-  if (deps.daemonRebase) {
+  if (deps.git.daemonRebase) {
     const worktreePath = item.worktreePath ?? join(ctx.worktreeDir, `ninthwave-${item.id}`);
     try {
-      const success = deps.daemonRebase(worktreePath, branch);
+      const success = deps.git.daemonRebase(worktreePath, branch);
       if (success) {
         // Rebase succeeded -- transition back to ci-pending so CI re-runs
         orch.transition(item, "ci-pending");
@@ -971,17 +971,17 @@ export function executeDaemonRebase(
   if (attemptCount >= orch.config.maxRebaseAttempts) {
     orch.transition(item, "stuck");
     item.failureReason = `rebase-loop: exceeded max rebase attempts (${orch.config.maxRebaseAttempts}) -- rebase conflicts could not be resolved`;
-    deps.warn?.(
+    deps.io.warn?.(
       `[Orchestrator] ${item.id} stuck after ${attemptCount} rebase attempts. Manual intervention needed.`,
     );
     return { success: false, error: `Rebase loop circuit breaker triggered for ${item.id} after ${attemptCount} attempts` };
   }
 
   // Launch rebaser worker if available (focused rebase-only prompt)
-  if (deps.launchRebaser && item.prNumber) {
+  if (deps.workers.launchRebaser && item.prNumber) {
     const repoRoot = ctx.projectRoot;
     try {
-      const result = deps.launchRebaser(item.id, item.prNumber, repoRoot, item.aiTool ?? ctx.aiTool);
+      const result = deps.workers.launchRebaser(item.id, item.prNumber, repoRoot, item.aiTool ?? ctx.aiTool);
       if (result) {
         item.rebaserWorkspaceRef = result.workspaceRef;
         item.rebaseAttemptCount = attemptCount + 1;
@@ -989,7 +989,7 @@ export function executeDaemonRebase(
         return { success: true };
       }
     } catch (e: unknown) {
-      deps.warn?.(`[Orchestrator] Rebaser worker launch failed for ${item.id}: ${e instanceof Error ? e.message : e}`);
+      deps.io.warn?.(`[Orchestrator] Rebaser worker launch failed for ${item.id}: ${e instanceof Error ? e.message : e}`);
     }
   }
 
@@ -999,7 +999,7 @@ export function executeDaemonRebase(
   }
 
   // No live worker, no rebaser -- log warning
-  deps.warn?.(
+  deps.io.warn?.(
     `[Orchestrator] PR for ${item.id} (branch ${branch}) has merge conflicts but daemon rebase failed and no worker/rebaser available. Manual rebase needed.`,
   );
   return { success: false, error: `Daemon rebase failed and no worker available for ${item.id}` };
@@ -1012,12 +1012,12 @@ export function executeRetry(
   deps: OrchestratorDeps,
 ): ActionResult {
   // Read screen before closing -- capture error output for diagnostics
-  if (item.workspaceRef && deps.readScreen) {
+  if (item.workspaceRef && deps.mux.readScreen) {
     try {
-      const screen = deps.readScreen(item.workspaceRef, 50);
+      const screen = deps.mux.readScreen(item.workspaceRef, 50);
       if (screen) {
         item.lastScreenOutput = screen;
-        deps.warn?.(`[${item.id}] Worker died. Screen output:\n${screen}`);
+        deps.io.warn?.(`[${item.id}] Worker died. Screen output:\n${screen}`);
       }
     } catch { /* best-effort */ }
   }
@@ -1025,9 +1025,9 @@ export function executeRetry(
   // Close the old workspace if it exists -- must complete before relaunch to
   // guarantee no two workers operate on the same branch simultaneously.
   if (item.workspaceRef) {
-    const closed = deps.closeWorkspace(item.workspaceRef);
+    const closed = deps.mux.closeWorkspace(item.workspaceRef);
     if (!closed) {
-      deps.warn?.(`[${item.id}] WARNING: failed to close workspace ${item.workspaceRef} before retry`);
+      deps.io.warn?.(`[${item.id}] WARNING: failed to close workspace ${item.workspaceRef} before retry`);
     }
     item.workspaceRef = undefined;
   }
@@ -1044,7 +1044,7 @@ export function executeSyncStackComments(
   item: OrchestratorItem,
   deps: OrchestratorDeps,
 ): ActionResult {
-  if (!deps.syncStackComments) {
+  if (!deps.io.syncStackComments) {
     return { success: true }; // no-op when not wired
   }
 
@@ -1058,7 +1058,7 @@ export function executeSyncStackComments(
   const baseBranch = rootItem?.baseBranch ?? "main";
 
   try {
-    deps.syncStackComments(baseBranch, chain);
+    deps.io.syncStackComments(baseBranch, chain);
     return { success: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1073,7 +1073,7 @@ export function executeLaunchRebaser(
   ctx: ExecutionContext,
   deps: OrchestratorDeps,
 ): ActionResult {
-  if (!deps.launchRebaser) {
+  if (!deps.workers.launchRebaser) {
     return { success: false, error: `Rebaser worker not available for ${item.id}` };
   }
 
@@ -1084,7 +1084,7 @@ export function executeLaunchRebaser(
 
   const repoRoot = ctx.projectRoot;
   try {
-    const result = deps.launchRebaser(item.id, prNum, repoRoot, item.aiTool ?? ctx.aiTool);
+    const result = deps.workers.launchRebaser(item.id, prNum, repoRoot, item.aiTool ?? ctx.aiTool);
     if (result) {
       item.rebaserWorkspaceRef = result.workspaceRef;
     }
@@ -1128,7 +1128,7 @@ export function executeCleanRebaser(
   deps: OrchestratorDeps,
 ): ActionResult {
   return cleanWorkerWorkspace(
-    "Rebaser", item.id, item.rebaserWorkspaceRef, deps.cleanRebaser,
+    "Rebaser", item.id, item.rebaserWorkspaceRef, deps.cleanup.cleanRebaser,
     () => { item.rebaserWorkspaceRef = undefined; },
   );
 }
@@ -1139,7 +1139,7 @@ export function executeLaunchReview(
   ctx: ExecutionContext,
   deps: OrchestratorDeps,
 ): ActionResult {
-  if (!deps.launchReview) {
+  if (!deps.workers.launchReview) {
     return { success: true }; // no-op when not wired (stub for H-RVW-3)
   }
 
@@ -1150,7 +1150,7 @@ export function executeLaunchReview(
 
   const repoRoot = ctx.projectRoot;
   try {
-    const result = deps.launchReview(item.id, prNum, repoRoot, item.worktreePath, item.aiTool ?? ctx.aiTool);
+    const result = deps.workers.launchReview(item.id, prNum, repoRoot, item.worktreePath, item.aiTool ?? ctx.aiTool);
     if (result) {
       item.reviewWorkspaceRef = result.workspaceRef;
       item.reviewVerdictPath = result.verdictPath;
@@ -1174,7 +1174,7 @@ export function executeCleanReview(
   }
 
   return cleanWorkerWorkspace(
-    "Review", item.id, item.reviewWorkspaceRef, deps.cleanReview,
+    "Review", item.id, item.reviewWorkspaceRef, deps.cleanup.cleanReview,
     () => { item.reviewWorkspaceRef = undefined; },
   );
 }
@@ -1224,7 +1224,7 @@ export function executePostReview(
 
   const repoRoot = ctx.projectRoot;
   try {
-    deps.prComment(repoRoot, prNum, body);
+    deps.gh.prComment(repoRoot, prNum, body);
     return { success: true };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1238,7 +1238,7 @@ export function executeLaunchForwardFixer(
   ctx: ExecutionContext,
   deps: OrchestratorDeps,
 ): ActionResult {
-  if (!deps.launchForwardFixer) {
+  if (!deps.workers.launchForwardFixer) {
     return { success: false, error: `Forward-fixer worker not available for ${item.id}` };
   }
 
@@ -1249,7 +1249,7 @@ export function executeLaunchForwardFixer(
   const repoRoot = ctx.projectRoot;
   const defaultBranch = resolveDefaultBranch(item, repoRoot, deps);
   try {
-    const result = deps.launchForwardFixer(
+    const result = deps.workers.launchForwardFixer(
       item.id,
       item.mergeCommitSha,
       repoRoot,
@@ -1272,7 +1272,7 @@ export function executeCleanForwardFixer(
   deps: OrchestratorDeps,
 ): ActionResult {
   return cleanWorkerWorkspace(
-    "Forward-Fixer", item.id, item.fixForwardWorkspaceRef, deps.cleanForwardFixer,
+    "Forward-Fixer", item.id, item.fixForwardWorkspaceRef, deps.cleanup.cleanForwardFixer,
     () => { item.fixForwardWorkspaceRef = undefined; },
   );
 }

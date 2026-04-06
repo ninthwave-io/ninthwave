@@ -4,6 +4,11 @@
 import type { WorkItem, Priority } from "./types.ts";
 import type { PickupCandidateValidation } from "./commands/launch.ts";
 
+/** Recursive partial -- makes all nested interface fields optional. Used by test mock factories. */
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
 // ── State types ──────────────────────────────────────────────────────
 
 export type OrchestratorItemState =
@@ -395,56 +400,18 @@ export function getNextTool(ctx: ExecutionContext): string {
   return tool;
 }
 
-/** External dependencies injected into executeAction. */
-export interface OrchestratorDeps {
-  validatePickupCandidate?: (
-    item: WorkItem,
-    projectRoot: string,
-  ) => PickupCandidateValidation;
-  launchSingleItem: (
-    item: WorkItem,
-    workDir: string,
-    worktreeDir: string,
-    projectRoot: string,
-    aiTool: string,
-    baseBranch?: string,
-    forceWorkerLaunch?: boolean,
-  ) => { worktreePath: string; workspaceRef: string; existingPrNumber?: number } | null;
-  cleanSingleWorktree: (
-    id: string,
-    worktreeDir: string,
-    projectRoot: string,
-  ) => boolean;
-  prMerge: (repoRoot: string, prNumber: number, options?: { admin?: boolean }) => boolean;
-  prComment: (repoRoot: string, prNumber: number, body: string) => boolean;
-  /** Legacy direct-message hook retained for older tests/backward compatibility. */
-  sendMessage?: (workspaceRef: string, message: string) => boolean;
-  /** Write a message to the file-based inbox for a worker worktree. */
-  writeInbox: (projectRoot: string, itemId: string, message: string) => void;
-  closeWorkspace: (workspaceRef: string) => boolean;
+// ── Functional sub-interfaces for OrchestratorDeps ──────────────────
+// Grouped by concern so action functions declare only the capabilities they use.
+
+/** Git operations (fetch, merge, rebase, push). */
+export interface GitDeps {
   fetchOrigin: (repoRoot: string, branch: string) => void;
   ffMerge: (repoRoot: string, branch: string) => void;
-  /** Get the current GitHub base branch for a PR. Returns null when unavailable. */
-  getPrBaseBranch?: (repoRoot: string, prNumber: number) => string | null;
-  /** Get PR base branch and state in a single API call. Returns null on total API failure. */
-  getPrBaseAndState?: (repoRoot: string, prNumber: number) =>
-    { baseBranch: string | null; prState: "MERGED" | "OPEN" | "CLOSED" | null } | null;
-  /** Retarget a PR to a new GitHub base branch. */
-  retargetPrBase?: (repoRoot: string, prNumber: number, baseBranch: string) => boolean;
-  /** Check if a PR is mergeable (no conflicts). Returns true if mergeable, false if conflicting. */
-  checkPrMergeable?: (repoRoot: string, prNumber: number) => boolean;
-  /** Check if a PR is blocked by branch protection. Returns true if blocked. */
-  isPrBlocked?: (repoRoot: string, prNumber: number) => boolean;
   /**
-   * Daemon-side rebase: fetch origin/main, rebase the branch, and force-push.
-   * The worktreePath is the path to the worktree where the branch is checked out.
-   * Returns true on success, false on failure (caller should fall back to worker rebase).
+   * Resolve a git ref (branch name, tag, SHA prefix) to its full commit SHA.
+   * Used to pin branch SHAs before merge so restacking survives branch deletion.
    */
-  daemonRebase?: (worktreePath: string, branch: string) => boolean;
-  /** Read the last N lines of a worker's terminal screen for diagnostics. */
-  readScreen?: (workspaceRef: string, lines?: number) => string;
-  /** Log a warning message (for situations that need human attention). */
-  warn?: (message: string) => void;
+  resolveRef?: (repoRoot: string, ref: string) => string | null;
   /**
    * Squash-merge-safe rebase using `git rebase --onto`.
    * Replays only the commits from `oldBase..branch` onto `newBase`.
@@ -454,50 +421,17 @@ export interface OrchestratorDeps {
   /** Force-push the current branch in a worktree. Returns true on success. */
   forcePush?: (worktreePath: string) => boolean;
   /**
-   * Sync stack navigation comments on all PRs in a stack.
-   * Injected (not imported) for test isolation. Production binds this to
-   * syncStackComments from core/stack-comments.ts with a real GhCommentClient.
+   * Daemon-side rebase: fetch origin/main, rebase the branch, and force-push.
+   * The worktreePath is the path to the worktree where the branch is checked out.
+   * Returns true on success, false on failure (caller should fall back to worker rebase).
    */
-  syncStackComments?: (baseBranch: string, stack: Array<{ prNumber: number; title: string }>) => void;
-  /**
-   * Clean up stale branches when a work item ID is reused with different work.
-   * Called before launching a worker. Checks for merged PRs with title mismatches
-   * and deletes both local and remote branches so the worker starts fresh.
-   * Non-fatal -- launch proceeds even if cleanup fails.
-   */
-  cleanStaleBranch?: (workItem: WorkItem, projectRoot: string) => void;
-  /**
-   * Launch a review worker for a PR. Returns a workspace reference on success.
-   * Actual logic lives in H-RVW-3; stub for now.
-   */
-  launchReview?: (itemId: string, prNumber: number, repoRoot: string, implementerWorktreePath?: string, aiTool?: string) => { workspaceRef: string; verdictPath: string } | null;
-  /**
-   * Clean up a review worker session and workspace.
-   * Actual logic lives in H-RVW-3; stub for now.
-   */
-  cleanReview?: (itemId: string, reviewWorkspaceRef: string) => boolean;
-  /**
-   * Upsert a living orchestrator status comment on a PR.
-   * Appends an event row to a single persistent comment identified by a marker.
-   * When not provided, falls back to deps.prComment for backward compatibility.
-   */
-  upsertOrchestratorComment?: (
-    repoRoot: string,
-    prNumber: number,
-    itemId: string,
-    eventLine: string,
-  ) => boolean;
-  /**
-   * Launch a rebaser worker for rebase-only conflict resolution.
-   * Called when daemon-rebase fails (conflicts). The rebaser worker gets
-   * a focused prompt to resolve conflicts and push, not re-implement.
-   * Returns a workspace reference on success.
-   */
-  launchRebaser?: (itemId: string, prNumber: number, repoRoot: string, aiTool?: string) => { workspaceRef: string } | null;
-  /**
-   * Clean up a rebaser worker session and workspace.
-   */
-  cleanRebaser?: (itemId: string, rebaserWorkspaceRef: string) => boolean;
+  daemonRebase?: (worktreePath: string, branch: string) => boolean;
+}
+
+/** GitHub API operations (PRs, CI, commit statuses). */
+export interface GhDeps {
+  prMerge: (repoRoot: string, prNumber: number, options?: { admin?: boolean }) => boolean;
+  prComment: (repoRoot: string, prNumber: number, body: string) => boolean;
   /**
    * Set a commit status on a PR's head SHA.
    * Used to post review results as GitHub commit statuses for branch protection integration.
@@ -509,6 +443,17 @@ export interface OrchestratorDeps {
     context: string,
     description: string,
   ) => boolean;
+  /** Get the current GitHub base branch for a PR. Returns null when unavailable. */
+  getPrBaseBranch?: (repoRoot: string, prNumber: number) => string | null;
+  /** Get PR base branch and state in a single API call. Returns null on total API failure. */
+  getPrBaseAndState?: (repoRoot: string, prNumber: number) =>
+    { baseBranch: string | null; prState: "MERGED" | "OPEN" | "CLOSED" | null } | null;
+  /** Retarget a PR to a new GitHub base branch. */
+  retargetPrBase?: (repoRoot: string, prNumber: number, baseBranch: string) => boolean;
+  /** Check if a PR is mergeable (no conflicts). Returns true if mergeable, false if conflicting. */
+  checkPrMergeable?: (repoRoot: string, prNumber: number) => boolean;
+  /** Check if a PR is blocked by branch protection. Returns true if blocked. */
+  isPrBlocked?: (repoRoot: string, prNumber: number) => boolean;
   /**
    * Get the merge commit SHA for a merged PR.
    * Returns the SHA string, or null if it can't be determined.
@@ -522,20 +467,87 @@ export interface OrchestratorDeps {
   /** Get the repository default branch name (e.g. "main" or "develop"). */
   getDefaultBranch?: (repoRoot: string) => string | null;
   /**
+   * Upsert a living orchestrator status comment on a PR.
+   * Appends an event row to a single persistent comment identified by a marker.
+   * When not provided, falls back to deps.gh.prComment for backward compatibility.
+   */
+  upsertOrchestratorComment?: (
+    repoRoot: string,
+    prNumber: number,
+    itemId: string,
+    eventLine: string,
+  ) => boolean;
+}
+
+/** Multiplexer operations (workspace management, screen reading). */
+export interface MuxDeps {
+  /** Legacy direct-message hook retained for older tests/backward compatibility. */
+  sendMessage?: (workspaceRef: string, message: string) => boolean;
+  closeWorkspace: (workspaceRef: string) => boolean;
+  /** Read the last N lines of a worker's terminal screen for diagnostics. */
+  readScreen?: (workspaceRef: string, lines?: number) => string;
+}
+
+/** Worker lifecycle operations (launch implementations, reviews, rebases). */
+export interface WorkerDeps {
+  validatePickupCandidate?: (
+    item: WorkItem,
+    projectRoot: string,
+  ) => PickupCandidateValidation;
+  launchSingleItem: (
+    item: WorkItem,
+    workDir: string,
+    worktreeDir: string,
+    projectRoot: string,
+    aiTool: string,
+    baseBranch?: string,
+    forceWorkerLaunch?: boolean,
+  ) => { worktreePath: string; workspaceRef: string; existingPrNumber?: number } | null;
+  /**
+   * Launch a review worker for a PR. Returns a workspace reference on success.
+   */
+  launchReview?: (itemId: string, prNumber: number, repoRoot: string, implementerWorktreePath?: string, aiTool?: string) => { workspaceRef: string; verdictPath: string } | null;
+  /**
+   * Launch a rebaser worker for rebase-only conflict resolution.
+   * Called when daemon-rebase fails (conflicts). The rebaser worker gets
+   * a focused prompt to resolve conflicts and push, not re-implement.
+   * Returns a workspace reference on success.
+   */
+  launchRebaser?: (itemId: string, prNumber: number, repoRoot: string, aiTool?: string) => { workspaceRef: string } | null;
+  /**
    * Launch a forward-fixer worker for post-merge CI failure diagnosis and fix-forward.
    * Creates a worktree from the repo default branch and launches the forward-fixer agent.
    * Returns a workspace reference and worktree path on success.
    */
   launchForwardFixer?: (itemId: string, mergeCommitSha: string, repoRoot: string, aiTool?: string, defaultBranch?: string) => { worktreePath: string; workspaceRef: string } | null;
+}
+
+/** Cleanup operations (worktrees, reviews, rebases, stale branches). */
+export interface CleanupDeps {
+  cleanSingleWorktree: (
+    id: string,
+    worktreeDir: string,
+    projectRoot: string,
+  ) => boolean;
+  /**
+   * Clean up a review worker session and workspace.
+   */
+  cleanReview?: (itemId: string, reviewWorkspaceRef: string) => boolean;
+  /**
+   * Clean up a rebaser worker session and workspace.
+   */
+  cleanRebaser?: (itemId: string, rebaserWorkspaceRef: string) => boolean;
   /**
    * Clean up a forward-fixer worker session and worktree.
    */
   cleanForwardFixer?: (itemId: string, fixForwardWorkspaceRef: string) => boolean;
   /**
-   * Resolve a git ref (branch name, tag, SHA prefix) to its full commit SHA.
-   * Used to pin branch SHAs before merge so restacking survives branch deletion.
+   * Clean up stale branches when a work item ID is reused with different work.
+   * Called before launching a worker. Checks for merged PRs with title mismatches
+   * and deletes both local and remote branches so the worker starts fresh.
+   * Non-fatal -- launch proceeds even if cleanup fails.
    */
-  resolveRef?: (repoRoot: string, ref: string) => string | null;
+  cleanStaleBranch?: (workItem: WorkItem, projectRoot: string) => void;
   /**
    * Remove/persist the merged work item file from the hub work directory.
    * Uses lineage-aware identity checks so reused IDs do not delete the wrong file.
@@ -550,6 +562,30 @@ export interface OrchestratorDeps {
     reason?: string;
     committed?: boolean;
   };
+}
+
+/** I/O operations (inbox, warnings, stack comments). */
+export interface IoDeps {
+  /** Write a message to the file-based inbox for a worker worktree. */
+  writeInbox: (projectRoot: string, itemId: string, message: string) => void;
+  /** Log a warning message (for situations that need human attention). */
+  warn?: (message: string) => void;
+  /**
+   * Sync stack navigation comments on all PRs in a stack.
+   * Injected (not imported) for test isolation. Production binds this to
+   * syncStackComments from core/stack-comments.ts with a real GhCommentClient.
+   */
+  syncStackComments?: (baseBranch: string, stack: Array<{ prNumber: number; title: string }>) => void;
+}
+
+/** External dependencies injected into executeAction, grouped by concern. */
+export interface OrchestratorDeps {
+  git: GitDeps;
+  gh: GhDeps;
+  mux: MuxDeps;
+  workers: WorkerDeps;
+  cleanup: CleanupDeps;
+  io: IoDeps;
 }
 
 /** Result of executing a single action. */

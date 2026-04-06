@@ -16,6 +16,7 @@ import {
   type ExecutionContext,
   type ActionResult,
   type OrchestratorDeps,
+  type DeepPartial,
 } from "../core/orchestrator.ts";
 import type { WorkItem, Priority } from "../core/types.ts";
 
@@ -69,21 +70,38 @@ const defaultCtx: ExecutionContext = {
 };
 
 /** Create mock deps with sensible defaults. Override individual fns as needed. */
-function mockDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps {
+function mockDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
   return {
-    launchSingleItem: vi.fn(() => ({
-      worktreePath: "/tmp/test/ninthwave-test",
-      workspaceRef: "workspace:1",
-    })),
-    cleanSingleWorktree: vi.fn(() => true),
-    prMerge: vi.fn(() => true),
-    prComment: vi.fn(() => true),
-    sendMessage: vi.fn(() => true),
-    writeInbox: vi.fn(),
-    closeWorkspace: vi.fn(() => true),
-    fetchOrigin: vi.fn(),
-    ffMerge: vi.fn(),
-    ...overrides,
+    git: {
+      fetchOrigin: vi.fn(),
+      ffMerge: vi.fn(),
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: vi.fn(() => true),
+      prComment: vi.fn(() => true),
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: vi.fn(() => true),
+      closeWorkspace: vi.fn(() => true),
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: vi.fn(() => ({
+        worktreePath: "/tmp/test/ninthwave-test",
+        workspaceRef: "workspace:1",
+      })),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: vi.fn(() => true),
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: vi.fn(),
+      ...overrides?.io,
+    },
   };
 }
 
@@ -1061,7 +1079,7 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.launchSingleItem).toHaveBeenCalledWith(
+      expect(deps.workers.launchSingleItem).toHaveBeenCalledWith(
         orch.getItem("H-1-1")!.workItem,
         defaultCtx.workDir,
         defaultCtx.worktreeDir,
@@ -1074,7 +1092,7 @@ describe("Orchestrator", () => {
     });
 
     it("launch: retries when launchSingleItem returns null and retries remain", () => {
-      const deps = mockDeps({ launchSingleItem: vi.fn(() => null) });
+      const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => null) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "launching");
@@ -1093,7 +1111,7 @@ describe("Orchestrator", () => {
 
     it("launch: marks stuck when launchSingleItem returns null and retries exhausted", () => {
       orch = new Orchestrator({ maxRetries: 0 });
-      const deps = mockDeps({ launchSingleItem: vi.fn(() => null) });
+      const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => null) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "launching");
@@ -1110,9 +1128,7 @@ describe("Orchestrator", () => {
     });
 
     it("launch: retries when launchSingleItem throws and retries remain", () => {
-      const deps = mockDeps({
-        launchSingleItem: vi.fn(() => { throw new Error("cmux not running"); }),
-      });
+      const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => { throw new Error("cmux not running"); }) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "launching");
@@ -1132,9 +1148,7 @@ describe("Orchestrator", () => {
 
     it("launch: marks stuck when launchSingleItem throws and retries exhausted", () => {
       orch = new Orchestrator({ maxRetries: 0 });
-      const deps = mockDeps({
-        launchSingleItem: vi.fn(() => { throw new Error("cmux not running"); }),
-      });
+      const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => { throw new Error("cmux not running"); }) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "launching");
@@ -1166,14 +1180,14 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 42, { admin: undefined });
-      expect(deps.prComment).toHaveBeenCalledWith(
+      expect(deps.gh.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 42, { admin: undefined });
+      expect(deps.gh.prComment).toHaveBeenCalledWith(
         defaultCtx.projectRoot,
         42,
         expect.stringContaining("[Orchestrator]"),
       );
-      expect(deps.fetchOrigin).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
-      expect(deps.ffMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
+      expect(deps.git.fetchOrigin).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
+      expect(deps.git.ffMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, "main");
       expect(orch.getItem("H-1-1")!.state).toBe("merged");
     });
 
@@ -1183,7 +1197,7 @@ describe("Orchestrator", () => {
         matchMode: "lineage",
         committed: true,
       }));
-      const deps = mockDeps({ completeMergedWorkItem });
+      const deps = mockDeps({ cleanup: { completeMergedWorkItem } });
       orch.addItem({ ...makeWorkItem("H-1-1"), lineageToken: "24af773b-90c0-4f16-a0fd-5be3c5c0fe89" });
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1205,14 +1219,11 @@ describe("Orchestrator", () => {
 
     it("merge: warns when merged work item cleanup skips a reused-ID mismatch", () => {
       const warn = vi.fn();
-      const deps = mockDeps({
-        warn,
-        completeMergedWorkItem: vi.fn(() => ({
+      const deps = mockDeps({ cleanup: { completeMergedWorkItem: vi.fn(() => ({
           status: "skipped" as const,
           matchMode: "mismatch",
           reason: "work item file for H-1-1 no longer matches merged item metadata",
-        })),
-      });
+        })) }, io: { warn } });
       orch.addItem({ ...makeWorkItem("H-1-1"), lineageToken: "24af773b-90c0-4f16-a0fd-5be3c5c0fe89" });
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1234,7 +1245,7 @@ describe("Orchestrator", () => {
     });
 
     it("merge: reverts to ci-passed when prMerge fails", () => {
-      const deps = mockDeps({ prMerge: vi.fn(() => false) });
+      const deps = mockDeps({ gh: { prMerge: vi.fn(() => false) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1253,7 +1264,7 @@ describe("Orchestrator", () => {
     });
 
     it("merge: marks stuck after exceeding maxMergeRetries", () => {
-      const deps = mockDeps({ prMerge: vi.fn(() => false) });
+      const deps = mockDeps({ gh: { prMerge: vi.fn(() => false) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1276,7 +1287,7 @@ describe("Orchestrator", () => {
     });
 
     it("merge: resets mergeFailCount on success", () => {
-      const deps = mockDeps({ prMerge: vi.fn(() => true) });
+      const deps = mockDeps({ gh: { prMerge: vi.fn(() => true) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1299,7 +1310,7 @@ describe("Orchestrator", () => {
       const retargetPrBase = vi.fn(() => true);
       const prMerge = vi.fn(() => true);
       const warn = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, prMerge, warn });
+      const deps = mockDeps({ gh: { getPrBaseBranch, retargetPrBase, prMerge }, io: { warn } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "merged");
@@ -1332,7 +1343,7 @@ describe("Orchestrator", () => {
       const retargetPrBase = vi.fn(() => false);
       const prMerge = vi.fn(() => true);
       const warn = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, prMerge, warn });
+      const deps = mockDeps({ gh: { getPrBaseBranch, retargetPrBase, prMerge }, io: { warn } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "done");
@@ -1365,7 +1376,7 @@ describe("Orchestrator", () => {
       const daemonRebase = vi.fn(() => true);
       const prMerge = vi.fn(() => true);
       const warn = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, daemonRebase, prMerge, warn });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { getPrBaseBranch, retargetPrBase, prMerge }, io: { warn } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "merging"); // Not in DEP_DONE_STATES yet (race)
@@ -1399,7 +1410,7 @@ describe("Orchestrator", () => {
       const prMerge = vi.fn(() => true);
       const warn = vi.fn();
       const writeInbox = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, daemonRebase, prMerge, warn, writeInbox });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { getPrBaseBranch, retargetPrBase, prMerge }, io: { warn, writeInbox } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "merging");
@@ -1429,7 +1440,7 @@ describe("Orchestrator", () => {
       const checkPrMergeable = vi.fn(() => true); // Not a conflict
       const daemonRebase = vi.fn(() => true);
       const warn = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, daemonRebase, warn });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { getPrBaseBranch, prMerge, checkPrMergeable }, io: { warn } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "done"); // Dep done → expectedBase = main
@@ -1458,7 +1469,7 @@ describe("Orchestrator", () => {
       const prMerge = vi.fn(() => false);
       const checkPrMergeable = vi.fn(() => true);
       const warn = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, warn });
+      const deps = mockDeps({ gh: { getPrBaseBranch, prMerge, checkPrMergeable }, io: { warn } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "implementing"); // NOT in done states
@@ -1489,7 +1500,7 @@ describe("Orchestrator", () => {
       const isPrBlocked = vi.fn(() => true);
       const daemonRebase = vi.fn(() => true);
       const warn = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, isPrBlocked, daemonRebase, warn });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { getPrBaseBranch, prMerge, checkPrMergeable, isPrBlocked }, io: { warn } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -1517,7 +1528,7 @@ describe("Orchestrator", () => {
       const isPrBlocked = vi.fn(() => true);
       const warn = vi.fn();
       const writeInbox = vi.fn();
-      const deps = mockDeps({ getPrBaseBranch, prMerge, checkPrMergeable, isPrBlocked, warn, writeInbox });
+      const deps = mockDeps({ gh: { getPrBaseBranch, prMerge, checkPrMergeable, isPrBlocked }, io: { warn, writeInbox } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -1541,7 +1552,7 @@ describe("Orchestrator", () => {
       const getPrBaseBranch = vi.fn(() => "ninthwave/H-1-1");
       const retargetPrBase = vi.fn(() => true);
       const prMerge = vi.fn(() => true);
-      const deps = mockDeps({ getPrBaseBranch, retargetPrBase, prMerge });
+      const deps = mockDeps({ gh: { getPrBaseBranch, retargetPrBase, prMerge } });
 
       orch.addItem(makeWorkItem("H-1-1"));
       orch.hydrateState("H-1-1", "ci-passed");
@@ -1598,12 +1609,12 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         worktreePath,
         "H-1-2",
         expect.stringContaining("Dependency H-1-1 merged"),
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: does not send rebase to non-dependent items", () => {
@@ -1623,13 +1634,11 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: succeeds even when fetchOrigin/ffMerge throw", () => {
-      const deps = mockDeps({
-        fetchOrigin: vi.fn(() => { throw new Error("network error"); }),
-      });
+      const deps = mockDeps({ git: { fetchOrigin: vi.fn(() => { throw new Error("network error"); }) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1646,9 +1655,7 @@ describe("Orchestrator", () => {
     });
 
     it("merge: transitions to merged even if getMergeCommitSha throws", () => {
-      const deps = mockDeps({
-        getMergeCommitSha: vi.fn(() => { throw new Error("API error"); }),
-      });
+      const deps = mockDeps({ gh: { getMergeCommitSha: vi.fn(() => { throw new Error("API error"); }) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merging");
@@ -1669,7 +1676,7 @@ describe("Orchestrator", () => {
       const resolveRef = vi.fn(() => "abc123deadbeef");
       const rebaseOnto = vi.fn(() => true);
       const forcePush = vi.fn(() => true);
-      const deps = mockDeps({ resolveRef, rebaseOnto, forcePush });
+      const deps = mockDeps({ git: { resolveRef, rebaseOnto, forcePush } });
 
       orch.addItem(makeWorkItem("A-1-1"));
       orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -1702,7 +1709,7 @@ describe("Orchestrator", () => {
 
     it("merge: daemon-rebases all in-flight sibling PRs after merge", () => {
       const daemonRebase = vi.fn(() => true);
-      const deps = mockDeps({ daemonRebase });
+      const deps = mockDeps({ git: { daemonRebase } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.addItem(makeWorkItem("H-1-2"));
@@ -1740,7 +1747,7 @@ describe("Orchestrator", () => {
     it("merge: no worker rebase message when daemon-rebase succeeds", () => {
       const daemonRebase = vi.fn(() => true);
       const checkPrMergeable = vi.fn(() => false);
-      const deps = mockDeps({ daemonRebase, checkPrMergeable });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { checkPrMergeable } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.addItem(makeWorkItem("H-1-2"));
@@ -1761,13 +1768,13 @@ describe("Orchestrator", () => {
       // Daemon rebase succeeded -- no need to check mergeable or send worker message
       expect(daemonRebase).toHaveBeenCalledTimes(1);
       expect(checkPrMergeable).not.toHaveBeenCalled();
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: falls back to worker rebase when daemon-rebase fails and PR has conflicts", () => {
       const daemonRebase = vi.fn(() => false);
       const checkPrMergeable = vi.fn(() => false);
-      const deps = mockDeps({ daemonRebase, checkPrMergeable });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { checkPrMergeable } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.addItem(makeWorkItem("H-1-2"));
@@ -1788,18 +1795,18 @@ describe("Orchestrator", () => {
       // Daemon rebase failed, PR is conflicting -- fall back to worker message
       expect(daemonRebase).toHaveBeenCalledTimes(1);
       expect(checkPrMergeable).toHaveBeenCalledWith(defaultCtx.projectRoot, 43);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-2",
         "H-1-2",
         expect.stringContaining("merge conflicts"),
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: skips non-conflicting PR after daemon-rebase failure", () => {
       const daemonRebase = vi.fn(() => false);
       const checkPrMergeable = vi.fn(() => true);
-      const deps = mockDeps({ daemonRebase, checkPrMergeable });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { checkPrMergeable } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.addItem(makeWorkItem("H-1-2"));
@@ -1819,14 +1826,14 @@ describe("Orchestrator", () => {
       // Daemon rebase failed but PR is not conflicting -- no message needed
       expect(daemonRebase).toHaveBeenCalledTimes(1);
       expect(checkPrMergeable).toHaveBeenCalledWith(defaultCtx.projectRoot, 43);
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: warns when daemon-rebase fails, PR conflicting, and worker dead", () => {
       const daemonRebase = vi.fn(() => false);
       const checkPrMergeable = vi.fn(() => false);
       const warn = vi.fn();
-      const deps = mockDeps({ daemonRebase, checkPrMergeable, warn });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { checkPrMergeable }, io: { warn } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.addItem(makeWorkItem("H-1-2"));
@@ -1849,13 +1856,13 @@ describe("Orchestrator", () => {
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining("Manual rebase needed"),
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("merge: falls back to checkPrMergeable only when no daemonRebase dep", () => {
       const checkPrMergeable = vi.fn(() => false);
       const warn = vi.fn();
-      const deps = mockDeps({ checkPrMergeable, warn });
+      const deps = mockDeps({ gh: { checkPrMergeable }, io: { warn } });
       // No daemonRebase dep
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -1899,13 +1906,13 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "CI failed on job build",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
-      expect(deps.prComment).toHaveBeenCalledWith(
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
+      expect(deps.gh.prComment).toHaveBeenCalledWith(
         defaultCtx.projectRoot,
         42,
         expect.stringContaining("CI failure detected"),
@@ -1927,12 +1934,12 @@ describe("Orchestrator", () => {
         deps,
       );
 
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "CI failed -- please investigate and fix.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("notify-ci-failure: uses known worktreePath even without workspace ref", () => {
@@ -1951,12 +1958,12 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "CI failed on job build",
       );
-      expect(deps.prComment).toHaveBeenCalledWith(
+      expect(deps.gh.prComment).toHaveBeenCalledWith(
         defaultCtx.projectRoot,
         42,
         expect.stringContaining("CI failure detected"),
@@ -1984,9 +1991,9 @@ describe("Orchestrator", () => {
       expect(item.state).toBe("ready");
       expect(item.needsCiFix).toBe(true);
       expect(item.workspaceRef).toBeUndefined();
-      expect(deps.writeInbox).not.toHaveBeenCalled();
-      expect(deps.sendMessage).not.toHaveBeenCalled();
-      expect(deps.prComment).not.toHaveBeenCalled();
+      expect(deps.io.writeInbox).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
+      expect(deps.gh.prComment).not.toHaveBeenCalled();
     });
 
     // ── notify-review ─────────────────────────────────────────
@@ -2006,12 +2013,12 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Please address review comments.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("notify-review: uses default message when none provided", () => {
@@ -2024,12 +2031,12 @@ describe("Orchestrator", () => {
 
       orch.executeAction({ type: "notify-review", itemId: "H-1-1" }, defaultCtx, deps);
 
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Review feedback received -- please address.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("notify-review: succeeds via inbox even without workspace ref", () => {
@@ -2048,8 +2055,8 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.sendMessage).not.toHaveBeenCalled();
-      expect(deps.writeInbox).toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
+      expect(deps.io.writeInbox).toHaveBeenCalled();
     });
 
     // ── clean ─────────────────────────────────────────────────
@@ -2064,8 +2071,8 @@ describe("Orchestrator", () => {
       const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:1");
+      expect(deps.cleanup.cleanSingleWorktree).toHaveBeenCalledWith(
         "H-1-1",
         defaultCtx.worktreeDir,
         defaultCtx.projectRoot,
@@ -2081,8 +2088,8 @@ describe("Orchestrator", () => {
       const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).not.toHaveBeenCalled();
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
+      expect(deps.mux.closeWorkspace).not.toHaveBeenCalled();
+      expect(deps.cleanup.cleanSingleWorktree).toHaveBeenCalledWith(
         "H-1-1",
         defaultCtx.worktreeDir,
         defaultCtx.projectRoot,
@@ -2090,7 +2097,7 @@ describe("Orchestrator", () => {
     });
 
     it("clean: returns success when only closeWorkspace fails (partial cleanup OK)", () => {
-      const deps = mockDeps({ closeWorkspace: vi.fn(() => false) });
+      const deps = mockDeps({ mux: { closeWorkspace: vi.fn(() => false) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merged");
@@ -2099,12 +2106,12 @@ describe("Orchestrator", () => {
       const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
-      expect(deps.cleanSingleWorktree).toHaveBeenCalled();
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:1");
+      expect(deps.cleanup.cleanSingleWorktree).toHaveBeenCalled();
     });
 
     it("clean: returns success when only cleanSingleWorktree fails (partial cleanup OK)", () => {
-      const deps = mockDeps({ cleanSingleWorktree: vi.fn(() => false) });
+      const deps = mockDeps({ cleanup: { cleanSingleWorktree: vi.fn(() => false) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merged");
@@ -2113,15 +2120,12 @@ describe("Orchestrator", () => {
       const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
-      expect(deps.cleanSingleWorktree).toHaveBeenCalled();
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:1");
+      expect(deps.cleanup.cleanSingleWorktree).toHaveBeenCalled();
     });
 
     it("clean: returns failure when both operations fail", () => {
-      const deps = mockDeps({
-        closeWorkspace: vi.fn(() => false),
-        cleanSingleWorktree: vi.fn(() => false),
-      });
+      const deps = mockDeps({ mux: { closeWorkspace: vi.fn(() => false) }, cleanup: { cleanSingleWorktree: vi.fn(() => false) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merged");
@@ -2135,7 +2139,7 @@ describe("Orchestrator", () => {
     });
 
     it("clean: returns failure when no workspace ref and worktree cleanup fails", () => {
-      const deps = mockDeps({ cleanSingleWorktree: vi.fn(() => false) });
+      const deps = mockDeps({ cleanup: { cleanSingleWorktree: vi.fn(() => false) } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "merged");
@@ -2145,7 +2149,7 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Clean failed");
-      expect(deps.closeWorkspace).not.toHaveBeenCalled();
+      expect(deps.mux.closeWorkspace).not.toHaveBeenCalled();
     });
 
     // ── retry ──────────────────────────────────────────────────
@@ -2165,9 +2169,9 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:1");
       // Worktree is preserved so the retried worker picks up existing edits
-      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+      expect(deps.cleanup.cleanSingleWorktree).not.toHaveBeenCalled();
       // workspaceRef should be cleared for the fresh launch
       expect(orch.getItem("H-1-1")!.workspaceRef).toBeUndefined();
     });
@@ -2186,9 +2190,9 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).not.toHaveBeenCalled();
+      expect(deps.mux.closeWorkspace).not.toHaveBeenCalled();
       // Worktree is preserved for retry continuation
-      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+      expect(deps.cleanup.cleanSingleWorktree).not.toHaveBeenCalled();
     });
 
     // ── mark-done removed (workers remove their own work item file in PR) ──
@@ -2219,12 +2223,12 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Rebase onto main now.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("rebase: uses default message when none provided", () => {
@@ -2237,12 +2241,12 @@ describe("Orchestrator", () => {
 
       orch.executeAction({ type: "rebase", itemId: "H-1-1" }, defaultCtx, deps);
 
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Please rebase onto latest main.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("rebase: uses known worktreePath even without workspace ref", () => {
@@ -2259,7 +2263,7 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Rebase onto main now.",
@@ -2277,8 +2281,8 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("No safe worker inbox target");
-      expect(deps.writeInbox).not.toHaveBeenCalled();
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.io.writeInbox).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("rebase: succeeds without using live terminal send", () => {
@@ -2292,15 +2296,15 @@ describe("Orchestrator", () => {
       const result = orch.executeAction({ type: "rebase", itemId: "H-1-1" }, defaultCtx, deps);
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalled();
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.io.writeInbox).toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     // ── daemon-rebase ──────────────────────────────────────────
 
     it("daemon-rebase: succeeds when daemonRebase dep succeeds", () => {
       const daemonRebase = vi.fn(() => true);
-      const deps = mockDeps({ daemonRebase });
+      const deps = mockDeps({ git: { daemonRebase } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2325,7 +2329,7 @@ describe("Orchestrator", () => {
 
     it("daemon-rebase: falls back to worker message when daemonRebase fails", () => {
       const daemonRebase = vi.fn(() => false);
-      const deps = mockDeps({ daemonRebase });
+      const deps = mockDeps({ git: { daemonRebase } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2341,17 +2345,17 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Rebase needed.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("daemon-rebase: falls back to worker message when daemonRebase throws", () => {
       const daemonRebase = vi.fn(() => { throw new Error("git error"); });
-      const deps = mockDeps({ daemonRebase });
+      const deps = mockDeps({ git: { daemonRebase } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2366,17 +2370,17 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(
         "/tmp/test/ninthwave-H-1-1",
         "H-1-1",
         "Rebase needed.",
       );
-      expect(deps.sendMessage).not.toHaveBeenCalled();
+      expect(deps.mux.sendMessage).not.toHaveBeenCalled();
     });
 
     it("daemon-rebase: fails with warning when no daemonRebase dep and no worker", () => {
       const warn = vi.fn();
-      const deps = mockDeps({ warn });
+      const deps = mockDeps({ io: { warn } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2397,7 +2401,7 @@ describe("Orchestrator", () => {
     it("daemon-rebase: fails when daemonRebase fails and no worker available", () => {
       const daemonRebase = vi.fn(() => false);
       const warn = vi.fn();
-      const deps = mockDeps({ daemonRebase, warn });
+      const deps = mockDeps({ git: { daemonRebase }, io: { warn } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2417,7 +2421,7 @@ describe("Orchestrator", () => {
     it("daemon-rebase: stale workspaceRef alone does not count as worker fallback", () => {
       const daemonRebase = vi.fn(() => false);
       const warn = vi.fn();
-      const deps = mockDeps({ daemonRebase, warn });
+      const deps = mockDeps({ git: { daemonRebase }, io: { warn } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2431,7 +2435,7 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(deps.writeInbox).not.toHaveBeenCalled();
+      expect(deps.io.writeInbox).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("Manual rebase needed"));
     });
 
@@ -2439,7 +2443,7 @@ describe("Orchestrator", () => {
       // The daemonRebase dep is responsible for using --force-with-lease.
       // This test verifies the orchestrator calls the dep with the correct worktree path and branch.
       const daemonRebase = vi.fn(() => true);
-      const deps = mockDeps({ daemonRebase });
+      const deps = mockDeps({ git: { daemonRebase } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "ci-failed");
@@ -2463,7 +2467,7 @@ describe("Orchestrator", () => {
       const daemonRebase = vi.fn(() => { throw new Error("git lock failed"); });
       const checkPrMergeable = vi.fn(() => false);
       const warn = vi.fn();
-      const deps = mockDeps({ daemonRebase, checkPrMergeable, warn });
+      const deps = mockDeps({ git: { daemonRebase }, gh: { checkPrMergeable }, io: { warn } });
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.addItem(makeWorkItem("H-1-2"));
@@ -4631,8 +4635,8 @@ describe("Orchestrator", () => {
       const retryAction = actions.find((a) => a.type === "retry")!;
       const retryResult = orch.executeAction(retryAction, defaultCtx, deps);
       expect(retryResult.success).toBe(true);
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:1");
-      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:1");
+      expect(deps.cleanup.cleanSingleWorktree).not.toHaveBeenCalled();
       expect(orch.getItem("R-1-1")!.workspaceRef).toBeUndefined();
 
       // Execute launch action -- reuses existing worktree
@@ -5088,7 +5092,7 @@ describe("Orchestrator", () => {
 
       // Execute merge for C-1-1 (simulated) -- daemon-rebase succeeds for siblings
       const daemonRebase = vi.fn(() => true);
-      const deps = mockDeps({ daemonRebase });
+      const deps = mockDeps({ git: { daemonRebase } });
       orch.executeAction(mergeActions1[0]!, defaultCtx, deps);
 
       // C-1-1 is now merged
@@ -5625,7 +5629,7 @@ describe("Orchestrator", () => {
     // ── executeLaunch passes baseBranch ───────────────────────────────
 
     describe("executeLaunch passes baseBranch", () => {
-      it("passes baseBranch through to deps.launchSingleItem", () => {
+      it("passes baseBranch through to deps.workers.launchSingleItem", () => {
         const deps = mockDeps();
         // Add dep item in a stackable state so guard preserves baseBranch
         orch.addItem(makeWorkItem("A-1-0"));
@@ -5642,7 +5646,7 @@ describe("Orchestrator", () => {
           deps,
         );
 
-        expect(deps.launchSingleItem).toHaveBeenCalledWith(
+        expect(deps.workers.launchSingleItem).toHaveBeenCalledWith(
           orch.getItem("A-1-1")!.workItem,
           defaultCtx.workDir,
           defaultCtx.worktreeDir,
@@ -5665,7 +5669,7 @@ describe("Orchestrator", () => {
           deps,
         );
 
-        expect(deps.launchSingleItem).toHaveBeenCalledWith(
+        expect(deps.workers.launchSingleItem).toHaveBeenCalledWith(
           orch.getItem("A-1-1")!.workItem,
           defaultCtx.workDir,
           defaultCtx.worktreeDir,
@@ -5696,7 +5700,7 @@ describe("Orchestrator", () => {
       it("executeMerge restacks stacked dep with rebaseOnto and force-pushes", () => {
         const rebaseOnto = vi.fn(() => true);
         const forcePush = vi.fn(() => true);
-        const deps = mockDeps({ rebaseOnto, forcePush });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush } });
 
         // A-1-1 is merging, A-1-2 depends on it and is stacked
         orch.addItem(makeWorkItem("A-1-1"));
@@ -5734,7 +5738,7 @@ describe("Orchestrator", () => {
       it("executeMerge sends conflict message when rebaseOnto fails", () => {
         const rebaseOnto = vi.fn(() => false); // conflict
         const forcePush = vi.fn(() => true);
-        const deps = mockDeps({ rebaseOnto, forcePush });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -5758,24 +5762,24 @@ describe("Orchestrator", () => {
         // Force-push should NOT have been called
         expect(forcePush).not.toHaveBeenCalled();
         // Worker gets conflict message with manual rebase instructions
-        expect(deps.writeInbox).toHaveBeenCalledWith(
+        expect(deps.io.writeInbox).toHaveBeenCalledWith(
           "/tmp/test/ninthwave-A-1-2",
           "A-1-2",
           expect.stringContaining("Restack Conflict"),
         );
-        expect(deps.writeInbox).toHaveBeenCalledWith(
+        expect(deps.io.writeInbox).toHaveBeenCalledWith(
           "/tmp/test/ninthwave-A-1-2",
           "A-1-2",
           expect.stringContaining("git rebase --onto main"),
         );
-        expect(deps.sendMessage).not.toHaveBeenCalled();
+        expect(deps.mux.sendMessage).not.toHaveBeenCalled();
       });
 
       it("executeMerge non-stacked dep gets existing rebase behavior unchanged", () => {
         const rebaseOnto = vi.fn(() => true);
         const forcePush = vi.fn(() => true);
         const daemonRebase = vi.fn(() => true);
-        const deps = mockDeps({ rebaseOnto, forcePush, daemonRebase });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush, daemonRebase } });
 
         // A-1-1 merging, A-1-2 depends on it but NOT stacked (no baseBranch)
         orch.addItem(makeWorkItem("A-1-1"));
@@ -5799,12 +5803,12 @@ describe("Orchestrator", () => {
         expect(rebaseOnto).not.toHaveBeenCalled();
         expect(forcePush).not.toHaveBeenCalled();
         // Non-stacked dep gets generic rebase message
-        expect(deps.writeInbox).toHaveBeenCalledWith(
+        expect(deps.io.writeInbox).toHaveBeenCalledWith(
           "/tmp/test/ninthwave-A-1-2",
           "A-1-2",
           expect.stringContaining("Dependency A-1-1 merged"),
         );
-        expect(deps.sendMessage).not.toHaveBeenCalled();
+        expect(deps.mux.sendMessage).not.toHaveBeenCalled();
         // And gets daemon-rebase treatment as a sibling
         expect(daemonRebase).toHaveBeenCalledWith(
           "/tmp/test/ninthwave-A-1-2",
@@ -5815,7 +5819,7 @@ describe("Orchestrator", () => {
       it("executeMerge stacked items skip generic rebase message loop", () => {
         const rebaseOnto = vi.fn(() => true);
         const forcePush = vi.fn(() => true);
-        const deps = mockDeps({ rebaseOnto, forcePush });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -5836,14 +5840,14 @@ describe("Orchestrator", () => {
 
         // sendMessage should NOT be called -- stacked item was handled by rebaseOnto
         // (no generic "Dependency merged" message, no conflict fallback message)
-        expect(deps.sendMessage).not.toHaveBeenCalled();
+        expect(deps.mux.sendMessage).not.toHaveBeenCalled();
       });
 
       it("executeMerge stacked items skip daemon-rebase-all loop", () => {
         const rebaseOnto = vi.fn(() => true);
         const forcePush = vi.fn(() => true);
         const daemonRebase = vi.fn(() => true);
-        const deps = mockDeps({ rebaseOnto, forcePush, daemonRebase });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush, daemonRebase } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -5888,17 +5892,17 @@ describe("Orchestrator", () => {
         );
 
         // Worker gets manual rebase instructions since rebaseOnto not available
-        expect(deps.writeInbox).toHaveBeenCalledWith(
+        expect(deps.io.writeInbox).toHaveBeenCalledWith(
           "/tmp/test/ninthwave-A-1-2",
           "A-1-2",
           expect.stringContaining("Restack Required"),
         );
-        expect(deps.writeInbox).toHaveBeenCalledWith(
+        expect(deps.io.writeInbox).toHaveBeenCalledWith(
           "/tmp/test/ninthwave-A-1-2",
           "A-1-2",
           expect.stringContaining("git rebase --onto main"),
         );
-        expect(deps.sendMessage).not.toHaveBeenCalled();
+        expect(deps.mux.sendMessage).not.toHaveBeenCalled();
       });
     });
 
@@ -6182,9 +6186,9 @@ describe("Orchestrator", () => {
         expect(syncAction).toBeUndefined();
       });
 
-      it("executeSyncStackComments calls deps.syncStackComments with correct chain", () => {
+      it("executeSyncStackComments calls deps.io.syncStackComments with correct chain", () => {
         const syncStackComments = vi.fn();
-        const deps = mockDeps({ syncStackComments });
+        const deps = mockDeps({ io: { syncStackComments } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -6230,7 +6234,7 @@ describe("Orchestrator", () => {
 
       it("executeSyncStackComments skips single-item chains", () => {
         const syncStackComments = vi.fn();
-        const deps = mockDeps({ syncStackComments });
+        const deps = mockDeps({ io: { syncStackComments } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -6254,7 +6258,7 @@ describe("Orchestrator", () => {
         const syncStackComments = vi.fn();
         const rebaseOnto = vi.fn(() => true);
         const forcePush = vi.fn(() => true);
-        const deps = mockDeps({ syncStackComments, rebaseOnto, forcePush });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush }, io: { syncStackComments } });
 
         // A → B → C: A is merging, B stacked on A, C stacked on B
         orch.addItem(makeWorkItem("A-1-1"));
@@ -6287,7 +6291,7 @@ describe("Orchestrator", () => {
 
       it("executeMerge does NOT call syncStackComments for non-stacked merges", () => {
         const syncStackComments = vi.fn();
-        const deps = mockDeps({ syncStackComments });
+        const deps = mockDeps({ io: { syncStackComments } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -6312,7 +6316,7 @@ describe("Orchestrator", () => {
         const syncStackComments = vi.fn();
         const rebaseOnto = vi.fn(() => false); // conflict
         const forcePush = vi.fn(() => true);
-        const deps = mockDeps({ syncStackComments, rebaseOnto, forcePush });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush }, io: { syncStackComments } });
 
         orch.addItem(makeWorkItem("A-1-1"));
         orch.getItem("A-1-1")!.reviewCompleted = true;
@@ -6338,7 +6342,7 @@ describe("Orchestrator", () => {
         const syncStackComments = vi.fn();
         const rebaseOnto = vi.fn(() => true);
         const forcePush = vi.fn(() => true);
-        const deps = mockDeps({ syncStackComments, rebaseOnto, forcePush });
+        const deps = mockDeps({ git: { rebaseOnto, forcePush }, io: { syncStackComments } });
 
         // A → B (simple 2-item stack). After A merges, B is alone.
         orch.addItem(makeWorkItem("A-1-1"));
@@ -6747,9 +6751,9 @@ describe("Orchestrator", () => {
 
     // ── executeAction: launch-review ─────────────────────────────────
 
-    it("executeAction: launch-review calls deps.launchReview and stores reviewWorkspaceRef", () => {
+    it("executeAction: launch-review calls deps.workers.launchReview and stores reviewWorkspaceRef", () => {
       const launchReview = vi.fn(() => ({ workspaceRef: "review-workspace:1", verdictPath: "/tmp/nw-verdict-R-13-1.json" }));
-      const deps = mockDeps({ launchReview });
+      const deps = mockDeps({ workers: { launchReview } });
       orch.addItem(makeWorkItem("R-13-1"));
       orch.hydrateState("R-13-1", "reviewing");
       orch.getItem("R-13-1")!.prNumber = 42;
@@ -6766,9 +6770,9 @@ describe("Orchestrator", () => {
       expect(orch.getItem("R-13-1")!.reviewVerdictPath).toBe("/tmp/nw-verdict-R-13-1.json");
     });
 
-    it("executeAction: launch-review passes item.worktreePath to deps.launchReview", () => {
+    it("executeAction: launch-review passes item.worktreePath to deps.workers.launchReview", () => {
       const launchReview = vi.fn(() => ({ workspaceRef: "review-workspace:1", verdictPath: "/tmp/nw-verdict-R-13-1b.json" }));
-      const deps = mockDeps({ launchReview });
+      const deps = mockDeps({ workers: { launchReview } });
       orch.addItem(makeWorkItem("R-13-1b"));
       orch.hydrateState("R-13-1b", "reviewing");
       orch.getItem("R-13-1b")!.prNumber = 42;
@@ -6801,7 +6805,7 @@ describe("Orchestrator", () => {
 
     it("executeAction: launch-review fails when no PR number", () => {
       const launchReview = vi.fn(() => ({ workspaceRef: "review-workspace:1", verdictPath: "/tmp/nw-verdict-R-13-3.json" }));
-      const deps = mockDeps({ launchReview });
+      const deps = mockDeps({ workers: { launchReview } });
       orch.addItem(makeWorkItem("R-13-3"));
       orch.hydrateState("R-13-3", "reviewing");
       // No prNumber
@@ -6818,7 +6822,7 @@ describe("Orchestrator", () => {
 
     it("executeAction: launch-review handles launchReview throw", () => {
       const launchReview = vi.fn(() => { throw new Error("review agent crash"); });
-      const deps = mockDeps({ launchReview });
+      const deps = mockDeps({ workers: { launchReview } });
       orch.addItem(makeWorkItem("R-13-4"));
       orch.hydrateState("R-13-4", "reviewing");
       orch.getItem("R-13-4")!.prNumber = 44;
@@ -6835,9 +6839,9 @@ describe("Orchestrator", () => {
 
     // ── executeAction: clean-review ──────────────────────────────────
 
-    it("executeAction: clean-review calls deps.cleanReview and clears reviewWorkspaceRef", () => {
+    it("executeAction: clean-review calls deps.cleanup.cleanReview and clears reviewWorkspaceRef", () => {
       const cleanReview = vi.fn(() => true);
-      const deps = mockDeps({ cleanReview });
+      const deps = mockDeps({ cleanup: { cleanReview } });
       orch.addItem(makeWorkItem("R-14-1"));
       orch.hydrateState("R-14-1", "ci-failed");
       orch.getItem("R-14-1")!.reviewWorkspaceRef = "review-workspace:1";
@@ -6871,7 +6875,7 @@ describe("Orchestrator", () => {
 
     it("executeAction: clean-review handles cleanReview throw", () => {
       const cleanReview = vi.fn(() => { throw new Error("cleanup failed"); });
-      const deps = mockDeps({ cleanReview });
+      const deps = mockDeps({ cleanup: { cleanReview } });
       orch.addItem(makeWorkItem("R-14-3"));
       orch.hydrateState("R-14-3", "ci-failed");
       orch.getItem("R-14-3")!.reviewWorkspaceRef = "review-workspace:3";
@@ -7057,9 +7061,9 @@ describe("Orchestrator", () => {
 
     // ── executeAction: set-commit-status ────────────────────────────
 
-    it("executeAction: set-commit-status calls deps.setCommitStatus", () => {
+    it("executeAction: set-commit-status calls deps.gh.setCommitStatus", () => {
       const setCommitStatus = vi.fn(() => true);
-      const deps = mockDeps({ setCommitStatus });
+      const deps = mockDeps({ gh: { setCommitStatus } });
       orch.addItem(makeWorkItem("CS-5"));
       orch.hydrateState("CS-5", "reviewing");
       orch.getItem("CS-5")!.prNumber = 42;
@@ -7093,7 +7097,7 @@ describe("Orchestrator", () => {
 
     it("executeAction: set-commit-status fails when no PR number", () => {
       const setCommitStatus = vi.fn(() => true);
-      const deps = mockDeps({ setCommitStatus });
+      const deps = mockDeps({ gh: { setCommitStatus } });
       orch.addItem(makeWorkItem("CS-7"));
       orch.hydrateState("CS-7", "reviewing");
       // No prNumber
@@ -7115,7 +7119,7 @@ describe("Orchestrator", () => {
   describe("executeAction: post-review includes agent link and footer", () => {
     it("approve verdict renders scorecard table with absolute reviewer link", () => {
       const prComment = vi.fn(() => true);
-      const deps = mockDeps({ prComment });
+      const deps = mockDeps({ gh: { prComment } });
       orch.addItem(makeWorkItem("PR-1"));
       orch.hydrateState("PR-1", "reviewing");
       orch.getItem("PR-1")!.prNumber = 50;
@@ -7150,7 +7154,7 @@ describe("Orchestrator", () => {
 
     it("request-changes verdict renders scorecard table with absolute reviewer link", () => {
       const prComment = vi.fn(() => true);
-      const deps = mockDeps({ prComment });
+      const deps = mockDeps({ gh: { prComment } });
       orch.addItem(makeWorkItem("PR-2"));
       orch.hydrateState("PR-2", "reviewing");
       orch.getItem("PR-2")!.prNumber = 51;
@@ -7235,10 +7239,7 @@ describe("Orchestrator", () => {
     });
 
     it("executeWorkspaceClose captures screen output and closes workspace without removing worktree", () => {
-      const deps = mockDeps({
-        readScreen: vi.fn(() => "Error: Worker crashed"),
-        warn: vi.fn(),
-      });
+      const deps = mockDeps({ mux: { readScreen: vi.fn(() => "Error: Worker crashed") }, io: { warn: vi.fn() } });
       orch = new Orchestrator({  });
       orch.addItem(makeWorkItem("WP-1-2"));
       orch.hydrateState("WP-1-2", "stuck");
@@ -7252,12 +7253,12 @@ describe("Orchestrator", () => {
 
       expect(result.success).toBe(true);
       // Screen should be captured
-      expect(deps.readScreen).toHaveBeenCalledWith("workspace:5", 50);
+      expect(deps.mux.readScreen).toHaveBeenCalledWith("workspace:5", 50);
       expect(orch.getItem("WP-1-2")!.lastScreenOutput).toBe("Error: Worker crashed");
       // Workspace should be closed
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:5");
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:5");
       // Worktree should NOT be cleaned
-      expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+      expect(deps.cleanup.cleanSingleWorktree).not.toHaveBeenCalled();
     });
 
     it("done items still get full cleanup (clean action removes worktree)", () => {
@@ -7274,8 +7275,8 @@ describe("Orchestrator", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:6");
-      expect(deps.cleanSingleWorktree).toHaveBeenCalledWith(
+      expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:6");
+      expect(deps.cleanup.cleanSingleWorktree).toHaveBeenCalledWith(
         "WP-1-3",
         defaultCtx.worktreeDir,
         defaultCtx.projectRoot,
@@ -7298,12 +7299,10 @@ describe("Orchestrator", () => {
     });
 
     it("launch stores worktreePath on success", () => {
-      const deps = mockDeps({
-        launchSingleItem: vi.fn(() => ({
+      const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => ({
           worktreePath: "/tmp/test/.ninthwave/.worktrees/ninthwave-WP-1-5",
           workspaceRef: "workspace:7",
-        })),
-      });
+        })) } });
       orch = new Orchestrator({  });
       orch.addItem(makeWorkItem("WP-1-5"));
       orch.hydrateState("WP-1-5", "launching");

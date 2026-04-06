@@ -35,8 +35,8 @@ describe("scenario: dependency chain", () => {
 
     // Track launch order
     const launchOrder: string[] = [];
-    const origLaunch = actionDeps.launchSingleItem;
-    actionDeps.launchSingleItem = vi.fn((item, wd, wtd, pr, ai, bb) => {
+    const origLaunch = actionDeps.workers.launchSingleItem;
+    actionDeps.workers.launchSingleItem = vi.fn((item, wd, wtd, pr, ai, bb) => {
       launchOrder.push(item.id);
       return (origLaunch as Function)(item, wd, wtd, pr, ai, bb);
     });
@@ -82,8 +82,8 @@ describe("scenario: dependency chain", () => {
     const loopDeps = buildLoopDeps(fakeGh, fakeMux, actionDeps);
 
     const launchOrder: string[] = [];
-    const origLaunch = actionDeps.launchSingleItem;
-    actionDeps.launchSingleItem = vi.fn((item, wd, wtd, pr, ai, bb) => {
+    const origLaunch = actionDeps.workers.launchSingleItem;
+    actionDeps.workers.launchSingleItem = vi.fn((item, wd, wtd, pr, ai, bb) => {
       launchOrder.push(item.id);
       return (origLaunch as Function)(item, wd, wtd, pr, ai, bb);
     });
@@ -126,7 +126,7 @@ describe("scenario: dependency chain", () => {
 
     // Make launch fail so A goes stuck
     const actionDeps = buildActionDeps(fakeGh, fakeMux, {
-      launchSingleItem: vi.fn(() => null),
+      workers: { launchSingleItem: vi.fn(() => null) },
     });
     const loopDeps = buildLoopDeps(fakeGh, fakeMux, actionDeps);
 

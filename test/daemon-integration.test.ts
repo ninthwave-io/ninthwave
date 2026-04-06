@@ -11,6 +11,7 @@ import { join } from "path";
 import {
   Orchestrator,
   type OrchestratorDeps,
+  type DeepPartial,
   type OrchestratorItemState,
   type ExecutionContext,
   type PollSnapshot,
@@ -75,21 +76,38 @@ const defaultCtx: ExecutionContext = {
 };
 
 /** Create mock deps with sensible defaults. Override individual fns as needed. */
-function mockDeps(overrides?: Partial<OrchestratorDeps>): OrchestratorDeps {
+function mockDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
   return {
-    launchSingleItem: vi.fn(() => ({
-      worktreePath: "/tmp/test/item-test",
-      workspaceRef: "workspace:1",
-    })),
-    cleanSingleWorktree: vi.fn(() => true),
-    prMerge: vi.fn(() => true),
-    prComment: vi.fn(() => true),
-    sendMessage: vi.fn(() => true),
-    writeInbox: vi.fn(),
-    closeWorkspace: vi.fn(() => true),
-    fetchOrigin: vi.fn(),
-    ffMerge: vi.fn(),
-    ...overrides,
+    git: {
+      fetchOrigin: vi.fn(),
+      ffMerge: vi.fn(),
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: vi.fn(() => true),
+      prComment: vi.fn(() => true),
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: vi.fn(() => true),
+      closeWorkspace: vi.fn(() => true),
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: vi.fn(() => ({
+        worktreePath: "/tmp/test/item-test",
+        workspaceRef: "workspace:1",
+      })),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: vi.fn(() => true),
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: vi.fn(),
+      ...overrides?.io,
+    },
   };
 }
 
@@ -299,7 +317,7 @@ describe("Daemon lifecycle: single-item flow", () => {
     const mergeAction = actions.find((a) => a.type === "merge")!;
     orch.executeAction(mergeAction, defaultCtx, deps);
     expect(orch.getItem("LIFE-1")!.state).toBe("merged");
-    expect(deps.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 42, { admin: undefined });
+    expect(deps.gh.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 42, { admin: undefined });
 
     // Phase 6: merged → done on next poll
     actions = orch.processTransitions(
@@ -477,8 +495,8 @@ describe("Daemon lifecycle: reconstructed worker inbox targeting", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(deps.writeInbox).toHaveBeenCalledWith(itemWorktree, "REC-1", "CI failed");
-      expect(deps.prComment).toHaveBeenCalledWith(projectRoot, 42, expect.stringContaining("Worker notified"));
+      expect(deps.io.writeInbox).toHaveBeenCalledWith(itemWorktree, "REC-1", "CI failed");
+      expect(deps.gh.prComment).toHaveBeenCalledWith(projectRoot, 42, expect.stringContaining("Worker notified"));
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }
@@ -538,8 +556,8 @@ describe("Daemon lifecycle: reconstructed worker inbox targeting", () => {
       expect(item.needsCiFix).toBe(true);
       expect(item.workspaceRef).toBeUndefined();
       expect(item.worktreePath).toBeUndefined();
-      expect(deps.writeInbox).not.toHaveBeenCalled();
-      expect(deps.prComment).not.toHaveBeenCalled();
+      expect(deps.io.writeInbox).not.toHaveBeenCalled();
+      expect(deps.gh.prComment).not.toHaveBeenCalled();
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }
@@ -649,10 +667,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
   it("executeWorkspaceClose captures screen output for stuck items", () => {
     const orch = new Orchestrator({ maxRetries: 0 });
     const warnFn = vi.fn();
-    const deps = mockDeps({
-      readScreen: vi.fn(() => "Error: OOM killed"),
-      warn: warnFn,
-    });
+    const deps = mockDeps({ mux: { readScreen: vi.fn(() => "Error: OOM killed") }, io: { warn: warnFn } });
 
     orch.addItem(makeWorkItem("STUCK-4"));
     orch.getItem("STUCK-4")!.reviewCompleted = true;
@@ -668,7 +683,7 @@ describe("Daemon lifecycle: stuck item and retry logic", () => {
     expect(orch.getItem("STUCK-4")!.lastScreenOutput).toBe("Error: OOM killed");
     expect(warnFn).toHaveBeenCalledWith(expect.stringContaining("STUCK-4"));
     // Worktree should NOT be cleaned -- workspace-close preserves it
-    expect(deps.cleanSingleWorktree).not.toHaveBeenCalled();
+    expect(deps.cleanup.cleanSingleWorktree).not.toHaveBeenCalled();
   });
 });
 
@@ -917,9 +932,9 @@ describe("Daemon lifecycle: cleanup after merge", () => {
     // because executeMerge already handled the state transition.
     // The clean action comes from the state machine detecting prState: "merged"
     // in the snapshot. Let's verify the merge action execution called the deps.
-    expect(deps.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 60, { admin: undefined });
-    expect(deps.fetchOrigin).toHaveBeenCalled();
-    expect(deps.ffMerge).toHaveBeenCalled();
+    expect(deps.gh.prMerge).toHaveBeenCalledWith(defaultCtx.projectRoot, 60, { admin: undefined });
+    expect(deps.git.fetchOrigin).toHaveBeenCalled();
+    expect(deps.git.ffMerge).toHaveBeenCalled();
   });
 
   it("cleanup succeeds when remote branch is already deleted", () => {
@@ -927,10 +942,7 @@ describe("Daemon lifecycle: cleanup after merge", () => {
     // cleanSingleWorktree succeeds even if remote branch is gone
     // This tests that no warning is emitted when the branch doesn't exist
     const warnFn = vi.fn();
-    const deps = mockDeps({
-      cleanSingleWorktree: vi.fn(() => true),
-      warn: warnFn,
-    });
+    const deps = mockDeps({ cleanup: { cleanSingleWorktree: vi.fn(() => true) }, io: { warn: warnFn } });
 
     orch.addItem(makeWorkItem("CLN-2"));
     orch.getItem("CLN-2")!.reviewCompleted = true;
@@ -944,18 +956,15 @@ describe("Daemon lifecycle: cleanup after merge", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(deps.closeWorkspace).toHaveBeenCalledWith("workspace:6");
-    expect(deps.cleanSingleWorktree).toHaveBeenCalled();
+    expect(deps.mux.closeWorkspace).toHaveBeenCalledWith("workspace:6");
+    expect(deps.cleanup.cleanSingleWorktree).toHaveBeenCalled();
     // No warning about remote branch delete
     expect(warnFn).not.toHaveBeenCalled();
   });
 
   it("cleanup handles partial failure gracefully", () => {
     const orch = new Orchestrator();
-    const deps = mockDeps({
-      closeWorkspace: vi.fn(() => false), // workspace close fails
-      cleanSingleWorktree: vi.fn(() => true), // worktree cleanup succeeds
-    });
+    const deps = mockDeps({ mux: { closeWorkspace: vi.fn(() => false) }, cleanup: { cleanSingleWorktree: vi.fn(() => true) } });
 
     orch.addItem(makeWorkItem("CLN-3"));
     orch.getItem("CLN-3")!.reviewCompleted = true;
@@ -974,10 +983,7 @@ describe("Daemon lifecycle: cleanup after merge", () => {
 
   it("cleanup fails when both workspace close and worktree cleanup fail", () => {
     const orch = new Orchestrator();
-    const deps = mockDeps({
-      closeWorkspace: vi.fn(() => false),
-      cleanSingleWorktree: vi.fn(() => false),
-    });
+    const deps = mockDeps({ mux: { closeWorkspace: vi.fn(() => false) }, cleanup: { cleanSingleWorktree: vi.fn(() => false) } });
 
     orch.addItem(makeWorkItem("CLN-4"));
     orch.getItem("CLN-4")!.reviewCompleted = true;
@@ -1442,9 +1448,7 @@ describe("Daemon lifecycle: crash recovery round-trip", () => {
 describe("Daemon lifecycle: launch failure handling", () => {
   it("launch returning null with retries schedules retry", () => {
     const orch = new Orchestrator({ sessionLimit: 4, maxRetries: 2 });
-    const deps = mockDeps({
-      launchSingleItem: vi.fn(() => null),
-    });
+    const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => null) } });
 
     orch.addItem(makeWorkItem("LF-1"));
     orch.getItem("LF-1")!.reviewCompleted = true;
@@ -1464,9 +1468,7 @@ describe("Daemon lifecycle: launch failure handling", () => {
 
   it("launch returning null with no retries marks stuck", () => {
     const orch = new Orchestrator({ sessionLimit: 4, maxRetries: 0 });
-    const deps = mockDeps({
-      launchSingleItem: vi.fn(() => null),
-    });
+    const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => null) } });
 
     orch.addItem(makeWorkItem("LF-2"));
     orch.getItem("LF-2")!.reviewCompleted = true;
@@ -1485,9 +1487,7 @@ describe("Daemon lifecycle: launch failure handling", () => {
 
   it("launch throwing exception handles gracefully", () => {
     const orch = new Orchestrator({ sessionLimit: 4, maxRetries: 0 });
-    const deps = mockDeps({
-      launchSingleItem: vi.fn(() => { throw new Error("repo not found"); }),
-    });
+    const deps = mockDeps({ workers: { launchSingleItem: vi.fn(() => { throw new Error("repo not found"); }) } });
 
     orch.addItem(makeWorkItem("LF-3"));
     orch.getItem("LF-3")!.reviewCompleted = true;

@@ -1817,105 +1817,115 @@ export async function cmdOrchestrate(
 
   const ctx: ExecutionContext = { projectRoot, worktreeDir, workDir, aiTool, aiTools, nextToolIndex: 0, hubRepoNwo };
   const actionDeps: OrchestratorDeps = {
-    validatePickupCandidate: (item, projRoot) => validatePickupCandidate(item, projRoot),
-    launchSingleItem: (item, workDir, worktreeDir, projectRoot, aiTool, baseBranch, forceWorkerLaunch) =>
-      launchSingleItem(item, workDir, worktreeDir, projectRoot, aiTool, mux, {
-        baseBranch,
-        forceWorkerLaunch,
-        hubRepoNwo,
-        resolveMux: resolveLaunchMux,
-        throwOnLaunchFailure: true,
-      }),
-    cleanStaleBranch: (item, projRoot) => {
-      cleanStaleBranchForReuse(item.id, item.title, projRoot, undefined, item.lineageToken);
+    git: {
+      fetchOrigin,
+      ffMerge,
+      resolveRef,
+      rebaseOnto,
+      forcePush,
+      daemonRebase,
     },
-    cleanSingleWorktree,
-    prMerge: (repoRoot, prNumber, options) => prMerge(repoRoot, prNumber, options),
-    prComment: (repoRoot, prNumber, body) => prComment(repoRoot, prNumber, body),
-    syncStackComments: (baseBranch, stack) => {
-      syncStackCommentsForRepo(baseBranch, stack, {
-        listComments: (prNumber) => listPrComments(projectRoot, prNumber),
-        createComment: (prNumber, body) => prComment(projectRoot, prNumber, body),
-        updateComment: (commentId, body) => updatePrComment(projectRoot, commentId, body),
-      });
+    gh: {
+      prMerge: (repoRoot, prNumber, options) => prMerge(repoRoot, prNumber, options),
+      prComment: (repoRoot, prNumber, body) => prComment(repoRoot, prNumber, body),
+      setCommitStatus: (repoRoot, prNumber, state, context, description) => {
+        const sha = prHeadSha(repoRoot, prNumber);
+        if (!sha) return false;
+        return ghSetCommitStatus(repoRoot, sha, state, context, description);
+      },
+      getPrBaseBranch: (repoRoot, prNumber) => ghGetPrBaseBranch(repoRoot, prNumber),
+      getPrBaseAndState: (repoRoot, prNumber) => ghGetPrBaseAndState(repoRoot, prNumber),
+      retargetPrBase: (repoRoot, prNumber, baseBranch) => ghRetargetPrBase(repoRoot, prNumber, baseBranch),
+      checkPrMergeable,
+      isPrBlocked,
+      getMergeCommitSha: (repoRoot, prNumber) => ghGetMergeCommitSha(repoRoot, prNumber),
+      checkCommitCI: (repoRoot, sha) => ghCheckCommitCI(repoRoot, sha),
+      getDefaultBranch: (repoRoot) => ghGetDefaultBranch(repoRoot),
+      upsertOrchestratorComment: (repoRoot, prNumber, itemId, eventLine) =>
+        upsertOrchestratorComment(repoRoot, prNumber, itemId, eventLine),
     },
-    upsertOrchestratorComment: (repoRoot, prNumber, itemId, eventLine) =>
-      upsertOrchestratorComment(repoRoot, prNumber, itemId, eventLine),
-    writeInbox: (targetRoot, itemId, msg) => writeInbox(targetRoot, itemId, msg),
-    closeWorkspace: (ref) => muxForWorkspaceRef(ref).closeWorkspace(ref),
-    readScreen: (ref, lines) => muxForWorkspaceRef(ref).readScreen(ref, lines),
-    fetchOrigin,
-    ffMerge,
-    getPrBaseBranch: (repoRoot, prNumber) => ghGetPrBaseBranch(repoRoot, prNumber),
-    getPrBaseAndState: (repoRoot, prNumber) => ghGetPrBaseAndState(repoRoot, prNumber),
-    retargetPrBase: (repoRoot, prNumber, baseBranch) => ghRetargetPrBase(repoRoot, prNumber, baseBranch),
-    checkPrMergeable,
-    isPrBlocked,
-    daemonRebase,
-    rebaseOnto,
-    forcePush,
-    resolveRef,
-    warn: (message) =>
-      log({ ts: new Date().toISOString(), level: "warn", event: "orchestrator_warning", message }),
-    launchReview: (itemId, prNumber, repoRoot, implementerWorktreePath, itemAiTool) => {
-      const autoFix = orch.config.reviewAutoFix;
-      const result = launchReviewWorker(prNumber, itemId, autoFix, repoRoot, itemAiTool ?? aiTool, mux, {
-        implementerWorktreePath,
-        hubRepoNwo,
-        projectRoot,
-        resolveMux: resolveLaunchMux,
-      });
-      if (!result) return null;
-      return { workspaceRef: result.workspaceRef, verdictPath: result.verdictPath };
+    mux: {
+      closeWorkspace: (ref) => muxForWorkspaceRef(ref).closeWorkspace(ref),
+      readScreen: (ref, lines) => muxForWorkspaceRef(ref).readScreen(ref, lines),
     },
-    cleanReview: (itemId, reviewWorkspaceRef) => {
-      // Close the review workspace
-      try { muxForWorkspaceRef(reviewWorkspaceRef).closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
-      // Clean the review worktree if it exists (only for direct/pr modes)
-      try {
-        cleanSingleWorktree(`review-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
-      } catch { /* best-effort -- review worktree may not exist for off mode */ }
-      return true;
+    workers: {
+      validatePickupCandidate: (item, projRoot) => validatePickupCandidate(item, projRoot),
+      launchSingleItem: (item, workDir, worktreeDir, projectRoot, aiTool, baseBranch, forceWorkerLaunch) =>
+        launchSingleItem(item, workDir, worktreeDir, projectRoot, aiTool, mux, {
+          baseBranch,
+          forceWorkerLaunch,
+          hubRepoNwo,
+          resolveMux: resolveLaunchMux,
+          throwOnLaunchFailure: true,
+        }),
+      launchReview: (itemId, prNumber, repoRoot, implementerWorktreePath, itemAiTool) => {
+        const autoFix = orch.config.reviewAutoFix;
+        const result = launchReviewWorker(prNumber, itemId, autoFix, repoRoot, itemAiTool ?? aiTool, mux, {
+          implementerWorktreePath,
+          hubRepoNwo,
+          projectRoot,
+          resolveMux: resolveLaunchMux,
+        });
+        if (!result) return null;
+        return { workspaceRef: result.workspaceRef, verdictPath: result.verdictPath };
+      },
+      launchRebaser: (itemId, prNumber, repoRoot, itemAiTool) => {
+        const result = launchRebaserWorker(prNumber, itemId, repoRoot, itemAiTool ?? aiTool, mux, {
+          hubRepoNwo,
+          projectRoot,
+          resolveMux: resolveLaunchMux,
+        });
+        if (!result) return null;
+        return { workspaceRef: result.workspaceRef };
+      },
+      launchForwardFixer: (itemId, mergeCommitSha, repoRoot, itemAiTool, defaultBranch) => {
+        const result = launchForwardFixerWorker(itemId, mergeCommitSha, repoRoot, itemAiTool ?? aiTool, mux, {
+          hubRepoNwo,
+          defaultBranch,
+          projectRoot,
+          resolveMux: resolveLaunchMux,
+        });
+        if (!result) return null;
+        return { worktreePath: result.worktreePath, workspaceRef: result.workspaceRef };
+      },
     },
-    launchRebaser: (itemId, prNumber, repoRoot, itemAiTool) => {
-      const result = launchRebaserWorker(prNumber, itemId, repoRoot, itemAiTool ?? aiTool, mux, {
-        hubRepoNwo,
-        projectRoot,
-        resolveMux: resolveLaunchMux,
-      });
-      if (!result) return null;
-      return { workspaceRef: result.workspaceRef };
+    cleanup: {
+      cleanSingleWorktree,
+      cleanReview: (itemId, reviewWorkspaceRef) => {
+        try { muxForWorkspaceRef(reviewWorkspaceRef).closeWorkspace(reviewWorkspaceRef); } catch { /* best-effort */ }
+        try {
+          cleanSingleWorktree(`review-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
+        } catch { /* best-effort -- review worktree may not exist for off mode */ }
+        return true;
+      },
+      cleanRebaser: (itemId, rebaserWorkspaceRef) => {
+        try { muxForWorkspaceRef(rebaserWorkspaceRef).closeWorkspace(rebaserWorkspaceRef); } catch { /* best-effort */ }
+        return true;
+      },
+      cleanForwardFixer: (itemId, fixForwardWorkspaceRef) => {
+        try { muxForWorkspaceRef(fixForwardWorkspaceRef).closeWorkspace(fixForwardWorkspaceRef); } catch { /* best-effort */ }
+        try {
+          cleanSingleWorktree(`ninthwave-fix-forward-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
+        } catch { /* best-effort -- forward-fixer worktree may already be cleaned */ }
+        return true;
+      },
+      cleanStaleBranch: (item, projRoot) => {
+        cleanStaleBranchForReuse(item.id, item.title, projRoot, undefined, item.lineageToken);
+      },
+      completeMergedWorkItem: (item, workDir, root) => completeMergedWorkItemCleanup(item, workDir, root),
     },
-    cleanRebaser: (itemId, rebaserWorkspaceRef) => {
-      try { muxForWorkspaceRef(rebaserWorkspaceRef).closeWorkspace(rebaserWorkspaceRef); } catch { /* best-effort */ }
-      return true;
+    io: {
+      writeInbox: (targetRoot, itemId, msg) => writeInbox(targetRoot, itemId, msg),
+      warn: (message) =>
+        log({ ts: new Date().toISOString(), level: "warn", event: "orchestrator_warning", message }),
+      syncStackComments: (baseBranch, stack) => {
+        syncStackCommentsForRepo(baseBranch, stack, {
+          listComments: (prNumber) => listPrComments(projectRoot, prNumber),
+          createComment: (prNumber, body) => prComment(projectRoot, prNumber, body),
+          updateComment: (commentId, body) => updatePrComment(projectRoot, commentId, body),
+        });
+      },
     },
-    setCommitStatus: (repoRoot, prNumber, state, context, description) => {
-      const sha = prHeadSha(repoRoot, prNumber);
-      if (!sha) return false;
-      return ghSetCommitStatus(repoRoot, sha, state, context, description);
-    },
-    getMergeCommitSha: (repoRoot, prNumber) => ghGetMergeCommitSha(repoRoot, prNumber),
-    checkCommitCI: (repoRoot, sha) => ghCheckCommitCI(repoRoot, sha),
-    getDefaultBranch: (repoRoot) => ghGetDefaultBranch(repoRoot),
-    launchForwardFixer: (itemId, mergeCommitSha, repoRoot, itemAiTool, defaultBranch) => {
-      const result = launchForwardFixerWorker(itemId, mergeCommitSha, repoRoot, itemAiTool ?? aiTool, mux, {
-        hubRepoNwo,
-        defaultBranch,
-        projectRoot,
-        resolveMux: resolveLaunchMux,
-      });
-      if (!result) return null;
-      return { worktreePath: result.worktreePath, workspaceRef: result.workspaceRef };
-    },
-    cleanForwardFixer: (itemId, fixForwardWorkspaceRef) => {
-      try { muxForWorkspaceRef(fixForwardWorkspaceRef).closeWorkspace(fixForwardWorkspaceRef); } catch { /* best-effort */ }
-      try {
-        cleanSingleWorktree(`ninthwave-fix-forward-${itemId}`, join(projectRoot, ".ninthwave", ".worktrees"), projectRoot);
-      } catch { /* best-effort -- forward-fixer worktree may already be cleaned */ }
-      return true;
-    },
-    completeMergedWorkItem: (item, workDir, root) => completeMergedWorkItemCleanup(item, workDir, root),
   };
 
   // ── Crew mode setup ──────────────────────────────────────────────

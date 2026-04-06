@@ -91,8 +91,8 @@ describe("scenario: CI failure recovery", () => {
     expect(finalItem!.ciFailCount).toBeGreaterThanOrEqual(1);
 
     // notify-ci-failure action should have queued an inbox message for the worker
-    expect(actionDeps.writeInbox).toHaveBeenCalled();
-    expect(actionDeps.prMerge).toHaveBeenCalled();
+    expect(actionDeps.io.writeInbox).toHaveBeenCalled();
+    expect(actionDeps.gh.prMerge).toHaveBeenCalled();
   });
 
   it("CI fails repeatedly beyond maxCiRetries, item goes stuck", async () => {
@@ -211,7 +211,7 @@ describe("scenario: CI failure recovery", () => {
     expect(finalItem!.failureReason).toContain("merge conflicts");
 
     // Verify daemon-rebase action queued a rebase message for the live worker.
-    const inboxCalls = (actionDeps.writeInbox as ReturnType<typeof import("vitest").vi.fn>).mock.calls;
+    const inboxCalls = (actionDeps.io.writeInbox as ReturnType<typeof import("vitest").vi.fn>).mock.calls;
     const rebaseMessages = inboxCalls.filter(
       (call) => {
         const [projectRoot, itemId, msg] = call as [string, string, string];
@@ -327,7 +327,7 @@ describe("scenario: CI failure recovery", () => {
     expect(finalItem!.state).toBe("ci-failed");
 
     // Inbox should have been queued with a CI failure message
-    const inboxCalls = (actionDeps.writeInbox as ReturnType<typeof import("vitest").vi.fn>).mock.calls;
+    const inboxCalls = (actionDeps.io.writeInbox as ReturnType<typeof import("vitest").vi.fn>).mock.calls;
     const ciFailureMessages = inboxCalls.filter(
       (call) => {
         const [projectRoot, itemId, msg] = call as [string, string, string];
@@ -419,7 +419,7 @@ describe("scenario: CI failure recovery", () => {
     expect(finalItem!.needsCiFix).toBe(false);
 
     // closeWorkspace should have been called (cleanup before respawn)
-    expect(actionDeps.closeWorkspace).toHaveBeenCalled();
+    expect(actionDeps.mux.closeWorkspace).toHaveBeenCalled();
   });
 
   it("unresponsive worker detected via ack timeout and respawned", () => {

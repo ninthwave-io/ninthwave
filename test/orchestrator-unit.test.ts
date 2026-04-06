@@ -13,6 +13,7 @@ import {
   type OrchestratorItem,
   type OrchestratorItemState,
   type OrchestratorDeps,
+  type DeepPartial,
   type ExecutionContext,
   type PollSnapshot,
   type ItemSnapshot,
@@ -165,8 +166,10 @@ describe("runtime transition enforcement", () => {
       aiTool: "copilot",
     };
     const deps: OrchestratorDeps = {
-      launchSingleItem: () => null,
-      validatePickupCandidate: () => ({ status: "blocked" as const, failureReason: "test-blocked" }),
+      workers: {
+        launchSingleItem: () => null,
+        validatePickupCandidate: () => ({ status: "blocked" as const, failureReason: "test-blocked" }),
+      },
     };
 
     expect(() => {
@@ -2429,25 +2432,42 @@ describe("cleanStaleBranchForReuse", () => {
 });
 
 describe("executeLaunch stale branch cleanup", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides?: DeepPartial<OrchestratorDeps>): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -2463,13 +2483,10 @@ describe("executeLaunch stale branch cleanup", () => {
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.hydrateState("H-1-1", "launching");
 
-    const deps = makeMinimalDeps({
-      cleanStaleBranch: () => { callOrder.push("clean"); },
-      launchSingleItem: () => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: () => {
         callOrder.push("launch");
         return { worktreePath: "/tmp/wt", workspaceRef: "workspace:1" };
-      },
-    });
+      } }, cleanup: { cleanStaleBranch: () => { callOrder.push("clean"); } } });
 
     const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
 
@@ -2484,11 +2501,7 @@ describe("executeLaunch stale branch cleanup", () => {
     orch.hydrateState("H-1-1", "launching");
 
     const warnings: string[] = [];
-    const deps = makeMinimalDeps({
-      cleanStaleBranch: () => { throw new Error("cleanup explosion"); },
-      warn: (msg) => { warnings.push(msg); },
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-    });
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }) }, cleanup: { cleanStaleBranch: () => { throw new Error("cleanup explosion"); } }, io: { warn: (msg) => { warnings.push(msg); } } });
 
     const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
 
@@ -2545,16 +2558,12 @@ describe("executeLaunch stale branch cleanup", () => {
 
     const cleanStaleBranch = vi.fn();
     const launchSingleItem = vi.fn(() => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }));
-    const deps = makeMinimalDeps({
-      validatePickupCandidate: () => ({
+    const deps = makeMinimalDeps({ workers: { validatePickupCandidate: () => ({
         status: "blocked",
         code: "unlaunchable",
         branchName: "ninthwave/H-1-1",
         failureReason: "launch-blocked: Repo 'missing-repo' not found.",
-      }),
-      cleanStaleBranch,
-      launchSingleItem,
-    });
+      }), launchSingleItem }, cleanup: { cleanStaleBranch } });
 
     const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
     const item = orch.getItem("H-1-1")!;
@@ -2573,25 +2582,42 @@ describe("executeLaunch stale branch cleanup", () => {
 // ── Stacked launch race guard (H-SL-1) ─────────────────────────────
 
 describe("executeLaunch stacked dep race guard", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -2613,12 +2639,10 @@ describe("executeLaunch stacked dep race guard", () => {
     orch.getItem("B-1")!.baseBranch = "ninthwave/A-1";
 
     const launchCalls: Array<{ baseBranch?: string }> = [];
-    const deps = makeMinimalDeps({
-      launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
         launchCalls.push({ baseBranch: bb });
         return { worktreePath: "/tmp/wt", workspaceRef: "workspace:1" };
-      },
-    });
+      } } });
 
     const result = orch.executeAction(
       { type: "launch", itemId: "B-1", baseBranch: "ninthwave/A-1" },
@@ -2645,12 +2669,10 @@ describe("executeLaunch stacked dep race guard", () => {
     orch.getItem("B-1")!.baseBranch = "ninthwave/A-1";
 
     const launchCalls: Array<{ baseBranch?: string }> = [];
-    const deps = makeMinimalDeps({
-      launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
         launchCalls.push({ baseBranch: bb });
         return { worktreePath: "/tmp/wt", workspaceRef: "workspace:1" };
-      },
-    });
+      } } });
 
     const result = orch.executeAction(
       { type: "launch", itemId: "B-1", baseBranch: "ninthwave/A-1" },
@@ -2676,12 +2698,10 @@ describe("executeLaunch stacked dep race guard", () => {
     orch.getItem("B-1")!.baseBranch = "ninthwave/A-1";
 
     const launchCalls: Array<{ baseBranch?: string }> = [];
-    const deps = makeMinimalDeps({
-      launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
         launchCalls.push({ baseBranch: bb });
         return { worktreePath: "/tmp/wt", workspaceRef: "workspace:1" };
-      },
-    });
+      } } });
 
     const result = orch.executeAction(
       { type: "launch", itemId: "B-1", baseBranch: "ninthwave/A-1" },
@@ -2703,12 +2723,10 @@ describe("executeLaunch stacked dep race guard", () => {
     orch.getItem("B-1")!.baseBranch = "ninthwave/A-1";
 
     const launchCalls: Array<{ baseBranch?: string }> = [];
-    const deps = makeMinimalDeps({
-      launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: (_item, _wd, _wtd, _pr, _ai, bb) => {
         launchCalls.push({ baseBranch: bb });
         return { worktreePath: "/tmp/wt", workspaceRef: "workspace:1" };
-      },
-    });
+      } } });
 
     const result = orch.executeAction(
       { type: "launch", itemId: "B-1", baseBranch: "ninthwave/A-1" },
@@ -2723,25 +2741,42 @@ describe("executeLaunch stacked dep race guard", () => {
 });
 
 describe("executeMerge conflict-aware rebase", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -2760,14 +2795,10 @@ describe("executeMerge conflict-aware rebase", () => {
     item.prNumber = 42;
 
     let daemonRebaseCalled = false;
-    const deps = makeMinimalDeps({
-      prMerge: () => false, // merge fails
-      checkPrMergeable: () => false, // PR is CONFLICTING
-      daemonRebase: () => {
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => {
         daemonRebaseCalled = true;
         return true; // rebase succeeds
-      },
-    });
+      } }, gh: { prMerge: () => false, checkPrMergeable: () => false } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2789,10 +2820,7 @@ describe("executeMerge conflict-aware rebase", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
 
-    const deps = makeMinimalDeps({
-      prMerge: () => false, // merge fails
-      checkPrMergeable: () => true, // PR is NOT conflicting
-    });
+    const deps = makeMinimalDeps({ gh: { prMerge: () => false, checkPrMergeable: () => true } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2814,12 +2842,7 @@ describe("executeMerge conflict-aware rebase", () => {
     mkdirSync(item.worktreePath, { recursive: true });
 
     const inboxMessages: string[] = [];
-    const deps = makeMinimalDeps({
-      prMerge: () => false,
-      checkPrMergeable: () => false, // CONFLICTING
-      daemonRebase: () => false, // rebase fails
-      writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); },
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, gh: { prMerge: () => false, checkPrMergeable: () => false }, io: { writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); } } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2844,12 +2867,7 @@ describe("executeMerge conflict-aware rebase", () => {
     mkdirSync(item.worktreePath, { recursive: true });
 
     const inboxMessages: string[] = [];
-    const deps = makeMinimalDeps({
-      prMerge: () => false,
-      checkPrMergeable: () => false,
-      daemonRebase: () => { throw new Error("rebase exploded"); },
-      writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); },
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => { throw new Error("rebase exploded"); } }, gh: { prMerge: () => false, checkPrMergeable: () => false }, io: { writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); } } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2868,11 +2886,7 @@ describe("executeMerge conflict-aware rebase", () => {
     item.prNumber = 42;
     item.rebaseRequested = true; // previously requested
 
-    const deps = makeMinimalDeps({
-      prMerge: () => false,
-      checkPrMergeable: () => false,
-      daemonRebase: () => true,
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => true }, gh: { prMerge: () => false, checkPrMergeable: () => false } });
 
     orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2888,10 +2902,7 @@ describe("executeMerge conflict-aware rebase", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
 
-    const deps = makeMinimalDeps({
-      prMerge: () => false,
-      // checkPrMergeable intentionally omitted -- should default to non-conflict
-    });
+    const deps = makeMinimalDeps({ gh: { prMerge: () => false } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2901,25 +2912,42 @@ describe("executeMerge conflict-aware rebase", () => {
 });
 
 describe("executeMerge getPrBaseAndState behavior", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -2936,9 +2964,7 @@ describe("executeMerge getPrBaseAndState behavior", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
 
-    const deps = makeMinimalDeps({
-      getPrBaseAndState: () => null, // API failure
-    });
+    const deps = makeMinimalDeps({ gh: { getPrBaseAndState: () => null } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2956,10 +2982,7 @@ describe("executeMerge getPrBaseAndState behavior", () => {
     item.prNumber = 42;
 
     const prMerge = vi.fn(() => true);
-    const deps = makeMinimalDeps({
-      getPrBaseAndState: () => ({ baseBranch: "main", prState: "MERGED" }),
-      prMerge,
-    });
+    const deps = makeMinimalDeps({ gh: { getPrBaseAndState: () => ({ baseBranch: "main", prState: "MERGED" }), prMerge } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2977,10 +3000,7 @@ describe("executeMerge getPrBaseAndState behavior", () => {
     item.prNumber = 42;
 
     const prMerge = vi.fn(() => true);
-    const deps = makeMinimalDeps({
-      getPrBaseAndState: () => ({ baseBranch: "main", prState: "OPEN" }),
-      prMerge,
-    });
+    const deps = makeMinimalDeps({ gh: { getPrBaseAndState: () => ({ baseBranch: "main", prState: "OPEN" }), prMerge } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -2997,9 +3017,7 @@ describe("executeMerge getPrBaseAndState behavior", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
 
-    const deps = makeMinimalDeps({
-      getPrBaseBranch: () => null, // API failure, no getPrBaseAndState
-    });
+    const deps = makeMinimalDeps({ gh: { getPrBaseBranch: () => null } });
 
     const result = orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -3010,25 +3028,42 @@ describe("executeMerge getPrBaseAndState behavior", () => {
 });
 
 describe("executeMerge admin override", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -3045,12 +3080,10 @@ describe("executeMerge admin override", () => {
     orch.getItem("H-1-1")!.prNumber = 42;
 
     let receivedOptions: { admin?: boolean } | undefined;
-    const deps = makeMinimalDeps({
-      prMerge: (_repoRoot, _prNumber, options) => {
+    const deps = makeMinimalDeps({ gh: { prMerge: (_repoRoot, _prNumber, options) => {
         receivedOptions = options;
         return true;
-      },
-    });
+      } } });
 
     orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42, admin: true }, ctx, deps);
 
@@ -3065,12 +3098,10 @@ describe("executeMerge admin override", () => {
     orch.getItem("H-1-1")!.prNumber = 42;
 
     let receivedOptions: { admin?: boolean } | undefined;
-    const deps = makeMinimalDeps({
-      prMerge: (_repoRoot, _prNumber, options) => {
+    const deps = makeMinimalDeps({ gh: { prMerge: (_repoRoot, _prNumber, options) => {
         receivedOptions = options;
         return true;
-      },
-    });
+      } } });
 
     orch.executeAction({ type: "merge", itemId: "H-1-1", prNumber: 42 }, ctx, deps);
 
@@ -3658,15 +3689,27 @@ describe("executeClean heartbeat cleanup", () => {
     };
 
     const deps: OrchestratorDeps = {
-      launchSingleItem: () => null,
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
-      fetchOrigin: () => {},
-      ffMerge: () => {},
+      git: {
+        fetchOrigin: () => {},
+        ffMerge: () => {},
+      },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+      },
+      mux: {
+        sendMessage: () => true,
+        closeWorkspace: () => true,
+      },
+      workers: {
+        launchSingleItem: () => null,
+      },
+      cleanup: {
+        cleanSingleWorktree: () => true,
+      },
+      io: {
+        writeInbox: () => {},
+      },
     };
 
     const result = orch.executeAction({ type: "clean", itemId: "H-1-1" }, ctx, deps);
@@ -3920,25 +3963,42 @@ describe("syncWorkerDisplay", () => {
 // ── Rebaser worker state transitions ──────────────────────────────────
 
 describe("rebaser worker state transitions", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -3955,10 +4015,7 @@ describe("rebaser worker state transitions", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
 
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false, // daemon rebase fails
-      launchRebaser: () => ({ workspaceRef: "rebaser:1" }),
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, workers: { launchRebaser: () => ({ workspaceRef: "rebaser:1" }) } });
 
     const result = orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -3976,10 +4033,7 @@ describe("rebaser worker state transitions", () => {
     item.prNumber = 42;
 
     const launchRebaserCalled = { value: false };
-    const deps = makeMinimalDeps({
-      daemonRebase: () => true, // daemon rebase succeeds
-      launchRebaser: () => { launchRebaserCalled.value = true; return null; },
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => true }, workers: { launchRebaser: () => { launchRebaserCalled.value = true; return null; } } });
 
     const result = orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -4039,9 +4093,7 @@ describe("rebaser worker state transitions", () => {
     item.rebaserWorkspaceRef = "rebaser:1";
 
     const cleaned: string[] = [];
-    const deps = makeMinimalDeps({
-      cleanRebaser: (_id, ref) => { cleaned.push(ref); return true; },
-    });
+    const deps = makeMinimalDeps({ cleanup: { cleanRebaser: (_id, ref) => { cleaned.push(ref); return true; } } });
 
     orch.executeAction({ type: "clean-rebaser", itemId: "H-1-1" }, ctx, deps);
 
@@ -4055,9 +4107,7 @@ describe("rebaser worker state transitions", () => {
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.hydrateState("H-1-1", "launching");
 
-    const deps = makeMinimalDeps({
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "", existingPrNumber: 271 }),
-    });
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "", existingPrNumber: 271 }) } });
 
     const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
 
@@ -4080,11 +4130,7 @@ describe("rebaser worker state transitions", () => {
     mkdirSync(item.worktreePath, { recursive: true });
 
     const inboxMessages: string[] = [];
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false,
-      // launchRebaser intentionally omitted
-      writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); },
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, io: { writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); } } });
 
     const result = orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -4097,25 +4143,42 @@ describe("rebaser worker state transitions", () => {
 // ── Rebase circuit breaker + worker message priority ──────────
 
 describe("rebase circuit breaker and worker message priority", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -4134,10 +4197,7 @@ describe("rebase circuit breaker and worker message priority", () => {
     item.rebaseAttemptCount = 2; // already at limit
 
     const launchRebaserCalled = { value: false };
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false,
-      launchRebaser: () => { launchRebaserCalled.value = true; return { workspaceRef: "rebaser:1" }; },
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, workers: { launchRebaser: () => { launchRebaserCalled.value = true; return { workspaceRef: "rebaser:1" }; } } });
 
     const result = orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -4161,11 +4221,7 @@ describe("rebase circuit breaker and worker message priority", () => {
 
     const launchRebaserCalled = { value: false };
     const inboxMessages: string[] = [];
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false,
-      launchRebaser: () => { launchRebaserCalled.value = true; return { workspaceRef: "rebaser:1" }; },
-      writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); },
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, workers: { launchRebaser: () => { launchRebaserCalled.value = true; return { workspaceRef: "rebaser:1" }; } }, io: { writeInbox: (_projectRoot, _itemId, msg) => { inboxMessages.push(msg); } } });
 
     const result = orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -4185,11 +4241,7 @@ describe("rebase circuit breaker and worker message priority", () => {
     item.worktreePath = join(setupTempRepo(), ".ninthwave", ".worktrees", "ninthwave-H-1-1");
     mkdirSync(item.worktreePath, { recursive: true });
 
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false,
-      writeInbox: () => {},
-      launchRebaser: () => ({ workspaceRef: "rebaser:1" }),
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, workers: { launchRebaser: () => ({ workspaceRef: "rebaser:1" }) }, io: { writeInbox: () => {} } });
 
     const result = orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -4248,10 +4300,7 @@ describe("rebase circuit breaker and worker message priority", () => {
     item.prNumber = 42;
     item.rebaseAttemptCount = 1; // already had one attempt
 
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false,
-      launchRebaser: () => ({ workspaceRef: "rebaser:2" }),
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, workers: { launchRebaser: () => ({ workspaceRef: "rebaser:2" }) } });
 
     orch.executeAction({ type: "daemon-rebase", itemId: "H-1-1" }, ctx, deps);
 
@@ -4273,10 +4322,7 @@ describe("rebase circuit breaker and worker message priority", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
 
-    const deps = makeMinimalDeps({
-      daemonRebase: () => false,
-      launchRebaser: () => ({ workspaceRef: "rebaser:x" }),
-    });
+    const deps = makeMinimalDeps({ git: { daemonRebase: () => false }, workers: { launchRebaser: () => ({ workspaceRef: "rebaser:x" }) } });
 
     let now = new Date("2026-04-02T12:00:00.000Z");
 
@@ -4334,25 +4380,42 @@ describe("rebase circuit breaker and worker message priority", () => {
 // ── Daemon-worker worktree race prevention (H-WR-1) ──────────────────
 
 describe("daemon-worker worktree race prevention (H-WR-1)", () => {
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   const ctx: ExecutionContext = {
     projectRoot: "/tmp/proj",
@@ -4436,13 +4499,11 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
     item.prNumber = 42;
 
     let receivedForceFlag = false;
-    const deps = makeMinimalDeps({
-      launchSingleItem: (_item, _td, _wd, _pr, _ai, _bb, forceWorkerLaunch) => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: (_item, _td, _wd, _pr, _ai, _bb, forceWorkerLaunch) => {
         receivedForceFlag = forceWorkerLaunch === true;
         // With forceWorkerLaunch, returns normal launch result (no existingPrNumber)
         return { worktreePath: "/tmp/wt", workspaceRef: "workspace:1" };
-      },
-    });
+      } } });
 
     const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
 
@@ -4458,9 +4519,7 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
     orch.getItem("H-1-1")!.reviewCompleted = true;
     orch.hydrateState("H-1-1", "launching");
 
-    const deps = makeMinimalDeps({
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "", existingPrNumber: 271 }),
-    });
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "", existingPrNumber: 271 }) } });
 
     const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
 
@@ -4482,14 +4541,12 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
     item.ciFailCount = 1;
     // No workspaceRef -- dead worker after restart
 
-    const deps = makeMinimalDeps({
-      launchSingleItem: (_item, _td, _wd, _pr, _ai, _bb, forceWorkerLaunch) => {
+    const deps = makeMinimalDeps({ workers: { launchSingleItem: (_item, _td, _wd, _pr, _ai, _bb, forceWorkerLaunch) => {
         if (forceWorkerLaunch) {
           return { worktreePath: "/tmp/wt", workspaceRef: "workspace:2" };
         }
         return { worktreePath: "/tmp/wt", workspaceRef: "", existingPrNumber: 42 };
-      },
-    });
+      } } });
 
     // Step 1: handlePrLifecycle emits notify-ci-failure
     const snap = snapshotWith([{
@@ -4525,25 +4582,42 @@ describe("daemon-worker worktree race prevention (H-WR-1)", () => {
 describe("implementer inbox delivery resolution", () => {
   afterEach(() => cleanupTempRepos());
 
-  function makeMinimalDeps(overrides: Partial<OrchestratorDeps> = {}): OrchestratorDeps {
-    return {
-      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
-      cleanSingleWorktree: () => true,
-      prMerge: () => true,
-      prComment: () => true,
-      sendMessage: () => true,
-      writeInbox: () => {},
-      closeWorkspace: () => true,
+  function makeMinimalDeps(overrides: DeepPartial<OrchestratorDeps> = {}): OrchestratorDeps {
+  return {
+    git: {
       fetchOrigin: () => {},
       ffMerge: () => {},
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: () => true,
+      prComment: () => true,
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: () => true,
+      closeWorkspace: () => true,
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: () => ({ worktreePath: "/tmp/wt", workspaceRef: "workspace:1" }),
       validatePickupCandidate: (item) => ({
         status: "launch",
         targetRepo: "/tmp/proj",
         branchName: `ninthwave/${item.id}`,
       }),
-      ...overrides,
-    };
-  }
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: () => true,
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: () => {},
+      ...overrides?.io,
+    },
+  };
+}
 
   function createEventCollector(): {
     orch: Orchestrator;
@@ -4572,7 +4646,7 @@ describe("implementer inbox delivery resolution", () => {
     item.prNumber = 42;
 
     const writeInbox = vi.fn();
-    const deps = makeMinimalDeps({ writeInbox });
+    const deps = makeMinimalDeps({ io: { writeInbox } });
     const ctx: ExecutionContext = {
       projectRoot: hubRepo,
       worktreeDir,
@@ -4613,7 +4687,7 @@ describe("implementer inbox delivery resolution", () => {
     item.workspaceRef = "workspace:1";
 
     const writeInbox = vi.fn();
-    const deps = makeMinimalDeps({ writeInbox });
+    const deps = makeMinimalDeps({ io: { writeInbox } });
     const ctx: ExecutionContext = {
       projectRoot: hubRepo,
       worktreeDir,
@@ -4654,11 +4728,9 @@ describe("implementer inbox delivery resolution", () => {
     item.workspaceRef = "workspace:1";
 
     const writes: Array<{ targetRoot: string; itemId: string; message: string }> = [];
-    const deps = makeMinimalDeps({
-      writeInbox: (targetRoot, itemId, message) => {
+    const deps = makeMinimalDeps({ io: { writeInbox: (targetRoot, itemId, message) => {
         writes.push({ targetRoot, itemId, message });
-      },
-    });
+      } } });
     const ctx: ExecutionContext = {
       projectRoot: hubRepo,
       worktreeDir,

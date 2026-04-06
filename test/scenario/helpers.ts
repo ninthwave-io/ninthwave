@@ -5,6 +5,7 @@ import { vi } from "vitest";
 import { mkdirSync } from "fs";
 import {
   type OrchestratorDeps,
+  type DeepPartial,
   type ExecutionContext,
   type Orchestrator,
 } from "../../core/orchestrator.ts";
@@ -46,25 +47,43 @@ export const defaultCtx: ExecutionContext = {
 export function buildActionDeps(
   fakeGh: FakeGitHub,
   fakeMux: FakeMux,
-  overrides?: Partial<OrchestratorDeps>,
+  overrides?: DeepPartial<OrchestratorDeps>,
 ): OrchestratorDeps {
   return {
-    launchSingleItem: vi.fn((item, _wd, _wtd, _pr, _ai, _bb) => {
-      const worktreePath = `/tmp/worktree-${item.id}`;
-      mkdirSync(worktreePath, { recursive: true });
-      const ref = fakeMux.launchWorkspace(worktreePath, "claude", item.id);
-      return { worktreePath, workspaceRef: ref! };
-    }),
-    cleanSingleWorktree: vi.fn(() => true),
-    prMerge: vi.fn((repoRoot, prNumber, options) => fakeGh.prMerge(repoRoot, prNumber, options)),
-    prComment: vi.fn((repoRoot, prNumber, body) => fakeGh.prComment(repoRoot, prNumber, body)),
-    writeInbox: vi.fn(),
-    closeWorkspace: vi.fn((ref) => fakeMux.closeWorkspace(ref)),
-    fetchOrigin: vi.fn(),
-    ffMerge: vi.fn(),
-    checkPrMergeable: vi.fn(() => true),
-    getMergeCommitSha: vi.fn(() => null),
-    ...overrides,
+    git: {
+      fetchOrigin: vi.fn(),
+      ffMerge: vi.fn(),
+      ...overrides?.git,
+    },
+    gh: {
+      prMerge: vi.fn((repoRoot, prNumber, options) => fakeGh.prMerge(repoRoot, prNumber, options)),
+      prComment: vi.fn((repoRoot, prNumber, body) => fakeGh.prComment(repoRoot, prNumber, body)),
+      checkPrMergeable: vi.fn(() => true),
+      getMergeCommitSha: vi.fn(() => null),
+      ...overrides?.gh,
+    },
+    mux: {
+      sendMessage: vi.fn(() => true),
+      closeWorkspace: vi.fn((ref) => fakeMux.closeWorkspace(ref)),
+      ...overrides?.mux,
+    },
+    workers: {
+      launchSingleItem: vi.fn((item, _wd, _wtd, _pr, _ai, _bb) => {
+        const worktreePath = `/tmp/worktree-${item.id}`;
+        mkdirSync(worktreePath, { recursive: true });
+        const ref = fakeMux.launchWorkspace(worktreePath, "claude", item.id);
+        return { worktreePath, workspaceRef: ref! };
+      }),
+      ...overrides?.workers,
+    },
+    cleanup: {
+      cleanSingleWorktree: vi.fn(() => true),
+      ...overrides?.cleanup,
+    },
+    io: {
+      writeInbox: vi.fn(),
+      ...overrides?.io,
+    },
   };
 }
 

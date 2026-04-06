@@ -281,12 +281,12 @@ export function handleRunComplete(
     try {
       // Close workspace before worktree cleanup (prevents orphaned workspaces)
       if (item.workspaceRef) {
-        deps.actionDeps.closeWorkspace(item.workspaceRef);
+        deps.actionDeps.mux.closeWorkspace(item.workspaceRef);
       }
       // Preserve worktrees for stuck items -- users can inspect partial work
       // and clean manually with `nw clean <ID>` when done.
       if (item.state === "stuck") continue;
-      const cleaned = deps.actionDeps.cleanSingleWorktree(
+      const cleaned = deps.actionDeps.cleanup.cleanSingleWorktree(
         item.id,
         ctx.worktreeDir,
         ctx.projectRoot,
@@ -987,8 +987,8 @@ export async function orchestrateLoop(
           for (const item of allItems) {
             if (item.state !== "done") continue;
             try {
-              if (item.workspaceRef) deps.actionDeps.closeWorkspace(item.workspaceRef);
-              deps.actionDeps.cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
+              if (item.workspaceRef) deps.actionDeps.mux.closeWorkspace(item.workspaceRef);
+              deps.actionDeps.cleanup.cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
             } catch { /* best-effort */ }
           }
           log({
@@ -1102,8 +1102,8 @@ export async function orchestrateLoop(
         lastMainRefreshMs = nowRefreshMs;
         const reposToRefresh = new Set<string>([ctx.projectRoot]);
         for (const repoRoot of reposToRefresh) {
-          try { deps.actionDeps.fetchOrigin(repoRoot, "main"); } catch { /* non-fatal */ }
-          try { deps.actionDeps.ffMerge(repoRoot, "main"); } catch { /* non-fatal -- dirty tree or diverged */ }
+          try { deps.actionDeps.git.fetchOrigin(repoRoot, "main"); } catch { /* non-fatal */ }
+          try { deps.actionDeps.git.ffMerge(repoRoot, "main"); } catch { /* non-fatal -- dirty tree or diverged */ }
         }
         if (interactiveTiming) {
           interactiveTiming.timingsMs.mainRefresh = elapsedMs(nowMs, mainRefreshStartMs);
