@@ -721,6 +721,26 @@ describe("formatItemRow", () => {
     const row = stripAnsi(formatItemRow(item, 40));
     expect(row).toContain("! Sensitive item");
   });
+
+  it("shows (parked) indicator for review-state items with sessionParked", () => {
+    const item = makeStatusItem({ state: "review", sessionParked: true, title: "Parked feature" });
+    const row = stripAnsi(formatItemRow(item, 40));
+    expect(row).toContain("(parked)");
+    expect(row).toContain("Parked feature");
+  });
+
+  it("does not show (parked) for review-state items without sessionParked", () => {
+    const item = makeStatusItem({ state: "review", title: "Active feature" });
+    const row = stripAnsi(formatItemRow(item, 40));
+    expect(row).not.toContain("(parked)");
+    expect(row).toContain("Active feature");
+  });
+
+  it("does not show (parked) for non-review states even when sessionParked is true", () => {
+    const item = makeStatusItem({ state: "implementing", sessionParked: true, title: "Impl item" });
+    const row = stripAnsi(formatItemRow(item, 40));
+    expect(row).not.toContain("(parked)");
+  });
 });
 
 describe("formatInlineProgress", () => {
@@ -767,6 +787,18 @@ describe("formatQueuedItemRow", () => {
     const row = stripAnsi(formatQueuedItemRow(item, 20, indicator));
     expect(row).toContain("⧗");
     expect(row).toContain("Waiting");
+  });
+
+  it("shows (parked) for queued-but-review items with sessionParked", () => {
+    const item = makeStatusItem({ state: "review", sessionParked: true, title: "Parked review" });
+    const row = stripAnsi(formatQueuedItemRow(item, 30));
+    expect(row).toContain("(parked)");
+  });
+
+  it("does not show (parked) for queued items without sessionParked", () => {
+    const item = makeStatusItem({ state: "queued" });
+    const row = stripAnsi(formatQueuedItemRow(item, 20));
+    expect(row).not.toContain("(parked)");
   });
 });
 
@@ -1702,6 +1734,53 @@ describe("daemonStateToStatusItems", () => {
 
     const items = daemonStateToStatusItems(state);
     expect(items[0]!.requiresManualReview).toBe(true);
+  });
+
+  it("propagates sessionParked when present", () => {
+    const now = new Date().toISOString();
+    const state: DaemonState = {
+      pid: 1,
+      startedAt: now,
+      updatedAt: now,
+      items: [
+        {
+          id: "C-1-8",
+          state: "review-pending",
+          prNumber: 20,
+          title: "Parked item",
+          sessionParked: true,
+          lastTransition: now,
+          ciFailCount: 0,
+          retryCount: 0,
+        },
+      ],
+    };
+
+    const items = daemonStateToStatusItems(state);
+    expect(items[0]!.sessionParked).toBe(true);
+  });
+
+  it("omits sessionParked when not set on daemon item", () => {
+    const now = new Date().toISOString();
+    const state: DaemonState = {
+      pid: 1,
+      startedAt: now,
+      updatedAt: now,
+      items: [
+        {
+          id: "C-1-9",
+          state: "review-pending",
+          prNumber: 21,
+          title: "Active item",
+          lastTransition: now,
+          ciFailCount: 0,
+          retryCount: 0,
+        },
+      ],
+    };
+
+    const items = daemonStateToStatusItems(state);
+    expect(items[0]!.sessionParked).toBeUndefined();
   });
 
   it("keeps ci-pending display state when rebaseRequested is true", () => {
@@ -4163,6 +4242,41 @@ describe("formatItemDetail", () => {
     expect(text).toContain("Done");
     expect(text).toContain("#200");
     expect(text).toContain("Passed");
+  });
+
+  it("shows (parked) in state line for parked review items", () => {
+    const item = makeStatusItem({
+      id: "H-PK-1",
+      state: "review",
+      sessionParked: true,
+      title: "Parked PR",
+      prNumber: 55,
+    });
+    const lines = formatItemDetail(item);
+    const text = lines.map(stripAnsi).join("\n");
+    expect(text).toContain("In Review");
+    expect(text).toContain("(parked)");
+  });
+
+  it("does not show (parked) in detail for non-review parked items", () => {
+    const item = makeStatusItem({
+      id: "H-PK-2",
+      state: "implementing",
+      sessionParked: true,
+    });
+    const lines = formatItemDetail(item);
+    const text = lines.map(stripAnsi).join("\n");
+    expect(text).not.toContain("(parked)");
+  });
+
+  it("does not show (parked) in detail for review items without sessionParked", () => {
+    const item = makeStatusItem({
+      id: "H-PK-3",
+      state: "review",
+    });
+    const lines = formatItemDetail(item);
+    const text = lines.map(stripAnsi).join("\n");
+    expect(text).not.toContain("(parked)");
   });
 
   it("renders verifying state without looking complete", () => {

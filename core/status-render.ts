@@ -322,6 +322,8 @@ export interface StatusItem {
   inboxNamespace?: string;
   /** ISO timestamp of the last inbox activity (write, deliver, drain). */
   inboxLastActivity?: string;
+  /** Whether this item's worker session has been parked (released while awaiting review). */
+  sessionParked?: boolean;
 }
 
 function headlessModeTag(item: StatusItem): string {
@@ -336,6 +338,16 @@ function manualReviewMarker(item: StatusItem): string {
 
 function manualReviewMarkerWidth(item: StatusItem): number {
   return item.requiresManualReview ? 2 : 0;
+}
+
+function parkedIndicator(item: StatusItem): string {
+  return item.sessionParked && item.state === "review"
+    ? ` ${DIM}(parked)${RESET}`
+    : "";
+}
+
+function parkedIndicatorWidth(item: StatusItem): number {
+  return item.sessionParked && item.state === "review" ? 9 : 0;
 }
 
 // ─── Dependency tree types ────────────────────────────────────────────────────
@@ -851,10 +863,11 @@ export function formatItemRow(
       )
     : "";
   const progressWidth = progressText ? stripAnsiForWidth(progressText).length + 1 : 0;
+  const parkedTag = parkedIndicator(item);
   const marker = manualReviewMarker(item);
   const title = truncateTitle(
     item.title || item.id,
-    Math.max(4, titleWidth - progressWidth - manualReviewMarkerWidth(item)),
+    Math.max(4, titleWidth - progressWidth - manualReviewMarkerWidth(item) - parkedIndicatorWidth(item)),
   );
   const repo = item.repoLabel ? ` ${DIM}[${item.repoLabel}]${RESET}` : "";
   const reason = item.failureReason
@@ -868,7 +881,7 @@ export function formatItemRow(
   const progressSuffix = progressText ? ` ${DIM}${progressText}${RESET}` : "";
   const modeTag = headlessModeTag(item);
 
-  const row = `${prefix}${iconColor}${icon}${RESET} ${id}${color}${stateCell}${RESET}${remoteDot} ${durationCell}${timeoutExtensions} ${depCol}${marker}${title}${progressSuffix}${modeTag}${repo}${reason}${telemetry}`;
+  const row = `${prefix}${iconColor}${icon}${RESET} ${id}${color}${stateCell}${RESET}${remoteDot} ${durationCell}${timeoutExtensions} ${depCol}${marker}${title}${parkedTag}${progressSuffix}${modeTag}${repo}${reason}${telemetry}`;
   return termWidth ? truncateAnsi(row, termWidth) : row;
 }
 
@@ -985,15 +998,16 @@ export function formatQueuedItemRow(
   const stateCell = formatStateLabelWithPr(item.state, item.prNumber, stateColWidth);
   const duration = pad(formatDuration(item), 8);
   const depCol = depIndicator ?? "";
+  const parkedTag = parkedIndicator(item);
   const marker = manualReviewMarker(item);
   const title = truncateTitle(
     item.title || item.id,
-    Math.max(4, titleWidth - manualReviewMarkerWidth(item)),
+    Math.max(4, titleWidth - manualReviewMarkerWidth(item) - parkedIndicatorWidth(item)),
   );
   const repo = item.repoLabel ? ` [${item.repoLabel}]` : "";
   const prefix = isSelected ? `${BOLD}>${RESET} ` : "  ";
 
-  return `${prefix}${DIM}${icon} ${id}${stateCell} ${duration} ${depCol}${marker}${title}${repo}${RESET}`;
+  return `${prefix}${DIM}${icon} ${id}${stateCell} ${duration} ${depCol}${marker}${title}${parkedTag}${repo}${RESET}`;
 }
 
 // ─── Dependency tree building ─────────────────────────────────────────────────
@@ -1080,17 +1094,18 @@ export function formatTreeItemRow(
   const color = stateColor(item.state);
   const stateCell = formatStateLabelWithPr(item.state, item.prNumber, stateColWidth, repoUrl);
   const duration = pad(formatDuration(item), 8);
+  const parkedTag = parkedIndicator(item);
   const marker = manualReviewMarker(item);
   const title = truncateTitle(
     item.title || item.id,
-    Math.max(4, titleWidth - manualReviewMarkerWidth(item)),
+    Math.max(4, titleWidth - manualReviewMarkerWidth(item) - parkedIndicatorWidth(item)),
   );
   const repo = item.repoLabel ? ` ${DIM}[${item.repoLabel}]${RESET}` : "";
 
   if (item.state === "queued") {
-    return `  ${DIM}${prefix}${icon} ${id}${stateCell} ${duration} ${marker}${title}${repo}${RESET}`;
+    return `  ${DIM}${prefix}${icon} ${id}${stateCell} ${duration} ${marker}${title}${parkedTag}${repo}${RESET}`;
   }
-  return `  ${prefix ? `${DIM}${prefix}${RESET}` : ""}${color}${icon}${RESET} ${id}${color}${stateCell}${RESET} ${duration} ${marker}${title}${repo}`;
+  return `  ${prefix ? `${DIM}${prefix}${RESET}` : ""}${color}${icon}${RESET} ${id}${color}${stateCell}${RESET} ${duration} ${marker}${title}${parkedTag}${repo}`;
 }
 
 /**
@@ -1531,6 +1546,7 @@ export function daemonStateToStatusItems(state: DaemonState): StatusItem[] {
       ...(item.inboxWaitingSince ? { inboxWaitingSince: item.inboxWaitingSince } : {}),
       ...(item.inboxNamespace ? { inboxNamespace: item.inboxNamespace } : {}),
       ...(item.inboxLastActivity ? { inboxLastActivity: item.inboxLastActivity } : {}),
+      ...(item.sessionParked ? { sessionParked: item.sessionParked } : {}),
     };
   });
 }
@@ -2581,7 +2597,8 @@ export function formatItemDetail(
   lines.push("");
 
   // State
-  lines.push(`  ${DIM}State:${RESET}     ${color}${stateIcon(item.state)} ${stateLabel(item.state)}${RESET}`);
+  const parkedTag = item.sessionParked && item.state === "review" ? ` ${DIM}(parked)${RESET}` : "";
+  lines.push(`  ${DIM}State:${RESET}     ${color}${stateIcon(item.state)} ${stateLabel(item.state)}${RESET}${parkedTag}`);
 
   // PR link
   if (item.prNumber) {
