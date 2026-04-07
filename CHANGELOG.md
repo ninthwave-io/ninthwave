@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2] - 2026-04-07
+
+### Added
+- TUI parked indicator for review-pending items (M-SP-4) (#626)
+- fast-path CI failure resume for parked items (M-SP-3) (#625)
+- park sessions on review-pending and adjust WIP counting (H-SP-2) (#624)
+- add sessionParked plumbing and fix executeWorkspaceClose dangling ref (H-SP-1) (#623)
+
 ## [0.4.1] - 2026-04-06
 
 ### Added
