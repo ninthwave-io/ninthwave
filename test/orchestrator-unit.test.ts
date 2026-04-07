@@ -5597,7 +5597,7 @@ describe("session parking (H-SP-2)", () => {
     expect(orch.getItem("H-1-1")!.sessionParked).toBe(false);
   });
 
-  it("sessionParked cleared on transition out of review-pending", () => {
+  it("parked item with CI failure fast-paths to respawnCiFixWorker (M-SP-3)", () => {
     const orch = new Orchestrator({ mergeStrategy: "manual" });
     orch.addItem(makeWorkItem("H-1-1"));
     orch.hydrateState("H-1-1", "review-pending");
@@ -5605,12 +5605,54 @@ describe("session parking (H-SP-2)", () => {
     orch.getItem("H-1-1")!.reviewCompleted = false;
     orch.getItem("H-1-1")!.sessionParked = true;
 
-    // CI failure triggers transition out of review-pending
-    orch.processTransitions(
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open" }]),
+    );
+
+    // Fast-path: parked item skips notification, goes directly to ready -> launching
+    expect(orch.getItem("H-1-1")!.state).toBe("launching");
+    expect(orch.getItem("H-1-1")!.sessionParked).toBe(false);
+    expect(orch.getItem("H-1-1")!.needsCiFix).toBe(true);
+    expect(actions.some((a) => a.type === "retry")).toBe(true);
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
+    // Should NOT go through the notification path
+    expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(false);
+  });
+
+  it("non-parked review-pending item with CI failure uses notification path (M-SP-3)", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    orch.getItem("H-1-1")!.prNumber = 42;
+    orch.getItem("H-1-1")!.reviewCompleted = false;
+    // sessionParked defaults to false -- live worker
+
+    const actions = orch.processTransitions(
       snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open" }]),
     );
 
     expect(orch.getItem("H-1-1")!.state).toBe("ci-failed");
-    expect(orch.getItem("H-1-1")!.sessionParked).toBe(false);
+    expect(actions.some((a) => a.type === "notify-ci-failure")).toBe(true);
+    // Should NOT fast-path to retry
+    expect(actions.some((a) => a.type === "retry")).toBe(false);
+  });
+
+  it("parked CI failure fast-path sets needsCiFix for launch (M-SP-3)", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    orch.getItem("H-1-1")!.prNumber = 42;
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.getItem("H-1-1")!.sessionParked = true;
+
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", ciStatus: "fail", prState: "open" }]),
+    );
+
+    // needsCiFix ensures launch forces a worker even with existing PR
+    expect(orch.getItem("H-1-1")!.needsCiFix).toBe(true);
+    expect(orch.getItem("H-1-1")!.state).toBe("launching");
+    expect(actions.some((a) => a.type === "retry")).toBe(true);
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
   });
 });
