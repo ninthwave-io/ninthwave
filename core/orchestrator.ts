@@ -1078,6 +1078,9 @@ export class Orchestrator {
     const ciStatus = snap?.ciStatus;
 
     if (ciStatus === "fail") {
+      // Capture before transition() clears sessionParked.
+      const wasParked = item.sessionParked;
+
       this.transition(item, "ci-failed", snap?.eventTime);
       item.ciFailCount++;
 
@@ -1085,6 +1088,12 @@ export class Orchestrator {
       item.failureReason = isMergeConflict
         ? "ci-failed: merge conflicts with main"
         : "ci-failed: CI checks failed";
+
+      // Fast-path: parked items have no live workspace, so skip the
+      // notification/ack-timeout cycle and respawn a CI-fix worker directly.
+      if (wasParked) {
+        return this.respawnCiFixWorker(item);
+      }
 
       if (isMergeConflict) {
         actions.push(...this.planRebaseConflictAction(
