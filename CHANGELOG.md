@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3] - 2026-04-08
+
+### Added
+- TUI blocker explanation + decompose fan-in guidance
+
+### Fixed
+- resolve inbox namespace for workers running in worktrees
+
 ## [0.4.2] - 2026-04-07
 
 ### Added
