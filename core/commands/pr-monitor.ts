@@ -14,6 +14,7 @@ import {
   apiGet as defaultApiGet,
   isAvailable as defaultIsAvailable,
   ghInRepo,
+  IGNORED_CHECK_NAMES,
   type GhFailureKind,
 } from "../gh.ts";
 import { parseWorkItemReferenceBlock } from "../work-item-files.ts";
@@ -239,9 +240,11 @@ export function processChecks(
   now: Date = new Date(),
   gracePeriodMs: number = CI_GRACE_PERIOD_MS,
 ): { ciStatus: string; eventTime: string | undefined } {
-  const nonSkipped = checks.filter((c) => c.state !== "SKIPPED");
+  const relevantChecks = checks.filter(
+    (c) => c.state !== "SKIPPED" && !IGNORED_CHECK_NAMES.has(c.name),
+  );
   let ciStatus: string;
-  if (nonSkipped.length === 0) {
+  if (relevantChecks.length === 0) {
     // No checks registered. If the PR was recently opened, CI may not have started yet.
     const inGrace =
       prCreatedAt !== undefined &&
@@ -250,11 +253,11 @@ export function processChecks(
     ciStatus = inGrace ? "unknown" : "pass";
   } else {
     ciStatus = "unknown";
-    if (nonSkipped.every((c) => c.state === "SUCCESS")) {
+    if (relevantChecks.every((c) => c.state === "SUCCESS")) {
       ciStatus = "pass";
-    } else if (nonSkipped.some((c) => CI_FAILURE_STATES.has(c.state))) {
+    } else if (relevantChecks.some((c) => CI_FAILURE_STATES.has(c.state))) {
       ciStatus = "fail";
-    } else if (nonSkipped.some((c) => c.state === "PENDING")) {
+    } else if (relevantChecks.some((c) => c.state === "PENDING")) {
       ciStatus = "pending";
     }
   }
@@ -262,7 +265,7 @@ export function processChecks(
   // For terminal CI states, derive event time from the latest check completedAt.
   let eventTime: string | undefined;
   if (ciStatus === "pass" || ciStatus === "fail") {
-    const completedTimes = nonSkipped
+    const completedTimes = relevantChecks
       .map((c) => c.completedAt)
       .filter((t): t is string => !!t)
       .sort();

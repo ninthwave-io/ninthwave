@@ -8,8 +8,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
 import * as gh from "../../core/gh.ts";
-import { prChecks } from "../../core/gh.ts";
-import { CI_FAILURE_STATES, checkPrStatus } from "../../core/commands/pr-monitor.ts";
+import { IGNORED_CHECK_NAMES, prChecks } from "../../core/gh.ts";
+import { CI_FAILURE_STATES, checkPrStatus, processChecks } from "../../core/commands/pr-monitor.ts";
 import { checkPrStatusDetailed } from "../../core/commands/pr-monitor.ts";
 import * as workflowDetect from "../../core/workflow-detect.ts";
 
@@ -179,6 +179,38 @@ describe("CI_FAILURE_STATES", () => {
       expect(CI_FAILURE_STATES.has(state)).toBe(false);
     });
   }
+});
+
+describe("processChecks ignored statuses", () => {
+  it('ignores "Ninthwave / Review" failures when real CI checks pass', () => {
+    expect(IGNORED_CHECK_NAMES.has("Ninthwave / Review")).toBe(true);
+
+    const result = processChecks([
+      { state: "SUCCESS", name: "build", completedAt: "2026-03-29T10:00:00Z" },
+      { state: "SUCCESS", name: "test", completedAt: "2026-03-29T10:01:00Z" },
+      { state: "FAILURE", name: "Ninthwave / Review", completedAt: "2026-03-29T10:02:00Z" },
+    ]);
+
+    expect(result).toEqual({
+      ciStatus: "pass",
+      eventTime: "2026-03-29T10:01:00Z",
+    });
+  });
+
+  it('treats an ignored "Ninthwave / Review" failure as no CI configured when it is the only non-skipped check', () => {
+    const now = new Date("2026-03-29T12:00:00Z");
+
+    const result = processChecks(
+      [{ state: "FAILURE", name: "Ninthwave / Review", completedAt: "2026-03-29T11:59:00Z" }],
+      undefined,
+      now,
+    );
+
+    expect(result).toEqual({
+      ciStatus: "pass",
+      eventTime: undefined,
+    });
+  });
 });
 
 // ── 3. checkPrStatus downstream classification ─────────────────────
