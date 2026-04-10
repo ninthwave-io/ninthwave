@@ -3293,6 +3293,74 @@ describe("processComments (via processTransitions)", () => {
     expect(actions.filter((a) => a.type === "send-message")).toHaveLength(0);
   });
 
+  it("parked review-pending item with human comments triggers respawn", () => {
+    const transitions: Array<[string, string]> = [];
+    const orch = new Orchestrator({
+      mergeStrategy: "manual",
+      onTransition: (_itemId, from, to) => transitions.push([from, to]),
+    });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = true;
+    item.sessionParked = true;
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1",
+        ciStatus: "pass",
+        prState: "open",
+        newComments: [
+          { body: "Please tighten this wording.", author: "reviewer", createdAt: "2026-01-15T12:01:00Z" },
+        ],
+      }]),
+      NOW,
+    );
+
+    expect(actions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(true);
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
+    expect(item.state).toBe("launching");
+    expect(item.sessionParked).toBe(false);
+    expect(item.reviewCompleted).toBe(false);
+    expect(item.needsFeedbackResponse).toBe(true);
+    expect(item.pendingFeedbackMessage).toContain("Please tighten this wording.");
+    expect(item.lastCommentCheck).toBe("2026-01-15T12:01:00Z");
+    expect(transitions).toContainEqual(["review-pending", "ready"]);
+    expect(transitions).toContainEqual(["ready", "launching"]);
+  });
+
+  it("parked item ignores bot comments", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = true;
+    item.sessionParked = true;
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1",
+        ciStatus: "pass",
+        prState: "open",
+        newComments: [
+          { body: "**[Orchestrator]** Auto-merged PR #42 for H-1-1.", author: "bot", createdAt: "2026-01-15T12:01:00Z" },
+          { body: "<!-- ninthwave-orchestrator-status -->", author: "bot", createdAt: "2026-01-15T12:02:00Z" },
+        ],
+      }]),
+      NOW,
+    );
+
+    expect(actions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(false);
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(false);
+    expect(item.state).toBe("review-pending");
+    expect(item.sessionParked).toBe(true);
+    expect(item.needsFeedbackResponse).toBeUndefined();
+    expect(item.pendingFeedbackMessage).toBeUndefined();
+    expect(item.lastCommentCheck).toBeUndefined();
+  });
+
   it("skips orchestrator's own audit-trail comments", () => {
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
@@ -4757,6 +4825,97 @@ describe("implementer inbox delivery resolution", () => {
     });
   });
 
+  it("executeLaunch with needsFeedbackResponse delivers feedback to inbox", () => {
+    const hubRepo = setupTempRepo();
+    const worktreeDir = join(hubRepo, ".ninthwave", ".worktrees");
+    const itemWorktree = join(worktreeDir, "ninthwave-H-1-1");
+    mkdirSync(itemWorktree, { recursive: true });
+
+    const { orch } = createEventCollector();
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "launching");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "@reviewer commented on PR #42:\n\nPlease tighten this wording.";
+
+    const writeInbox = vi.fn();
+    let receivedForceFlag = false;
+    const deps = makeMinimalDeps({
+      workers: {
+        validatePickupCandidate: (launchItem) => ({
+          status: "skip-with-pr",
+          branchName: `ninthwave/${launchItem.id}`,
+          existingPrNumber: 42,
+        }),
+        launchSingleItem: (_launchItem, _workDir, _worktreeDir, _projectRoot, _aiTool, _baseBranch, forceWorkerLaunch) => {
+          receivedForceFlag = forceWorkerLaunch === true;
+          return { worktreePath: itemWorktree, workspaceRef: "workspace:1" };
+        },
+      },
+      io: { writeInbox },
+    });
+    const ctx: ExecutionContext = {
+      projectRoot: hubRepo,
+      worktreeDir,
+      workDir: join(hubRepo, ".ninthwave", "work"),
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
+
+    expect(result.success).toBe(true);
+    expect(receivedForceFlag).toBe(true);
+    expect(writeInbox).toHaveBeenCalledWith(
+      itemWorktree,
+      "H-1-1",
+      expect.stringContaining("Please tighten this wording."),
+    );
+    expect(writeInbox).toHaveBeenCalledTimes(1);
+    expect(item.needsFeedbackResponse).toBe(false);
+    expect(item.pendingFeedbackMessage).toBeUndefined();
+  });
+
+  it("executeLaunch preserves feedback relaunch state when launch fails", () => {
+    const hubRepo = setupTempRepo();
+    const worktreeDir = join(hubRepo, ".ninthwave", ".worktrees");
+    mkdirSync(worktreeDir, { recursive: true });
+
+    const { orch } = createEventCollector();
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "launching");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "@reviewer commented on PR #42:\n\nPlease tighten this wording.";
+
+    const deps = makeMinimalDeps({
+      workers: {
+        validatePickupCandidate: (launchItem) => ({
+          status: "skip-with-pr",
+          branchName: `ninthwave/${launchItem.id}`,
+          existingPrNumber: 42,
+        }),
+        launchSingleItem: () => null,
+      },
+    });
+    const ctx: ExecutionContext = {
+      projectRoot: hubRepo,
+      worktreeDir,
+      workDir: join(hubRepo, ".ninthwave", "work"),
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
+
+    expect(result.success).toBe(false);
+    expect(item.state).toBe("ready");
+    expect(item.needsFeedbackResponse).toBe(true);
+    expect(item.pendingFeedbackMessage).toContain("Please tighten this wording.");
+  });
+
   it("does not fall back to repo-root namespaces for generic worker nudges", () => {
     const hubRepo = setupTempRepo();
     const worktreeDir = join(hubRepo, ".ninthwave", ".worktrees");
@@ -5615,7 +5774,7 @@ describe("session parking (H-SP-2)", () => {
     expect(actions.some((a) => a.type === "workspace-close")).toBe(false);
   });
 
-  it("parked item resumes on CHANGES_REQUESTED: respawnCiFixWorker called", () => {
+  it("parked item resumes on CHANGES_REQUESTED with queued feedback", () => {
     const orch = new Orchestrator({ mergeStrategy: "manual" });
     orch.addItem(makeWorkItem("H-1-1"));
     orch.hydrateState("H-1-1", "review-pending");
@@ -5634,8 +5793,39 @@ describe("session parking (H-SP-2)", () => {
     expect(orch.getItem("H-1-1")!.state).toBe("launching");
     expect(orch.getItem("H-1-1")!.reviewCompleted).toBe(false);
     expect(orch.getItem("H-1-1")!.sessionParked).toBe(false);
+    expect(orch.getItem("H-1-1")!.needsFeedbackResponse).toBe(true);
+    expect(orch.getItem("H-1-1")!.pendingFeedbackMessage).toContain("GitHub review requested changes on PR #42.");
     expect(actions.some((a) => a.type === "retry")).toBe(true);
     expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
+  });
+
+  it("parked CHANGES_REQUESTED review with comments queues the review comment text", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = true;
+    item.sessionParked = true;
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", ciStatus: "pass", prState: "open",
+        reviewDecision: "CHANGES_REQUESTED",
+        newComments: [
+          { body: "Please cover the failed relaunch path.", author: "reviewer", createdAt: "2026-01-15T12:01:00Z" },
+        ],
+      }]),
+      NOW,
+    );
+
+    expect(actions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(true);
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
+    expect(item.state).toBe("launching");
+    expect(item.reviewCompleted).toBe(false);
+    expect(item.needsFeedbackResponse).toBe(true);
+    expect(item.pendingFeedbackMessage).toContain("Please cover the failed relaunch path.");
+    expect(item.lastCommentCheck).toBe("2026-01-15T12:01:00Z");
   });
 
   it("strategy change to auto while parked: evaluateMerge transitions to merging", () => {

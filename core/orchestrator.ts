@@ -112,6 +112,9 @@ const FAILURE_REASON_STATES: Set<OrchestratorItemState> = new Set([
   "ci-failed", "stuck", "fix-forward-failed",
 ]);
 
+const AGENT_PR_COMMENT_RE = /\*\*\[(Orchestrator|Implementer|Reviewer|Forward-Fixer|Rebaser)\]/;
+const ORCHESTRATOR_STATUS_MARKER = "<!-- ninthwave-orchestrator-status -->";
+
 // ── Orchestrator class ───────────────────────────────────────────────
 
 export class Orchestrator {
@@ -872,6 +875,42 @@ export class Orchestrator {
     return [{ type: "retry", itemId: item.id }];
   }
 
+  /** Respawn a worker to address human PR feedback on a parked item. */
+  private respawnForFeedback(item: OrchestratorItem, message: string): Action[] {
+    item.reviewCompleted = false;
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = message;
+    item.notAliveCount = 0;
+    item.lastAliveAt = undefined;
+    this.transition(item, "ready");
+    return [{ type: "retry", itemId: item.id }];
+  }
+
+  /** Collect human PR feedback for parked-item relaunches and advance the comment cursor. */
+  private collectParkedFeedback(item: OrchestratorItem, snap: ItemSnapshot | undefined): string | undefined {
+    if (!snap?.newComments?.length) return undefined;
+
+    const humanComments = snap.newComments.filter((comment) => {
+      if (AGENT_PR_COMMENT_RE.test(comment.body)) return false;
+      if (comment.body.includes(ORCHESTRATOR_STATUS_MARKER)) return false;
+      return true;
+    });
+
+    if (humanComments.length === 0) return undefined;
+
+    const latestCreatedAt = humanComments
+      .map((comment) => comment.createdAt)
+      .sort()
+      .pop();
+    if (latestCreatedAt) {
+      item.lastCommentCheck = latestCreatedAt;
+    }
+
+    return humanComments
+      .map((comment) => `@${comment.author} commented on PR #${item.prNumber}:\n\n${comment.body}`)
+      .join("\n\n");
+  }
+
   /** Handle ci-failed state: retry circuit breaker, recovery, notification, unresponsive detection. */
   private handleCiFailed(
     item: OrchestratorItem,
@@ -1066,8 +1105,16 @@ export class Orchestrator {
     // Resume parked session: human requested changes on a parked item.
     // Reset reviewCompleted so the worker can address the feedback, and respawn.
     if (item.sessionParked && snap?.reviewDecision === "CHANGES_REQUESTED") {
-      item.reviewCompleted = false;
-      return this.respawnCiFixWorker(item);
+      const feedbackMessage = this.collectParkedFeedback(item, snap)
+        ?? `GitHub review requested changes on PR #${item.prNumber}.`;
+      return this.respawnForFeedback(item, feedbackMessage);
+    }
+
+    if (item.sessionParked) {
+      const feedbackMessage = this.collectParkedFeedback(item, snap);
+      if (feedbackMessage) {
+        return this.respawnForFeedback(item, feedbackMessage);
+      }
     }
 
     // CI status changes -- worker pushed fixes after review feedback.
@@ -1495,9 +1542,9 @@ export class Orchestrator {
 
     for (const comment of snap.newComments) {
       // Skip comments from any ninthwave agent (Orchestrator, Implementer, Reviewer, Forward-Fixer, Rebaser)
-      if (/\*\*\[(Orchestrator|Implementer|Reviewer|Forward-Fixer|Rebaser)\]/.test(comment.body)) continue;
+      if (AGENT_PR_COMMENT_RE.test(comment.body)) continue;
       // Skip orchestrator HTML status markers
-      if (comment.body.includes("<!-- ninthwave-orchestrator-status -->")) continue;
+      if (comment.body.includes(ORCHESTRATOR_STATUS_MARKER)) continue;
 
       actions.push({
         type: "react-to-comment",
