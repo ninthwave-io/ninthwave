@@ -4877,6 +4877,45 @@ describe("implementer inbox delivery resolution", () => {
     expect(item.pendingFeedbackMessage).toBeUndefined();
   });
 
+  it("executeLaunch preserves feedback relaunch state when launch fails", () => {
+    const hubRepo = setupTempRepo();
+    const worktreeDir = join(hubRepo, ".ninthwave", ".worktrees");
+    mkdirSync(worktreeDir, { recursive: true });
+
+    const { orch } = createEventCollector();
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.getItem("H-1-1")!.reviewCompleted = true;
+    orch.hydrateState("H-1-1", "launching");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "@reviewer commented on PR #42:\n\nPlease tighten this wording.";
+
+    const deps = makeMinimalDeps({
+      workers: {
+        validatePickupCandidate: (launchItem) => ({
+          status: "skip-with-pr",
+          branchName: `ninthwave/${launchItem.id}`,
+          existingPrNumber: 42,
+        }),
+        launchSingleItem: () => null,
+      },
+    });
+    const ctx: ExecutionContext = {
+      projectRoot: hubRepo,
+      worktreeDir,
+      workDir: join(hubRepo, ".ninthwave", "work"),
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction({ type: "launch", itemId: "H-1-1" }, ctx, deps);
+
+    expect(result.success).toBe(false);
+    expect(item.state).toBe("ready");
+    expect(item.needsFeedbackResponse).toBe(true);
+    expect(item.pendingFeedbackMessage).toContain("Please tighten this wording.");
+  });
+
   it("does not fall back to repo-root namespaces for generic worker nudges", () => {
     const hubRepo = setupTempRepo();
     const worktreeDir = join(hubRepo, ".ninthwave", ".worktrees");

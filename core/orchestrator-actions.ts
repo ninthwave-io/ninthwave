@@ -270,8 +270,6 @@ export function executeLaunch(
   // rather than silently tracked in ci-pending with no one to fix them (H-WR-1).
   const forceWorker = hasCiFix || hasFeedback;
   item.needsCiFix = false;
-  item.needsFeedbackResponse = false;
-  item.pendingFeedbackMessage = undefined;
 
   const selectedTool = getNextTool(ctx);
   try {
@@ -333,6 +331,11 @@ export function executeLaunch(
         ctx,
         deps,
       );
+    }
+
+    if (hasFeedback) {
+      item.needsFeedbackResponse = false;
+      item.pendingFeedbackMessage = undefined;
     }
 
     return { success: true };
