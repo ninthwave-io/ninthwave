@@ -925,6 +925,10 @@ export class Orchestrator {
     if (item.ciFailCount > this.config.maxCiRetries) {
       this.transition(item, "stuck");
       item.failureReason = `ci-failed: exceeded max CI retries (${this.config.maxCiRetries})`;
+      if (snap?.workerAlive) {
+        item.sessionParked = true;
+        return [];
+      }
       return [{ type: "workspace-close", itemId: item.id }];
     }
 
