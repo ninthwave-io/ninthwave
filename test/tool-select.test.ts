@@ -363,14 +363,27 @@ describe("validateAgentFiles", () => {
     warnSpy.mockRestore();
   });
 
-  it("does not warn when agent files exist", () => {
+  it("does not warn when all agent files exist", () => {
+    const warnSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const repo = setupTempRepo();
+    const agentDir = join(repo, ".opencode", "agents");
+    mkdirSync(agentDir, { recursive: true });
+    for (const name of ["implementer", "reviewer", "rebaser", "forward-fixer"]) {
+      writeFileSync(join(agentDir, `${name}.md`), `---\nname: ninthwave-${name}\n---\nAgent instructions`);
+    }
+    validateAgentFiles(["opencode"], repo);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("warns when only some agent files exist (partial install)", () => {
     const warnSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const repo = setupTempRepo();
     const agentDir = join(repo, ".opencode", "agents");
     mkdirSync(agentDir, { recursive: true });
     writeFileSync(join(agentDir, "implementer.md"), "---\nname: ninthwave-implementer\n---\nAgent instructions");
     validateAgentFiles(["opencode"], repo);
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("No agent files found for OpenCode"));
     warnSpy.mockRestore();
   });
 

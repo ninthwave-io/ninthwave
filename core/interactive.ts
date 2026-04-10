@@ -68,8 +68,6 @@ export interface InteractiveDeps {
   refreshStartupItems?: () => Promise<StartupItemsRefreshResult>;
   /** Pre-selected tool IDs from user config (multi-select). */
   savedToolIds?: string[];
-  /** When true, skip the AI tool step (tool already determined by --tool or user config). */
-  skipToolStep?: boolean;
   /** Project root for agent file validation on the tool selection screen. */
   projectRoot?: string;
 }
@@ -628,7 +626,6 @@ async function runReadlineFlow(
         } else {
           console.log(`     ${YELLOW}No agent files at ${t.targetDir}/${RESET} ${DIM}-- run "nw init"${RESET}`);
         }
-
       }
     };
 

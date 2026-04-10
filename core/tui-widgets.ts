@@ -1356,7 +1356,7 @@ export async function runSelectionScreen(
         label: t.displayName,
         detail: seeded
           ? `Model defined in ${t.targetDir}/ agent files`
-          : `${YELLOW}No agent files at ${t.targetDir}/${RESET}${DIM} -- run "nw init"`,
+          : `${YELLOW}No agent files at ${t.targetDir}/${RESET}${DIM} -- run "nw init"${RESET}`,
         checked: savedIds.length > 0 ? savedIds.includes(t.id) : true,
       };
     });

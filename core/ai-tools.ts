@@ -529,13 +529,17 @@ export function isAiToolId(s: string): s is AiToolId {
 }
 
 /**
- * Check whether a tool has its primary agent file seeded in a project.
- * Looks for the implementer agent artifact (the file workers actually need).
+ * Check whether a tool has all standard agent files seeded in a project.
+ * Returns true only if every agent artifact (implementer, reviewer, rebaser,
+ * forward-fixer) exists, since a partial install will crash at launch time.
  */
 export function hasAgentFiles(toolId: AiToolId, projectRoot: string): boolean {
   const profile = getToolProfile(toolId);
-  const filename = agentTargetFilename("implementer.md", profile);
-  return existsSync(join(projectRoot, profile.targetDir, filename));
+  for (const source of Object.values(STANDARD_AGENT_SOURCES_BY_NAME)) {
+    const filename = agentTargetFilename(source, profile);
+    if (!existsSync(join(projectRoot, profile.targetDir, filename))) return false;
+  }
+  return true;
 }
 
 /**

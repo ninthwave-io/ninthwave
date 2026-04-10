@@ -467,7 +467,6 @@ export function getTmuxStartupInfo(
 export interface InteractiveStartupConfig {
   defaults: TuiSettingsDefaults;
   savedToolIds?: string[];
-  skipToolStep: boolean;
 }
 
 export function resolveInteractiveStartupConfig(
@@ -481,7 +480,6 @@ export function resolveInteractiveStartupConfig(
       scheduleEnabled: isProjectScheduleEnabled(userConfig, projectRoot),
     }),
     savedToolIds: userConfig.ai_tools,
-    skipToolStep: !!toolOverride || (userConfig.ai_tools?.length ?? 0) > 0,
   };
 }
 
@@ -1343,7 +1341,6 @@ async function runInteractiveOperatorParentSession(
         const freshItems = opts.loadRunnableWorkItems("run-more");
         const interactiveResult = await runInteractiveFlow(freshItems, operatorLastSnapshot.runtime.sessionLimit, {
           showConnectionStep: false,
-          skipToolStep: true,
         });
         if (!interactiveResult) {
           break;
@@ -1580,7 +1577,6 @@ export async function cmdOrchestrate(
       defaultSettings: interactiveStartupConfig.defaults,
       installedTools,
       savedToolIds: interactiveStartupConfig.savedToolIds,
-      skipToolStep: interactiveStartupConfig.skipToolStep,
       projectRoot,
     });
     if (!result) {
@@ -2679,7 +2675,6 @@ export async function cmdOrchestrate(
           const freshItems = loadDiscoveryWorkItems("run-more");
           const interactiveResult = await runInteractiveFlow(freshItems, operatorLastSnapshot.runtime.sessionLimit, {
             showConnectionStep: false,
-            skipToolStep: true,
           });
           if (!interactiveResult) {
             cleanupKeyboard = setupKeyboardShortcuts(abortController, log, process.stdin, tuiState);
@@ -2765,7 +2760,6 @@ export async function cmdOrchestrate(
         const freshItems = loadDiscoveryWorkItems("run-more");
         const interactiveResult = await runInteractiveFlow(freshItems, sessionLimit, {
           showConnectionStep: false,
-          skipToolStep: true,
         });
         if (!interactiveResult) {
           // User cancelled selection -- restore keyboard and exit loop
