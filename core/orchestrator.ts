@@ -877,6 +877,7 @@ export class Orchestrator {
 
   /** Respawn a worker to address human PR feedback on a parked item. */
   private respawnForFeedback(item: OrchestratorItem, message: string): Action[] {
+    item.reviewCompleted = false;
     item.needsFeedbackResponse = true;
     item.pendingFeedbackMessage = message;
     item.notAliveCount = 0;

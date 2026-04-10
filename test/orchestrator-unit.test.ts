@@ -3322,6 +3322,7 @@ describe("processComments (via processTransitions)", () => {
     expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
     expect(item.state).toBe("launching");
     expect(item.sessionParked).toBe(false);
+    expect(item.reviewCompleted).toBe(false);
     expect(item.needsFeedbackResponse).toBe(true);
     expect(item.pendingFeedbackMessage).toContain("Please tighten this wording.");
     expect(item.lastCommentCheck).toBe("2026-01-15T12:01:00Z");
@@ -4871,6 +4872,7 @@ describe("implementer inbox delivery resolution", () => {
       "H-1-1",
       expect.stringContaining("Please tighten this wording."),
     );
+    expect(writeInbox).toHaveBeenCalledTimes(1);
     expect(item.needsFeedbackResponse).toBe(false);
     expect(item.pendingFeedbackMessage).toBeUndefined();
   });

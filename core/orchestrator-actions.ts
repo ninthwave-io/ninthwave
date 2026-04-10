@@ -313,7 +313,7 @@ export function executeLaunch(
     // the CI-fix message lands in the same namespace as every other notification
     // (review feedback, rebase, etc.) and matches where the worker's read path
     // resolves via `resolveActiveWorkerNamespace`.
-    if (forceWorker) {
+    if (hasCiFix) {
       deliverToImplementerInbox(
         orch,
         item,
