@@ -75,7 +75,7 @@ The project instruction file is the source of truth for project-specific convent
 
 ## 3. Sync with latest base branch and set status
 
-In WIP-limited batches, your worktree may have been created minutes or hours ago. Rebase onto the latest base before starting work.
+In session-limited batches, your worktree may have been created minutes or hours ago. Rebase onto the latest base before starting work.
 
 **If `BASE_BRANCH` is set** (stacked on a dependency):
 ```bash

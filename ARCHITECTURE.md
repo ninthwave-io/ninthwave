@@ -30,7 +30,7 @@ Each work item moves through a state machine defined in [`core/orchestrator.ts`]
 | State | Description |
 |-------|-------------|
 | `queued` | Added to orchestration; waiting for dependencies to complete |
-| `ready` | Dependencies done; waiting for a WIP slot |
+| `ready` | Dependencies done; waiting for a session slot |
 | `launching` | Worktree created, AI session being started |
 | `implementing` | Worker is active and coding |
 | `ci-pending` | PR created; CI checks running (or awaiting CI start) |
@@ -38,7 +38,7 @@ Each work item moves through a state machine defined in [`core/orchestrator.ts`]
 | `ci-failed` | CI red; worker being notified |
 | `rebasing` | Rebaser worker resolving merge conflicts |
 | `review-pending` | Awaiting review worker launch |
-| `reviewing` | Review worker active (tracked via separate `reviewSessionLimit`) |
+| `reviewing` | Review worker active |
 | `merging` | Merge in progress |
 | `merged` | PR merged |
 | `forward-fix-pending` | Post-merge CI check pending |
@@ -55,7 +55,7 @@ stateDiagram-v2
     [*] --> queued : addItem()
     queued --> ready : deps done
     queued --> blocked : dep stuck
-    ready --> launching : WIP slot available
+    ready --> launching : session slot available
     launching --> implementing : worker started
     implementing --> ci_pending : PR detected
     implementing --> stuck : launch/activity timeout
@@ -83,9 +83,11 @@ stateDiagram-v2
     blocked --> queued : dep recovers
 ```
 
-### WIP Limit
+### Session Limit
 
-States that count toward the WIP limit (see `OrchestratorConfig.sessionLimit`): `launching`, `implementing`, `ci-pending`, `ci-passed`, `ci-failed`, `rebasing`, `review-pending`, `merging`. Review workers (`reviewing`) have a separate limit (`reviewSessionLimit`).
+`activeSessionCount` counts items that hold an active worker session -- specifically, items with any workspace ref (`workspaceRef`, `reviewWorkspaceRef`, `rebaserWorkspaceRef`, or `fixForwardWorkspaceRef`). Items waiting for external CI with no local worker don't consume a session slot. Review workers share the unified `sessionLimit` pool.
+
+Clearing a workspace ref immediately frees the slot. This happens on merge, session parking (review-pending), and retry preparation (stuckOrRetry stashes the ref in `pendingRetryWorkspaceRef` for later cleanup). The freed slot is available for new launches in the same poll cycle.
 
 ### Runtime Transition Enforcement
 

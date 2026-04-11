@@ -57,7 +57,7 @@ This repo uses ninthwave to develop ninthwave. When working here, log friction a
 
 1. **Log friction.** Any issue, slowdown, or surprising behavior you encounter while using ninthwave tools (the CLI, /decompose, workers, orchestrator) is valuable signal. Log friction entries to `.ninthwave/friction/` using the timestamped markdown format workers use.
 
-2. **WIP limit ≤ 5.** Each worker session (Claude Code + language server + worktree) consumes ~2-3GB RAM. On a 16GB Mac, WIP limit of 5 is the default; reduce if memory pressure is observed.
+2. **Session limit ≤ 5.** Each worker session (Claude Code + language server + worktree) consumes ~2-3GB RAM. On a 16GB Mac, session limit of 5 is the default; reduce if memory pressure is observed.
 
 3. **Always use worktree isolation for parallel agents.** When spawning agents that work on branches in the same repo, use `isolation: "worktree"` so each gets its own working copy. Never have two agents share a checkout.
 
