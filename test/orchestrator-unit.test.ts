@@ -834,7 +834,8 @@ describe("setSessionLimit", () => {
   it("updates availableSessionSlots calculation immediately", () => {
     const orch = new Orchestrator({ sessionLimit: 2 });
     orch.addItem(makeWorkItem("H-1-1"));
-    orch.hydrateState("H-1-1", "implementing"); // 1 WIP slot used
+    orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1"; // active worker uses 1 WIP slot
     expect(orch.availableSessionSlots).toBe(1);
     orch.setSessionLimit(4);
     expect(orch.availableSessionSlots).toBe(3);
@@ -846,8 +847,11 @@ describe("setSessionLimit", () => {
     orch.addItem(makeWorkItem("H-1-2"));
     orch.addItem(makeWorkItem("H-1-3"));
     orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
     orch.hydrateState("H-1-2", "ci-pending");
+    orch.getItem("H-1-2")!.workspaceRef = "workspace:2";
     orch.hydrateState("H-1-3", "implementing");
+    orch.getItem("H-1-3")!.workspaceRef = "workspace:3";
     expect(orch.activeSessionCount).toBe(3);
     orch.setSessionLimit(1);
     // All items stay in their current states -- availableSessionSlots just goes to 0
@@ -5953,8 +5957,11 @@ describe("session parking (H-SP-2)", () => {
     orch.addItem(makeWorkItem("H-1-1"));
     orch.addItem(makeWorkItem("H-1-2"));
     orch.hydrateState("H-1-1", "review-pending");
-    orch.hydrateState("H-1-2", "implementing");
     orch.getItem("H-1-1")!.sessionParked = true;
+    // H-1-1 parked: workspace closed (no workspaceRef) -> doesn't count
+    orch.hydrateState("H-1-2", "implementing");
+    orch.getItem("H-1-2")!.workspaceRef = "workspace:2";
+    // H-1-2: active workspace -> counts
 
     expect(orch.activeSessionCount).toBe(1);
     expect(orch.availableSessionSlots).toBe(2);
@@ -5965,9 +5972,11 @@ describe("session parking (H-SP-2)", () => {
     orch.addItem(makeWorkItem("H-1-1"));
     orch.addItem(makeWorkItem("H-1-2"));
     orch.hydrateState("H-1-1", "stuck");
-    orch.hydrateState("H-1-2", "implementing");
     orch.getItem("H-1-1")!.sessionParked = true;
     orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
+    // stuck + parked but workspace still alive -> counts
+    orch.hydrateState("H-1-2", "implementing");
+    orch.getItem("H-1-2")!.workspaceRef = "workspace:2";
 
     expect(orch.activeSessionCount).toBe(2);
     expect(orch.availableSessionSlots).toBe(0);

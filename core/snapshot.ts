@@ -27,6 +27,7 @@ import {
   type PrComment,
 } from "./gh.ts";
 import { detectWorkflowPresence } from "./workflow-detect.ts";
+import { resolveRef as defaultResolveRef } from "./git.ts";
 
 function normalizePrStatusResult(result: string | null | PrStatusPollResult): PrStatusPollResult {
   if (typeof result === "string" || result == null) {
@@ -379,6 +380,7 @@ export function buildSnapshot(
   checkCommitCI?: (repoRoot: string, sha: string) => "pass" | "fail" | "pending",
   getMergeCommitSha: (repoRoot: string, prNumber: number) => string | null = defaultGetMergeCommitSha,
   getDefaultBranch: (repoRoot: string) => string | null = defaultGetDefaultBranch,
+  getHeadSha: (repoRoot: string, ref: string) => string | null = defaultResolveRef,
 ): PollSnapshot {
   const items: ItemSnapshot[] = [];
   const readyIds: string[] = [];
@@ -563,6 +565,19 @@ export function buildSnapshot(
       orchItem.lastCommitTime = commitTime;
     }
 
+    // Track branch HEAD SHA for all states that can reach evaluateMerge or need
+    // to record lastReviewedCommitSha. This gates reviews on new commits.
+    const headShaStates = new Set(["implementing", "ci-pending", "ci-passed", "ci-failed", "reviewing", "review-pending"]);
+    if (headShaStates.has(orchItem.state)) {
+      snap.headSha = getHeadSha(repoRoot, `ninthwave/${orchItem.id}`);
+    }
+
+    // Track worker liveness for review-pending items so the orchestrator can
+    // detect dead implementer workers and respawn them with review feedback.
+    if (orchItem.state === "review-pending" && orchItem.workspaceRef) {
+      snap.workerAlive = isWorkerAliveWithCache(orchItem, cachedWorkspaces);
+    }
+
     // Read heartbeat file for active items
     if (heartbeatStates.has(orchItem.state)) {
       try {
@@ -638,6 +653,7 @@ export async function buildSnapshotAsync(
   getMergeCommitSha: (repoRoot: string, prNumber: number) => string | null | Promise<string | null> = defaultGetMergeCommitSha,
   getDefaultBranch: (repoRoot: string) => string | null | Promise<string | null> = defaultGetDefaultBranchAsync,
   queue?: RequestQueue,
+  getHeadSha: (repoRoot: string, ref: string) => string | null | Promise<string | null> = defaultResolveRef,
 ): Promise<PollSnapshot> {
   const items: ItemSnapshot[] = [];
   const readyIds: string[] = [];
@@ -818,6 +834,17 @@ export async function buildSnapshotAsync(
       const commitTime = await getLastCommitTime(repoRoot, `ninthwave/${orchItem.id}`);
       snap.lastCommitTime = commitTime;
       orchItem.lastCommitTime = commitTime;
+    }
+
+    // Track branch HEAD SHA for review gating (see sync version for rationale)
+    const headShaStates = new Set(["implementing", "ci-pending", "ci-passed", "ci-failed", "reviewing", "review-pending"]);
+    if (headShaStates.has(orchItem.state)) {
+      snap.headSha = await getHeadSha(repoRoot, `ninthwave/${orchItem.id}`);
+    }
+
+    // Track worker liveness for review-pending items (see sync version)
+    if (orchItem.state === "review-pending" && orchItem.workspaceRef) {
+      snap.workerAlive = isWorkerAliveWithCache(orchItem, cachedWorkspaces);
     }
 
     // Heartbeat

@@ -46,6 +46,10 @@ export interface OrchestratorItem {
   partition?: number;
   /** Multiplexer workspace reference (e.g., "workspace:1" or "session:nw:H-1-1"). */
   workspaceRef?: string;
+  /** Stashed workspace ref from stuckOrRetry -- executeRetry uses this to close the old workspace after workspaceRef is cleared for WIP slot freeing. */
+  pendingRetryWorkspaceRef?: string;
+  /** SHA of the last reviewed commit. Used by the SHA gate to prevent re-review on unchanged code after review feedback. */
+  lastReviewedCommitSha?: string | null;
   /** Timestamp of last state change (ISO string). */
   lastTransition: string;
   /** Number of times CI has failed for this item in the current daemon session. */
@@ -255,7 +259,7 @@ export interface OrchestratorConfig {
   maxRebaseAttempts: number;
   /** How long merge conflicts can stay unchanged before the orchestrator retries or escalates rebase handling. See `TIMEOUTS` for related constants. Default: 15 minutes. */
   rebaseRetryStaleMs: number;
-  /** Max review rounds before marking stuck. Default: 3. */
+  /** Max review rounds before marking stuck. Default: 5. */
   maxReviewRounds: number;
   /** Whether to check CI on main after merge and fix-forward if broken. Default: true. */
   fixForward: boolean;
@@ -321,6 +325,8 @@ export interface ItemSnapshot {
   reviewVerdict?: import("./daemon.ts").ReviewVerdict;
   /** Inbox metadata snapshot for daemon state serialization. */
   inboxSnapshot?: import("./commands/inbox.ts").InboxSnapshot;
+  /** SHA of the branch HEAD commit. Used by the SHA gate to detect unchanged code after review feedback. */
+  headSha?: string;
 }
 
 export interface PollSnapshot {

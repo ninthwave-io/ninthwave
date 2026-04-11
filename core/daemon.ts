@@ -71,6 +71,8 @@ export interface DaemonStateItem {
   rebaseNudgeCount?: number;
   /** Number of review rounds completed. */
   reviewRound?: number;
+  /** SHA of the branch HEAD when the last review returned "request-changes". */
+  lastReviewedCommitSha?: string | null;
   /** Whether a CI failure notification has been sent for the current failure. */
   ciFailureNotified?: boolean;
   /** The lastCommitTime when ciFailureNotified was set. */
@@ -697,6 +699,7 @@ export function serializeOrchestratorState(
         ...(item.reviewWorkspaceRef ? { reviewWorkspaceRef: item.reviewWorkspaceRef } : {}),
         ...(item.reviewCompleted ? { reviewCompleted: item.reviewCompleted } : {}),
         ...(item.reviewRound ? { reviewRound: item.reviewRound } : {}),
+        ...(item.lastReviewedCommitSha != null ? { lastReviewedCommitSha: item.lastReviewedCommitSha } : {}),
         ...(item.failureReason ? { failureReason: item.failureReason } : {}),
         ...(item.workItem.dependencies.length > 0 ? { dependencies: item.workItem.dependencies } : {}),
         ...(item.startedAt ? { startedAt: item.startedAt } : {}),

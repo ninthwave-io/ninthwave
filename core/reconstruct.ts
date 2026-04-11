@@ -181,6 +181,7 @@ export function reconstructState(
     reviewWorkspaceRef?: string;
     reviewCompleted?: boolean;
     reviewRound?: number;
+    lastReviewedCommitSha?: string | null;
     lastCommentCheck?: string;
     rebaseRequested?: boolean;
     lastRebaseNudgeAt?: string;
@@ -217,6 +218,7 @@ export function reconstructState(
         reviewWorkspaceRef: si.reviewWorkspaceRef,
         reviewCompleted: si.reviewCompleted,
         reviewRound: si.reviewRound,
+        lastReviewedCommitSha: si.lastReviewedCommitSha,
         lastCommentCheck: si.lastCommentCheck,
         rebaseRequested: si.rebaseRequested,
         lastRebaseNudgeAt: si.lastRebaseNudgeAt,
@@ -253,6 +255,7 @@ export function reconstructState(
       if (saved.reviewWorkspaceRef) item.reviewWorkspaceRef = saved.reviewWorkspaceRef;
       if (saved.reviewCompleted) item.reviewCompleted = saved.reviewCompleted;
       if (saved.reviewRound != null) item.reviewRound = saved.reviewRound;
+      if (saved.lastReviewedCommitSha != null) item.lastReviewedCommitSha = saved.lastReviewedCommitSha;
       if (saved.lastCommentCheck) item.lastCommentCheck = saved.lastCommentCheck;
       if (saved.rebaseRequested) item.rebaseRequested = saved.rebaseRequested;
       if (saved.lastRebaseNudgeAt) item.lastRebaseNudgeAt = saved.lastRebaseNudgeAt;

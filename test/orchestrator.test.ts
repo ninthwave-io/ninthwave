@@ -872,7 +872,7 @@ describe("Orchestrator", () => {
 
   // ── 15. WIP count and slots ────────────────────────────────────
 
-  it("activeSessionCount reflects items in WIP states", () => {
+  it("activeSessionCount reflects items with active workspaces", () => {
     orch = new Orchestrator({ sessionLimit: 5 });
 
     orch.addItem(makeWorkItem("H-1-1"));
@@ -885,7 +885,9 @@ describe("Orchestrator", () => {
     orch.getItem("H-1-4")!.reviewCompleted = true;
 
     orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
     orch.hydrateState("H-1-2", "ci-pending");
+    orch.getItem("H-1-2")!.workspaceRef = "workspace:2";
     orch.hydrateState("H-1-3", "done");
     orch.hydrateState("H-1-4", "queued");
 
@@ -904,8 +906,10 @@ describe("Orchestrator", () => {
     orch.getItem("H-1-3")!.reviewCompleted = true;
 
     orch.hydrateState("H-1-1", "implementing");
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
     orch.hydrateState("H-1-2", "blocked");
     orch.hydrateState("H-1-3", "ci-pending");
+    orch.getItem("H-1-3")!.workspaceRef = "workspace:2";
 
     expect(orch.activeSessionCount).toBe(2);
     expect(orch.availableSessionSlots).toBe(1);
@@ -1023,6 +1027,9 @@ describe("Orchestrator", () => {
     expect(orch.getItem("A-1-1")!.state).toBe("launching");
     expect(orch.getItem("A-1-2")!.state).toBe("launching");
     expect(orch.getItem("A-1-3")!.state).toBe("queued");
+    // Simulate executeAction setting workspace refs after launch
+    orch.getItem("A-1-1")!.workspaceRef = "workspace:1";
+    orch.getItem("A-1-2")!.workspaceRef = "workspace:2";
 
     orch.processTransitions(
       snapshotWith([
@@ -2579,6 +2586,7 @@ describe("Orchestrator", () => {
         orch.addItem(makeWorkItem("X-1-2"));
         orch.getItem("X-1-2")!.reviewCompleted = true;
         orch.hydrateState("X-1-1", "implementing"); // uses 1 WIP slot
+        orch.getItem("X-1-1")!.workspaceRef = "workspace:1";
         orch.hydrateState("X-1-2", "ready");
         orch.processTransitions(
           snapshotWith([{ id: "X-1-1", workerAlive: true }]),
@@ -3962,7 +3970,9 @@ describe("Orchestrator", () => {
       orch.addItem(makeWorkItem("A-1-3"));
       orch.getItem("A-1-3")!.reviewCompleted = true;
       orch.hydrateState("A-1-1", "implementing");
+      orch.getItem("A-1-1")!.workspaceRef = "workspace:1";
       orch.hydrateState("A-1-2", "ci-pending");
+      orch.getItem("A-1-2")!.workspaceRef = "workspace:2";
       orch.hydrateState("A-1-3", "ready");
 
       orch.processTransitions(
@@ -3999,6 +4009,11 @@ describe("Orchestrator", () => {
       activeSessionStates.forEach((state, i) => {
         orch.addItem(makeWorkItem(`W-1-${i + 1}`));
         orch.hydrateState(`W-1-${i + 1}`, state);
+        if (state === "reviewing") {
+          orch.getItem(`W-1-${i + 1}`)!.reviewWorkspaceRef = `workspace:review:${i + 1}`;
+        } else {
+          orch.getItem(`W-1-${i + 1}`)!.workspaceRef = `workspace:${i + 1}`;
+        }
       });
 
       expect(orch.activeSessionCount).toBe(8);
@@ -4566,6 +4581,7 @@ describe("Orchestrator", () => {
       orch.addItem(makeWorkItem("H-1-1"));
       orch.getItem("H-1-1")!.reviewCompleted = true;
       orch.hydrateState("H-1-1", "implementing"); // 1 in WIP
+      orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
 
       // Without memory adjustment: 5 - 1 = 4 slots
       expect(orch.availableSessionSlots).toBe(4);
@@ -6626,7 +6642,9 @@ describe("Orchestrator", () => {
 
       orch.hydrateState("R-8-1", "reviewing"); // counts toward sessionLimit (unified pool)
       orch.getItem("R-8-1")!.prNumber = 42;
+      orch.getItem("R-8-1")!.reviewWorkspaceRef = "workspace:review:1";
       orch.hydrateState("R-8-2", "implementing"); // counts as 1 WIP
+      orch.getItem("R-8-2")!.workspaceRef = "workspace:1";
       orch.hydrateState("R-8-3", "ready");
 
       const actions = orch.processTransitions(
@@ -6646,7 +6664,9 @@ describe("Orchestrator", () => {
       orch.addItem(makeWorkItem("R-8-4"));
       orch.addItem(makeWorkItem("R-8-5"));
       orch.hydrateState("R-8-4", "implementing");
+      orch.getItem("R-8-4")!.workspaceRef = "workspace:1";
       orch.hydrateState("R-8-5", "reviewing");
+      orch.getItem("R-8-5")!.reviewWorkspaceRef = "workspace:review:1";
 
       expect(orch.activeSessionCount).toBe(2); // both implementing and reviewing count
     });
@@ -6741,9 +6761,13 @@ describe("Orchestrator", () => {
       orch.addItem(makeWorkItem("R-11-5"));
 
       orch.hydrateState("R-11-1", "implementing");
+      orch.getItem("R-11-1")!.workspaceRef = "workspace:1";
       orch.hydrateState("R-11-2", "ci-pending");
+      orch.getItem("R-11-2")!.workspaceRef = "workspace:2";
       orch.hydrateState("R-11-3", "reviewing");
+      orch.getItem("R-11-3")!.reviewWorkspaceRef = "workspace:review:1";
       orch.hydrateState("R-11-4", "reviewing");
+      orch.getItem("R-11-4")!.reviewWorkspaceRef = "workspace:review:2";
       orch.hydrateState("R-11-5", "ready");
 
       expect(orch.activeSessionCount).toBe(4); // implementing + ci-pending + 2 reviewing
@@ -7017,10 +7041,12 @@ describe("Orchestrator", () => {
       activeSessionStates.forEach((state, i) => {
         orch.addItem(makeWorkItem(`WR-${i + 1}`));
         orch.hydrateState(`WR-${i + 1}`, state);
+        orch.getItem(`WR-${i + 1}`)!.workspaceRef = `workspace:${i + 1}`;
       });
       // Add reviewing item -- should count toward unified WIP
       orch.addItem(makeWorkItem("WR-8"));
       orch.hydrateState("WR-8", "reviewing");
+      orch.getItem("WR-8")!.reviewWorkspaceRef = "workspace:review:1";
 
       expect(orch.activeSessionCount).toBe(8); // reviewing is now included
     });

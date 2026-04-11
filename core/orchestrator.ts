@@ -233,11 +233,10 @@ export class Orchestrator {
     item.lastTransition = new Date().toISOString();
   }
 
-  /** Count of items in WIP states (counts toward limit). Parked review items are excluded, but live parked stuck workers still count. */
+  /** Count of items with active worker sessions (counts toward limit). Items waiting for external CI with no local worker don't consume a WIP slot. When an item is parked, its workspace is closed (clearing workspaceRef), which naturally frees the slot. */
   get activeSessionCount(): number {
     return this.getAllItems().filter((item) =>
-      (ACTIVE_SESSION_STATES.has(item.state) && !item.sessionParked)
-      || (item.state === "stuck" && item.sessionParked && !!item.workspaceRef),
+      !!(item.workspaceRef || item.reviewWorkspaceRef || item.rebaserWorkspaceRef || item.fixForwardWorkspaceRef),
     ).length;
   }
 
@@ -524,6 +523,9 @@ export class Orchestrator {
     }
 
     this.transition(item, "merged", snap?.eventTime);
+    // Clear workspace ref so the WIP slot is freed immediately (activeSessionCount
+    // is workspace-based). The clean action still runs to close the actual workspace.
+    item.workspaceRef = undefined;
     const actions: Action[] = [{ type: "clean", itemId: item.id }];
 
     // Clean subsidiary workers if running
@@ -726,19 +728,29 @@ export class Orchestrator {
     now: Date,
   ): Action[] {
     // External merge handled by interceptExternalMerge.
-    // If a PR appeared, transition directly to ci-pending and process CI status
+    // If a PR appeared, transition directly to ci-pending and process CI status.
+    // BUT: when relaunched to address review feedback (lastReviewedCommitSha is set),
+    // don't fast-path on the pre-existing PR until the implementer pushes a new commit.
+    // Without this gate, the item blasts through implementing -> ci-pending -> ci-passed
+    // -> evaluateMerge -> reviewing in a single poll cycle on unchanged code.
     if (snap?.prNumber && snap.prState === "open") {
-      item.prNumber = snap.prNumber;
-      this.transition(item, "ci-pending", snap?.eventTime);
-      const actions: Action[] = [];
-      // Stacked PR just opened -- sync stack navigation comments on all PRs in the chain
-      if (item.baseBranch) {
-        actions.push({ type: "sync-stack-comments", itemId: item.id });
+      if (item.lastReviewedCommitSha && snap.headSha === item.lastReviewedCommitSha) {
+        // PR exists but code hasn't changed since last review. Track the PR
+        // number but stay in implementing -- wait for the worker to push.
+        item.prNumber = snap.prNumber;
+      } else {
+        item.prNumber = snap.prNumber;
+        this.transition(item, "ci-pending", snap?.eventTime);
+        const actions: Action[] = [];
+        // Stacked PR just opened -- sync stack navigation comments on all PRs in the chain
+        if (item.baseBranch) {
+          actions.push({ type: "sync-stack-comments", itemId: item.id });
+        }
+        // Fall through to handle CI status in the same cycle.
+        // The grace period in handleCiPending guards against stale "fail" results.
+        actions.push(...this.handleCiPending(item, snap, now));
+        return actions;
       }
-      // Fall through to handle CI status in the same cycle.
-      // The grace period in handleCiPending guards against stale "fail" results.
-      actions.push(...this.handleCiPending(item, snap, now));
-      return actions;
     }
 
     const sd = getStateData(item, "implementing");
@@ -879,6 +891,10 @@ export class Orchestrator {
       item.lastAliveAt = undefined;
       item.notAliveCount = 0;
       item.lastCommitTime = undefined;
+      // Stash the workspace ref for executeRetry to close, then clear it so
+      // the WIP slot is freed immediately (activeSessionCount is workspace-based).
+      item.pendingRetryWorkspaceRef = item.workspaceRef;
+      item.workspaceRef = undefined;
       this.transition(item, "ready");
       return [{ type: "retry", itemId: item.id }];
     }
@@ -909,6 +925,9 @@ export class Orchestrator {
     // re-sending a notification on this same cycle. The launch action writes
     // the CI fix message to the inbox AFTER cleanInbox runs.
     item.ciNotifyWallAt = undefined;
+    // Stash workspace ref for executeRetry, clear for WIP slot freeing
+    item.pendingRetryWorkspaceRef = item.workspaceRef;
+    item.workspaceRef = undefined;
     this.transition(item, "ready");
     return [{ type: "retry", itemId: item.id }];
   }
@@ -920,6 +939,9 @@ export class Orchestrator {
     item.pendingFeedbackMessage = message;
     item.notAliveCount = 0;
     item.lastAliveAt = undefined;
+    // Stash workspace ref for executeRetry, clear for WIP slot freeing
+    item.pendingRetryWorkspaceRef = item.workspaceRef;
+    item.workspaceRef = undefined;
     this.transition(item, "ready");
     return [{ type: "retry", itemId: item.id }];
   }
@@ -1212,6 +1234,22 @@ export class Orchestrator {
     }
 
     if (!item.reviewCompleted) {
+      // SHA gate: don't transition out of review-pending until the implementer
+      // pushes a new commit. Without this, the item races through ci-pending ->
+      // ci-passed -> evaluateMerge on unchanged code (evaluateMerge's SHA gate
+      // would catch it, but the item gets stranded in ci-passed with no respawn).
+      if (item.lastReviewedCommitSha && snap?.headSha === item.lastReviewedCommitSha) {
+        // Same commit -- implementer hasn't pushed yet. If the worker died
+        // (e.g., session timed out or post-restart), respawn with feedback.
+        const liveness = !item.workspaceRef ? "dead" as const : this.checkWorkerLiveness(item, snap);
+        if (liveness === "dead") {
+          const message = item.pendingFeedbackMessage
+            ?? `Review requested changes on PR #${item.prNumber}. Please address the feedback and push a fix.`;
+          return this.respawnForFeedback(item, message);
+        }
+        return actions; // stay in review-pending, worker is alive
+      }
+
       if (ciStatus === "pending") {
         this.transition(item, "ci-pending", snap?.eventTime);
         this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
@@ -1326,6 +1364,9 @@ export class Orchestrator {
       }
 
       if (v.verdict === "request-changes") {
+        // Record the current branch HEAD so evaluateMerge's SHA gate blocks
+        // re-review until the implementer pushes a new commit.
+        item.lastReviewedCommitSha = snap?.headSha ?? null;
         this.transition(item, "review-pending", snap?.eventTime);
         actions.push({ type: "clean-review", itemId: item.id });
         actions.push({
@@ -1342,10 +1383,13 @@ export class Orchestrator {
           statusDescription: `Changes requested: ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking`,
         });
         const round = item.reviewRound ?? 1;
+        const feedbackMessage = `[ORCHESTRATOR] Review Feedback (round ${round}): ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking.\n\n${v.summary}`;
+        // Store feedback for respawn if the implementer worker dies before addressing it.
+        item.pendingFeedbackMessage = feedbackMessage;
         actions.push({
           type: "notify-review",
           itemId: item.id,
-          message: `[ORCHESTRATOR] Review Feedback (round ${round}): ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking.\n\n${v.summary}`,
+          message: feedbackMessage,
         });
         return actions;
       }
@@ -1648,6 +1692,12 @@ export class Orchestrator {
     // Transition to reviewing state and launch a review worker.
     if (!item.reviewCompleted) {
       if (item.state !== "reviewing") {
+        // SHA gate: don't launch a review if the code hasn't changed since the
+        // last review. This prevents re-review loops on unchanged code -- the
+        // implementer must push a new commit before we'll re-review.
+        if (item.lastReviewedCommitSha && snap?.headSha === item.lastReviewedCommitSha) {
+          return actions;
+        }
         // Check max review rounds before launching another review
         const currentRound = (item.reviewRound ?? 0) + 1;
         if (currentRound > this.config.maxReviewRounds) {
@@ -1655,10 +1705,10 @@ export class Orchestrator {
           item.failureReason = `review-stuck: exceeded max review rounds (${this.config.maxReviewRounds})`;
           return actions;
         }
-        // reviewing is in ACTIVE_SESSION_STATES, so ci-passed→reviewing is an in-place transition
-        // (same WIP slot, different state). Reviews for in-pipeline items are always
-        // prioritized: transitionItem runs before launchReadyItems, so the review
-        // occupies its WIP slot first, leaving fewer slots for new launches.
+        // The review worker gets a reviewWorkspaceRef, which counts toward WIP.
+        // Reviews for in-pipeline items are always prioritized: transitionItem runs
+        // before launchReadyItems, so the review occupies its WIP slot first,
+        // leaving fewer slots for new launches.
         item.reviewRound = currentRound;
         this.config.onEvent?.(item.id, "review-round", { reviewRound: currentRound });
         this.transition(item, "reviewing", eventTime);

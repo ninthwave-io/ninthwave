@@ -384,6 +384,10 @@ export function executeMerge(
     if (info.prState === "MERGED") {
       // PR was already merged externally. Transition directly to merged.
       orch.transition(item, "merged");
+      if (item.workspaceRef) {
+        deps.mux.closeWorkspace(item.workspaceRef);
+        item.workspaceRef = undefined;
+      }
       try {
         deps.git.fetchOrigin(repoRoot, defaultBranch);
         deps.git.ffMerge(repoRoot, defaultBranch);
@@ -585,6 +589,13 @@ export function executeMerge(
   // This ensures the item reflects reality even if subsequent steps
   // (getMergeCommitSha, audit trail) throw.
   orch.transition(item, "merged");
+  // Close the workspace and free the WIP slot immediately after merge.
+  // activeSessionCount is workspace-based, so clearing workspaceRef is
+  // required to let queued items launch in the same cycle.
+  if (item.workspaceRef) {
+    deps.mux.closeWorkspace(item.workspaceRef);
+    item.workspaceRef = undefined;
+  }
 
   // Capture merge commit SHA for post-merge CI verification
   if (orch.config.fixForward && deps.gh.getMergeCommitSha) {
@@ -822,6 +833,10 @@ export function executeClean(
   const workspaceClosed = item.workspaceRef
     ? deps.mux.closeWorkspace(item.workspaceRef)
     : null; // null = not attempted (no workspace to close)
+  // Clear workspace ref after closing so the WIP slot is freed
+  // (activeSessionCount is workspace-based). Also clears the ref for
+  // items that bypassed executeMerge (e.g., interceptExternalMerge path).
+  if (item.workspaceRef) item.workspaceRef = undefined;
 
   const worktreeCleaned = deps.cleanup.cleanSingleWorktree(item.id, ctx.worktreeDir, ctx.projectRoot);
 
@@ -1061,10 +1076,15 @@ export function executeRetry(
   ctx: ExecutionContext,
   deps: OrchestratorDeps,
 ): ActionResult {
+  // stuckOrRetry stashes the workspace ref in pendingRetryWorkspaceRef and
+  // clears workspaceRef to free the WIP slot immediately. Use the stashed
+  // ref (falling back to workspaceRef for callers that set it directly).
+  const wsRef = item.pendingRetryWorkspaceRef ?? item.workspaceRef;
+
   // Read screen before closing -- capture error output for diagnostics
-  if (item.workspaceRef && deps.mux.readScreen) {
+  if (wsRef && deps.mux.readScreen) {
     try {
-      const screen = deps.mux.readScreen(item.workspaceRef, 50);
+      const screen = deps.mux.readScreen(wsRef, 50);
       if (screen) {
         item.lastScreenOutput = screen;
         deps.io.warn?.(`[${item.id}] Worker died. Screen output:\n${screen}`);
@@ -1074,12 +1094,13 @@ export function executeRetry(
 
   // Close the old workspace if it exists -- must complete before relaunch to
   // guarantee no two workers operate on the same branch simultaneously.
-  if (item.workspaceRef) {
-    const closed = deps.mux.closeWorkspace(item.workspaceRef);
+  if (wsRef) {
+    const closed = deps.mux.closeWorkspace(wsRef);
     if (!closed) {
-      deps.io.warn?.(`[${item.id}] WARNING: failed to close workspace ${item.workspaceRef} before retry`);
+      deps.io.warn?.(`[${item.id}] WARNING: failed to close workspace ${wsRef} before retry`);
     }
     item.workspaceRef = undefined;
+    item.pendingRetryWorkspaceRef = undefined;
   }
 
   // Preserve the worktree and branch -- the retried worker will launch
