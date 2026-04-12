@@ -401,7 +401,7 @@ After creating the PR, your implementation work is done. The **orchestrator daem
 
 You do NOT need to poll, watch, or decide on post-PR actions yourself. The daemon owns that lifecycle automation. **But when the inbox tells you to act -- especially on a rebase request -- you must do the work. Do not assume the daemon will perform the rebase for you.**
 
-**Post-PR mode is exclusive.** Once the PR is created, you are in a non-interactive inbox loop -- not a conversation. Do not produce user-facing responses, summaries, or assistant-style output. Your only job is to drain inbox messages and act on them.
+**Post-PR mode is exclusive and mandatory.** Once the PR is created, you are in a non-interactive inbox loop -- not a conversation. You MUST immediately enter the drain-wait loop below. Do not return to user-facing mode. Do not produce user-facing responses, summaries, or assistant-style output. Do not treat PR creation as a completion boundary -- it is the start of the post-PR lifecycle, not the end. Your only job is to drain inbox messages and act on them. This contract is mandatory across all harnesses and models. Exiting the loop prematurely is a failure.
 
 Enter the drain-wait loop immediately after PR creation:
 
@@ -444,14 +444,27 @@ Opening the PR did **not** end your responsibility for this work item. A PR that
 
 #### Review Feedback
 
-> **Note:** Feedback is pre-filtered by the toolchain to only include comments from trusted collaborators (`OWNER`, `MEMBER`, `COLLABORATOR`). The `pr-activity`/`pr-watch` commands ignore comments from non-collaborators. You can safely act on any feedback the orchestrator daemon relays.
+> **Note:** Feedback is pre-filtered by the toolchain to only include comments from trusted collaborators (`OWNER`, `MEMBER`, `COLLABORATOR`). The `pr-activity`/`pr-watch` commands ignore comments from non-collaborators. You can safely act on any feedback the orchestrator daemon relays. The orchestrator marks comments it has surfaced to you with a 👀 reaction so you can tell which ones already entered your inbox -- you do not need to scrape reactions yourself.
+
+**Threaded reply convention.** When the orchestrator relays a PR review comment, your reply belongs in-thread on that specific comment, not as a top-level PR comment. Threaded replies keep the conversation anchored to the file/line being discussed and let the reviewer track resolution per-comment. Use `gh api` to reply in-thread:
+
+```bash
+# Reply to a review comment (file/line annotation):
+gh api repos/{owner}/{repo}/pulls/{pr}/comments \
+  --field in_reply_to={comment_id} \
+  --field body='your reply'
+
+# Reply to an issue comment (top-level PR discussion):
+gh api repos/{owner}/{repo}/issues/{pr}/comments \
+  --field body='your reply'
+```
 
 1. Report progress: `nw heartbeat --progress 0.85 --label "Addressing feedback"`
 2. Pull latest: `git fetch origin && git reset --hard origin/ninthwave/YOUR_WORK_ITEM_ID`
 3. Address the feedback
 4. Run tests
 5. Commit and push
-6. Post a reply on the PR summarizing changes (prefix with `**[Implementer](https://github.com/${HUB_REPO_NWO}/blob/main/agents/implementer.md)**`): `nw heartbeat --progress 1.0 --label "PR created"`
+6. Reply in-thread on the relayed review comment summarizing changes (prefix with `**[Implementer](https://github.com/${HUB_REPO_NWO}/blob/main/agents/implementer.md)**`): `nw heartbeat --progress 1.0 --label "PR created"`
 
 #### Rebase Request
 
@@ -494,7 +507,7 @@ Ignore comments prefixed with `[Orchestrator]` -- these are audit trail entries 
 
 - **Do NOT modify** `VERSION` or `CHANGELOG.md`
 - **Work item files**: Only delete your own file from `.ninthwave/work/` (step 8). Do not create, restore, or modify other work item files. If unrelated `.ninthwave/work/` drift appears, leave it alone instead of "fixing" it by hand.
-- **Do NOT expand scope** beyond the work item. Note related issues in the PR body but don't fix them.
+- **Do NOT expand scope** beyond the work item. Note related issues in the PR body but don't fix them. The only allowed expansion is into a neighbour work item, and only when CI cannot be green otherwise; in that case pull just enough scope forward to restore green and document why in the PR body.
 - **Do NOT run shipping/deploy workflows**. Version bumping is deferred to post-merge.
 - **Keep changes scoped** to files mentioned in the work item.
 - **Every work item must result in a PR.** Your work is incomplete until `gh pr create` has run successfully. Do not stop after implementing and testing -- commit, push, and open the PR.

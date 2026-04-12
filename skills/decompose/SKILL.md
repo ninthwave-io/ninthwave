@@ -154,6 +154,10 @@ Each test plan specifies:
 
 Keep test plans concise -- 2-4 bullet points per item.
 
+#### Sequence so every item is CI green
+
+Order items so each one leaves CI green at merge. If landing item A would break tests owned by item B, those test changes belong in A, not B. Treat broken-by-A tests as A's scope, not deferred follow-up.
+
 #### Dependency mapping
 
 Group work items into **batches**. Items within a batch can run in parallel. Batches run sequentially. **Stacking:** items with **exactly one** in-flight dependency can launch early -- the orchestrator creates their worktree from the dependency's branch and rebases automatically after merge. Items with multiple in-flight deps (fan-in) cannot stack and must wait for all deps to merge. This means dependency chains execute faster than strict batch ordering suggests, so prefer clear dependency declarations over artificially flattening items into a single batch.
