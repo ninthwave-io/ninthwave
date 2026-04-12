@@ -101,11 +101,11 @@ bun test --watch
 bun run core/cli.ts list
 bun run core/cli.ts batch-order H-1 H-2
 
-# Type-check without running
-bunx tsc --noEmit
+# Type-check and lint before commit
+bun run test:pre-commit
 ```
 
-Changes to `.ts` files take effect immediately on the next invocation -- no compilation needed.
+Type-checking happens automatically on each `bun` invocation -- changes to `.ts` files take effect immediately, no compilation needed. To validate types and catch lint errors before pushing, run the pre-commit test gate above. To verify everything before opening a PR, run the full suite: `bun run test`.
 
 ### Broker Architecture (for contributors)
 
