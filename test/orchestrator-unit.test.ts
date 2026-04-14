@@ -3740,7 +3740,7 @@ describe("processComments (via processTransitions)", () => {
     const item = orch.getItem("H-1-1")!;
     item.prNumber = 42;
     item.reviewCompleted = false;
-    item.workspaceRef = undefined;
+    item.workspaceRef = "workspace:1";
     item.sessionParked = false;
 
     const waitingActions = orch.processTransitions(
@@ -3760,7 +3760,7 @@ describe("processComments (via processTransitions)", () => {
     expect(waitingActions).toEqual([]);
     expect(item.pendingFeedbackBatch).toBeDefined();
 
-    const actions = orch.processTransitions(
+    const firstFalsePollActions = orch.processTransitions(
       snapshotWith([{
         id: "H-1-1",
         ciStatus: "pass",
@@ -3770,7 +3770,29 @@ describe("processComments (via processTransitions)", () => {
       FEEDBACK_FLUSH_NOW,
     );
 
-    expect(actions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(true);
+    expect(firstFalsePollActions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(false);
+    expect(firstFalsePollActions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(false);
+    expect(item.state).toBe("review-pending");
+    expect(item.pendingFeedbackBatch).toBeDefined();
+    expect(item.needsFeedbackResponse).toBeUndefined();
+
+    let actions = firstFalsePollActions;
+    let sawRelaunch = false;
+    for (let i = 0; i < 5; i++) {
+      actions = orch.processTransitions(
+        snapshotWith([{
+          id: "H-1-1",
+          ciStatus: "pass",
+          prState: "open",
+          workerAlive: false,
+        }]),
+        FEEDBACK_FLUSH_NOW,
+      );
+      sawRelaunch = sawRelaunch || actions.some((a) => a.type === "retry" && a.itemId === "H-1-1");
+      if (sawRelaunch) break;
+    }
+
+    expect(sawRelaunch).toBe(true);
     expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
     expect(item.state).toBe("launching");
     expect(item.needsFeedbackResponse).toBe(true);
@@ -3788,6 +3810,45 @@ describe("processComments (via processTransitions)", () => {
     );
 
     expect(repeatedPollActions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(false);
+  });
+
+  it("does not relaunch aggregated feedback on a single false liveness poll", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.workspaceRef = "workspace:1";
+
+    orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1",
+        ciStatus: "pass",
+        prState: "open",
+        workerAlive: true,
+        newComments: [
+          { body: "Please tighten this wording.", author: "reviewer", createdAt: "2026-01-15T12:01:00Z" },
+        ],
+      }]),
+      NOW,
+    );
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1",
+        ciStatus: "pass",
+        prState: "open",
+        workerAlive: false,
+      }]),
+      FEEDBACK_FLUSH_NOW,
+    );
+
+    expect(actions).toEqual([]);
+    expect(item.state).toBe("review-pending");
+    expect(item.pendingFeedbackBatch).toBeDefined();
+    expect(item.needsFeedbackResponse).toBeUndefined();
+    expect(item.pendingFeedbackMessage).toBeUndefined();
   });
 
   it("parked item detects human comment that quotes an agent comment", () => {
@@ -3896,16 +3957,31 @@ describe("processComments (via processTransitions)", () => {
       orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
       orch.getItem("H-1-1")!.ciFailCount = 0;
 
+      const waitingActions = orch.processTransitions(
+        snapshotWith([{
+          id: "H-1-1",
+          ciStatus: ciStatus as any,
+          prState: "open",
+          isMergeable: true,
+          workerAlive: true,
+          newComments: [
+            { id: 801, body: "Please address this", author: "reviewer", createdAt: "2026-01-15T12:01:00Z", commentType: "issue" },
+          ],
+        }]),
+        NOW,
+      );
+
+      expect(waitingActions.filter((a) => a.type === "send-message" && a.itemId === "H-1-1")).toHaveLength(0);
+
       const actions = orch.processTransitions(
         snapshotWith([{
           id: "H-1-1",
           ciStatus: ciStatus as any,
           prState: "open",
           isMergeable: true,
-          newComments: [
-            { id: 801, body: "Please address this", author: "reviewer", createdAt: "2026-01-15T12:01:00Z", commentType: "issue" },
-          ],
+          workerAlive: true,
         }]),
+        FEEDBACK_FLUSH_NOW,
       );
 
       const sendMsg = actions.find((a) => a.type === "send-message" && a.itemId === "H-1-1");

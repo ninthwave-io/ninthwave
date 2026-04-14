@@ -1026,14 +1026,18 @@ export class Orchestrator {
       }));
   }
 
-  private shouldRelaunchFeedbackBatch(
+  private feedbackBatchDeliveryMode(
     item: OrchestratorItem,
     snap: ItemSnapshot | undefined,
-  ): boolean {
-    if (item.sessionParked) return true;
-    if (item.state !== "review-pending") return false;
-    if (!item.workspaceRef) return true;
-    return snap?.workerAlive === false;
+  ): "deliver" | "relaunch" | "wait" {
+    if (item.sessionParked) return "relaunch";
+    if (item.state !== "review-pending") return "deliver";
+    if (!item.workspaceRef) return "relaunch";
+
+    const liveness = this.checkWorkerLiveness(item, snap);
+    if (liveness === "dead") return "relaunch";
+    if (liveness === "debouncing" || liveness === "unknown") return "wait";
+    return "deliver";
   }
 
   private resolvePendingFeedbackBatch(
@@ -1049,15 +1053,21 @@ export class Orchestrator {
       return { hold: true, actions: [] };
     }
 
-    item.pendingFeedbackBatch = undefined;
     const message = this.formatPendingFeedbackMessage(item, batch);
     const reactions = this.feedbackReactionActions(item, batch);
+    const deliveryMode = this.feedbackBatchDeliveryMode(item, snap);
+
+    if (deliveryMode === "wait") {
+      return { hold: true, actions: [] };
+    }
+
+    item.pendingFeedbackBatch = undefined;
     item.lastReviewedCommitSha = snap?.headSha ?? item.lastReviewedCommitSha ?? null;
     item.pendingFeedbackLiveDeliveryArmed = undefined;
     item.needsFeedbackResponse = true;
     item.pendingFeedbackMessage = message;
 
-    if (this.shouldRelaunchFeedbackBatch(item, snap)) {
+    if (deliveryMode === "relaunch") {
       return {
         hold: true,
         actions: [...reactions, ...this.respawnForFeedback(item, message)],
@@ -1105,6 +1115,9 @@ export class Orchestrator {
     const liveness = !item.workspaceRef ? "dead" as const : this.checkWorkerLiveness(item, snap);
     if (liveness === "dead") {
       return this.respawnForFeedback(item, item.pendingFeedbackMessage);
+    }
+    if (liveness === "debouncing" || liveness === "unknown") {
+      return [];
     }
 
     item.pendingFeedbackLiveDeliveryArmed = true;
