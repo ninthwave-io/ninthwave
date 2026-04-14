@@ -135,6 +135,8 @@ export interface OrchestratorItem {
   pendingFeedbackLiveDeliveryArmed?: boolean;
   /** Debounced trusted human PR comments waiting to be relayed as a single batch. */
   pendingFeedbackBatch?: PendingFeedbackBatch;
+  /** Comment reactions deferred until feedback delivery or relaunch succeeds. */
+  pendingCommentReactions?: Array<{ commentId: number; commentType: "issue" | "review" }>;
   /** Absolute path to the worktree directory. Preserved for stuck items so users can inspect partial work. */
   worktreePath?: string;
   /** SHA of the merge commit on the repo default branch after PR is merged. */
