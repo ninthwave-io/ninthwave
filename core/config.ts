@@ -11,6 +11,12 @@ import {
   type PersistedMergeStrategy,
   type PersistedReviewMode,
 } from "./tui-settings.ts";
+import {
+  isAiToolId,
+  type BuiltInAiToolOverrides,
+  type BuiltInToolOverrideConfig,
+  type BuiltInToolOverrideModeConfig,
+} from "./ai-tools.ts";
 
 /** Project config shape. */
 export interface ProjectConfig {
@@ -120,8 +126,73 @@ export function projectUserConfigKey(projectRoot: string): string {
   return projectRoot.replace(/\//g, "-");
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseOverrideArgs(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((entry: unknown) => typeof entry === "string")
+    ? [...value]
+    : undefined;
+}
+
+function parseOverrideEnv(value: unknown): Record<string, string> | undefined {
+  if (!isPlainObject(value)) return undefined;
+
+  const envEntries = Object.entries(value)
+    .filter(([, envValue]) => typeof envValue === "string") as Array<[string, string]>;
+  return envEntries.length > 0 ? Object.fromEntries(envEntries) : undefined;
+}
+
+function parseBuiltInToolOverrideModeConfig(value: unknown): BuiltInToolOverrideModeConfig | undefined {
+  if (!isPlainObject(value)) return undefined;
+
+  const result: BuiltInToolOverrideModeConfig = {};
+  if (typeof value.command === "string" && value.command.trim().length > 0) {
+    result.command = value.command;
+  }
+
+  const args = parseOverrideArgs(value.args);
+  if (args) result.args = args;
+
+  const env = parseOverrideEnv(value.env);
+  if (env) result.env = env;
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function parseBuiltInToolOverrideConfig(value: unknown): BuiltInToolOverrideConfig | undefined {
+  if (!isPlainObject(value)) return undefined;
+
+  const result: BuiltInToolOverrideConfig = {
+    ...(parseBuiltInToolOverrideModeConfig(value) ?? {}),
+  };
+
+  const launch = parseBuiltInToolOverrideModeConfig(value.launch);
+  if (launch) result.launch = launch;
+
+  const headless = parseBuiltInToolOverrideModeConfig(value.headless);
+  if (headless) result.headless = headless;
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function parseBuiltInAiToolOverrides(value: unknown): BuiltInAiToolOverrides | undefined {
+  if (!isPlainObject(value)) return undefined;
+
+  const result: BuiltInAiToolOverrides = {};
+  for (const [toolId, toolOverride] of Object.entries(value)) {
+    if (!isAiToolId(toolId)) continue;
+    const parsedOverride = parseBuiltInToolOverrideConfig(toolOverride);
+    if (parsedOverride) result[toolId] = parsedOverride;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 export interface UserConfig {
   ai_tools?: string[];
+  ai_tool_overrides?: BuiltInAiToolOverrides;
   session_limit?: number;
   tmux_layout?: TmuxLayoutMode;
   merge_strategy?: PersistedMergeStrategy;
@@ -153,6 +224,10 @@ export function loadUserConfig(homeOverride?: string): UserConfig {
     const result: UserConfig = {};
     if (Array.isArray(parsed.ai_tools) && parsed.ai_tools.every((t: unknown) => typeof t === "string") && parsed.ai_tools.length > 0) {
       result.ai_tools = parsed.ai_tools as string[];
+    }
+    const aiToolOverrides = parseBuiltInAiToolOverrides(parsed.ai_tool_overrides);
+    if (aiToolOverrides) {
+      result.ai_tool_overrides = aiToolOverrides;
     }
     if (typeof parsed.session_limit === "number" && Number.isFinite(parsed.session_limit) && parsed.session_limit >= 1) {
       result.session_limit = Math.floor(parsed.session_limit);
@@ -249,6 +324,13 @@ export function saveUserConfig(
     if (key === "ai_tools") {
       if (Array.isArray(value) && value.every((entry) => typeof entry === "string") && value.length > 0) {
         merged[key] = value;
+      }
+      continue;
+    }
+    if (key === "ai_tool_overrides") {
+      const parsed = parseBuiltInAiToolOverrides(value);
+      if (parsed) {
+        merged[key] = parsed;
       }
       continue;
     }

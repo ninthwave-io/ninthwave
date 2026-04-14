@@ -13,8 +13,10 @@ import {
   runtimeAgentIdFromFilename,
   runtimeAgentNameForTool,
   readSeededAgentInstructions,
+  resolveBuiltInLaunchOverride,
   type LaunchDeps,
   type LaunchOpts,
+  type BuiltInAiToolOverrides,
 } from "../core/ai-tools.ts";
 
 const IMPLEMENTER_AGENT_SOURCE = `---
@@ -716,6 +718,111 @@ describe("copilot profile buildHeadlessCmd", () => {
     expect(result.cmd).toContain("--allow-all-urls");
     expect(result.cmd).toContain("--no-ask-user");
     expect(result.cmd).not.toContain("--allow-all ");
+  });
+});
+
+// ── resolveBuiltInLaunchOverride ──────────────────────────────────────────────
+
+describe("resolveBuiltInLaunchOverride", () => {
+  it("falls back to the built-in command when no overrides are configured", () => {
+    expect(resolveBuiltInLaunchOverride("claude", "launch")).toEqual({
+      command: "claude",
+    });
+  });
+
+  it("merges shared and launch-specific overrides deterministically", () => {
+    const overrides: BuiltInAiToolOverrides = {
+      opencode: {
+        command: "/custom/opencode",
+        args: ["--shared"],
+        env: {
+          SHARED_ONLY: "base",
+          SHARED_OVERRIDE: "base",
+        },
+        launch: {
+          args: ["--interactive"],
+          env: {
+            SHARED_OVERRIDE: "launch",
+            LAUNCH_ONLY: "1",
+          },
+        },
+      },
+    };
+
+    expect(resolveBuiltInLaunchOverride("opencode", "launch", overrides)).toEqual({
+      command: "/custom/opencode",
+      args: ["--shared", "--interactive"],
+      env: {
+        SHARED_ONLY: "base",
+        SHARED_OVERRIDE: "launch",
+        LAUNCH_ONLY: "1",
+      },
+    });
+  });
+
+  it("lets headless-specific command, args, and env override the shared base", () => {
+    const overrides: BuiltInAiToolOverrides = {
+      codex: {
+        command: "/custom/codex",
+        args: ["--shared"],
+        env: {
+          SHARED_ONLY: "base",
+          SHARED_OVERRIDE: "base",
+        },
+        headless: {
+          command: "/custom/codex-headless",
+          args: ["--headless"],
+          env: {
+            SHARED_OVERRIDE: "headless",
+            HEADLESS_ONLY: "1",
+          },
+        },
+      },
+    };
+
+    expect(resolveBuiltInLaunchOverride("codex", "headless", overrides)).toEqual({
+      command: "/custom/codex-headless",
+      args: ["--shared", "--headless"],
+      env: {
+        SHARED_ONLY: "base",
+        SHARED_OVERRIDE: "headless",
+        HEADLESS_ONLY: "1",
+      },
+    });
+  });
+
+  it("returns copied data without mutating overrides or profile metadata", () => {
+    const overrides: BuiltInAiToolOverrides = {
+      copilot: {
+        args: ["--shared"],
+        env: { SHARED_ONLY: "base" },
+        launch: {
+          args: ["--interactive"],
+          env: { LAUNCH_ONLY: "1" },
+        },
+      },
+    };
+    const originalOverrides = JSON.parse(JSON.stringify(overrides)) as BuiltInAiToolOverrides;
+    const profileBefore = {
+      command: getToolProfile("copilot").command,
+      targetDir: getToolProfile("copilot").targetDir,
+      suffix: getToolProfile("copilot").suffix,
+      projectIndicators: [...getToolProfile("copilot").projectIndicators],
+      processNames: [...getToolProfile("copilot").processNames],
+    };
+
+    const result = resolveBuiltInLaunchOverride("copilot", "launch", overrides);
+    result.args?.push("--mutated");
+    if (result.env) result.env.SHARED_ONLY = "mutated";
+
+    expect(overrides).toEqual(originalOverrides);
+    expect({
+      command: getToolProfile("copilot").command,
+      targetDir: getToolProfile("copilot").targetDir,
+      suffix: getToolProfile("copilot").suffix,
+      projectIndicators: [...getToolProfile("copilot").projectIndicators],
+      processNames: [...getToolProfile("copilot").processNames],
+    }).toEqual(profileBefore);
   });
 });
 
