@@ -3808,17 +3808,18 @@ describe("processComments (via processTransitions)", () => {
     expect(item.state).toBe("review-pending");
     expect(item.sessionParked).toBe(true);
 
-    const waitingActions = orch.processTransitions(
+    // Poll before the debounce deadline (12:01:30Z + 60s = 12:02:30Z) -- batch should hold
+    const waitingActions2 = orch.processTransitions(
       snapshotWith([{
         id: "H-1-1",
         ciStatus: "pass",
         prState: "open",
         headSha: "abc123",
       }]),
-      FEEDBACK_FLUSH_NOW,
+      new Date("2026-01-15T12:02:00Z"),
     );
 
-    expect(waitingActions).toEqual([]);
+    expect(waitingActions2).toEqual([]);
     expect(item.pendingFeedbackBatch).toBeDefined();
     expect(item.state).toBe("review-pending");
     expect(item.sessionParked).toBe(true);
