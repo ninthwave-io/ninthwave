@@ -35,6 +35,28 @@ export interface LaunchOverride {
   env?: Record<string, string>;
 }
 
+/** Optional shared or mode-specific built-in tool override fields. */
+export interface BuiltInToolOverrideModeConfig {
+  /** Optional executable to use instead of the built-in CLI binary. */
+  command?: string;
+  /** Optional argv to append after the executable. */
+  args?: string[];
+  /** Optional extra environment variables for the override command. */
+  env?: Record<string, string>;
+}
+
+/** User-configurable built-in tool override with optional per-mode patches. */
+export interface BuiltInToolOverrideConfig extends BuiltInToolOverrideModeConfig {
+  launch?: BuiltInToolOverrideModeConfig;
+  headless?: BuiltInToolOverrideModeConfig;
+}
+
+/** User-configurable built-in tool overrides keyed by tool id. */
+export type BuiltInAiToolOverrides = Partial<Record<AiToolId, BuiltInToolOverrideConfig>>;
+
+/** Supported launch modes for built-in tool override resolution. */
+export type BuiltInToolLaunchMode = "launch" | "headless";
+
 /** Options passed to launch command builders. */
 export interface LaunchOpts {
   /** Workspace name shown in the multiplexer tab title. */
@@ -320,6 +342,31 @@ function writePromptDataFile(
 
 function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+/** Resolve the effective built-in launch override for one tool and mode. */
+export function resolveBuiltInLaunchOverride(
+  toolId: AiToolId,
+  mode: BuiltInToolLaunchMode,
+  overrides?: BuiltInAiToolOverrides,
+): LaunchOverride {
+  const profile = getToolProfile(toolId);
+  const toolOverride = overrides?.[toolId];
+  const modeOverride = toolOverride?.[mode];
+  const args = [
+    ...(toolOverride?.args ?? []),
+    ...(modeOverride?.args ?? []),
+  ];
+  const env = {
+    ...(toolOverride?.env ?? {}),
+    ...(modeOverride?.env ?? {}),
+  };
+
+  return {
+    command: modeOverride?.command ?? toolOverride?.command ?? profile.command,
+    ...(args.length > 0 ? { args } : {}),
+    ...(Object.keys(env).length > 0 ? { env } : {}),
+  };
 }
 
 function buildLaunchOverrideCmd(

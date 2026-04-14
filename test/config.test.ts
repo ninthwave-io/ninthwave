@@ -264,6 +264,55 @@ describe("loadUserConfig", () => {
     expect(config.ai_tools).toEqual(["opencode"]);
   });
 
+  it("returns ai_tool_overrides from valid JSON", () => {
+    const tmpHome = setupTempRepo();
+    const configDir = join(tmpHome, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({
+        ai_tool_overrides: {
+          opencode: {
+            command: "/custom/opencode",
+            args: ["--shared"],
+            env: {
+              SHARED_ONLY: "base",
+            },
+            launch: {
+              args: ["--interactive"],
+            },
+            headless: {
+              command: "/custom/opencode-headless",
+              env: {
+                HEADLESS_ONLY: "1",
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const config = loadUserConfig(tmpHome);
+    expect(config.ai_tool_overrides).toEqual({
+      opencode: {
+        command: "/custom/opencode",
+        args: ["--shared"],
+        env: {
+          SHARED_ONLY: "base",
+        },
+        launch: {
+          args: ["--interactive"],
+        },
+        headless: {
+          command: "/custom/opencode-headless",
+          env: {
+            HEADLESS_ONLY: "1",
+          },
+        },
+      },
+    });
+  });
+
   it("returns {} for malformed JSON and warns", () => {
     const tmpHome = setupTempRepo();
     const configDir = join(tmpHome, ".ninthwave");
@@ -319,6 +368,56 @@ describe("loadUserConfig", () => {
     const config = loadUserConfig(tmpHome);
     expect(config.ai_tools).toEqual(["claude"]);
     expect(Object.keys(config)).toEqual(["ai_tools"]);
+  });
+
+  it("safely ignores malformed ai_tool_overrides entries", () => {
+    const tmpHome = setupTempRepo();
+    const configDir = join(tmpHome, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({
+        ai_tool_overrides: {
+          opencode: {
+            command: "/custom/opencode",
+            args: ["--shared", 1],
+            env: {
+              SHARED_ONLY: "base",
+              INVALID: 1,
+            },
+            launch: {
+              args: ["--interactive"],
+              env: {
+                MODE_ONLY: "1",
+                INVALID: false,
+              },
+            },
+          },
+          codex: {
+            args: "--invalid",
+          },
+          custom: {
+            command: "/ignored/custom",
+          },
+        },
+      }),
+    );
+
+    const config = loadUserConfig(tmpHome);
+    expect(config.ai_tool_overrides).toEqual({
+      opencode: {
+        command: "/custom/opencode",
+        env: {
+          SHARED_ONLY: "base",
+        },
+        launch: {
+          args: ["--interactive"],
+          env: {
+            MODE_ONLY: "1",
+          },
+        },
+      },
+    });
   });
 
   it("reads persisted TUI defaults from valid JSON", () => {
@@ -532,6 +631,89 @@ describe("saveUserConfig", () => {
     expect(content.session_limit).toBe(3);
   });
 
+  it("saves ai_tool_overrides without clobbering unrelated keys", () => {
+    const tmpHome = setupTempRepo();
+    const configDir = join(tmpHome, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ custom_key: "hello", ai_tools: ["claude"] }),
+    );
+
+    saveUserConfig({
+      ai_tool_overrides: {
+        claude: {
+          command: "/custom/claude",
+          args: ["--shared"],
+          launch: {
+            env: {
+              CLAUDE_ONLY: "1",
+            },
+          },
+        },
+      },
+    }, tmpHome);
+
+    const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
+    expect(content.custom_key).toBe("hello");
+    expect(content.ai_tools).toEqual(["claude"]);
+    expect(content.ai_tool_overrides).toEqual({
+      claude: {
+        command: "/custom/claude",
+        args: ["--shared"],
+        launch: {
+          env: {
+            CLAUDE_ONLY: "1",
+          },
+        },
+      },
+    });
+  });
+
+  it("ignores malformed ai_tool_overrides updates safely", () => {
+    const tmpHome = setupTempRepo();
+    const configDir = join(tmpHome, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ custom_key: "hello" }),
+    );
+
+    saveUserConfig({
+      ai_tool_overrides: {
+        opencode: {
+          args: ["--valid"],
+          headless: {
+            env: {
+              HEADLESS_ONLY: "1",
+            },
+          },
+        },
+        codex: {
+          // @ts-expect-error intentionally malformed for parser coverage
+          command: 123,
+        },
+        // @ts-expect-error intentionally malformed for parser coverage
+        custom: {
+          command: "/ignored/custom",
+        },
+      },
+    }, tmpHome);
+
+    const content = JSON.parse(readFileSync(join(configDir, "config.json"), "utf-8"));
+    expect(content.custom_key).toBe("hello");
+    expect(content.ai_tool_overrides).toEqual({
+      opencode: {
+        args: ["--valid"],
+        headless: {
+          env: {
+            HEADLESS_ONLY: "1",
+          },
+        },
+      },
+    });
+  });
+
   it("round-trips persisted TUI defaults without dropping unknown keys", () => {
     const tmpHome = setupTempRepo();
     const configDir = join(tmpHome, ".ninthwave");
@@ -650,6 +832,46 @@ describe("saveUserConfig", () => {
 
     const config = loadUserConfig(tmpHome);
     expect(config.session_limit).toBe(7);
+  });
+
+  it("round-trips ai_tool_overrides through saveUserConfig and loadUserConfig", () => {
+    const tmpHome = setupTempRepo();
+    saveUserConfig({
+      ai_tool_overrides: {
+        codex: {
+          command: "/custom/codex",
+          args: ["--shared"],
+          env: {
+            SHARED_ONLY: "base",
+          },
+          headless: {
+            command: "/custom/codex-headless",
+            args: ["--headless"],
+            env: {
+              HEADLESS_ONLY: "1",
+            },
+          },
+        },
+      },
+    }, tmpHome);
+
+    const config = loadUserConfig(tmpHome);
+    expect(config.ai_tool_overrides).toEqual({
+      codex: {
+        command: "/custom/codex",
+        args: ["--shared"],
+        env: {
+          SHARED_ONLY: "base",
+        },
+        headless: {
+          command: "/custom/codex-headless",
+          args: ["--headless"],
+          env: {
+            HEADLESS_ONLY: "1",
+          },
+        },
+      },
+    });
   });
 
   it("handles malformed existing file gracefully", () => {
