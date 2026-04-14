@@ -1026,6 +1026,16 @@ export class Orchestrator {
       }));
   }
 
+  private shouldRelaunchFeedbackBatch(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+  ): boolean {
+    if (item.sessionParked) return true;
+    if (item.state !== "review-pending") return false;
+    if (!item.workspaceRef) return true;
+    return snap?.workerAlive === false;
+  }
+
   private resolvePendingFeedbackBatch(
     item: OrchestratorItem,
     snap: ItemSnapshot | undefined,
@@ -1044,8 +1054,10 @@ export class Orchestrator {
     const reactions = this.feedbackReactionActions(item, batch);
     item.lastReviewedCommitSha = snap?.headSha ?? item.lastReviewedCommitSha ?? null;
     item.pendingFeedbackLiveDeliveryArmed = undefined;
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = message;
 
-    if (item.sessionParked) {
+    if (this.shouldRelaunchFeedbackBatch(item, snap)) {
       return {
         hold: true,
         actions: [...reactions, ...this.respawnForFeedback(item, message)],
@@ -1059,8 +1071,6 @@ export class Orchestrator {
       }
     }
 
-    item.needsFeedbackResponse = true;
-    item.pendingFeedbackMessage = message;
     if (item.workspaceRef && this.checkWorkerLiveness(item, snap) === "alive") {
       item.pendingFeedbackLiveDeliveryArmed = true;
     }
