@@ -1353,6 +1353,30 @@ export class Orchestrator {
     const actions: Action[] = [];
     // External merge and rebase tracking handled by interceptors.
 
+    // Feedback-done signal: worker addressed feedback without code changes.
+    // Must run before continuePendingFeedbackHandoff, which would re-stamp
+    // lastReviewedCommitSha and try to respawn the worker.
+    if (snap?.feedbackDoneSignal && item.lastReviewedCommitSha
+        && snap.headSha === item.lastReviewedCommitSha) {
+      item.lastReviewedCommitSha = null;
+      item.needsFeedbackResponse = false;
+      item.pendingFeedbackMessage = undefined;
+      actions.push({ type: "clear-feedback-done-signal", itemId: item.id });
+
+      const ciStatus = snap?.ciStatus;
+      if (ciStatus === "pending") {
+        this.transition(item, "ci-pending", snap?.eventTime);
+        this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
+        return actions;
+      }
+      if (ciStatus === "pass") {
+        this.transition(item, "ci-passed", snap?.eventTime);
+        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
+        return actions;
+      }
+      // CI fail or unknown -- fall through to normal handling
+    }
+
     const pendingFeedbackHandoff = this.continuePendingFeedbackHandoff(item, snap);
     if (pendingFeedbackHandoff) return pendingFeedbackHandoff;
 
@@ -1428,36 +1452,16 @@ export class Orchestrator {
       // ci-passed -> evaluateMerge on unchanged code (evaluateMerge's SHA gate
       // would catch it, but the item gets stranded in ci-passed with no respawn).
       if (item.lastReviewedCommitSha && snap?.headSha === item.lastReviewedCommitSha) {
-        // Feedback-done signal: worker addressed feedback without code changes.
-        // Clear the SHA gate and resume the normal loop.
-        if (snap?.feedbackDoneSignal) {
-          item.lastReviewedCommitSha = null;
-          item.needsFeedbackResponse = false;
-          item.pendingFeedbackMessage = undefined;
-          actions.push({ type: "clear-feedback-done-signal", itemId: item.id });
-
-          if (ciStatus === "pending") {
-            this.transition(item, "ci-pending", snap?.eventTime);
-            this.resetRebaseRetryCooldown(item, snap?.eventTime ?? snap?.lastCommitTime);
-            return actions;
-          }
-          if (ciStatus === "pass") {
-            this.transition(item, "ci-passed", snap?.eventTime);
-            actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
-            return actions;
-          }
-          // CI status is fail or unknown -- fall through to normal handling
-        } else {
-          // Same commit -- implementer hasn't pushed yet. If the worker died
-          // (e.g., session timed out or post-restart), respawn with feedback.
-          const liveness = !item.workspaceRef ? "dead" as const : this.checkWorkerLiveness(item, snap);
-          if (liveness === "dead") {
-            const message = item.pendingFeedbackMessage
-              ?? `Review requested changes on PR #${item.prNumber}. Please address the feedback and push a fix.`;
-            return this.respawnForFeedback(item, message);
-          }
-          return actions; // stay in review-pending, worker is alive
+        // Feedback-done signal already handled at the top of handleReviewPending.
+        // Same commit -- implementer hasn't pushed yet. If the worker died
+        // (e.g., session timed out or post-restart), respawn with feedback.
+        const liveness = !item.workspaceRef ? "dead" as const : this.checkWorkerLiveness(item, snap);
+        if (liveness === "dead") {
+          const message = item.pendingFeedbackMessage
+            ?? `Review requested changes on PR #${item.prNumber}. Please address the feedback and push a fix.`;
+          return this.respawnForFeedback(item, message);
         }
+        return actions; // stay in review-pending, worker is alive
       }
 
       if (ciStatus === "pending") {
