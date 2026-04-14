@@ -2534,6 +2534,98 @@ describe("reconstructState sessionParked persistence", () => {
   });
 });
 
+describe("pending feedback batch persistence", () => {
+  it("serializes pending feedback batches into daemon state", () => {
+    const item: OrchestratorItem = {
+      id: "FB-SER-1",
+      workItem: makeWorkItem("FB-SER-1"),
+      state: "ci-passed",
+      prNumber: 77,
+      lastTransition: "2026-03-29T00:00:00Z",
+      ciFailCount: 0,
+      ciFailCountTotal: 0,
+      retryCount: 0,
+      reviewCompleted: true,
+      pendingFeedbackBatch: {
+        deadline: "2026-03-29T00:02:00.000Z",
+        comments: [{
+          id: 7001,
+          body: "Please revisit the merge gating.",
+          author: "reviewer",
+          createdAt: "2026-03-29T00:01:00Z",
+          commentType: "issue",
+        }],
+      },
+    };
+
+    const state = serializeOrchestratorState([item], 9999, "2026-03-29T00:00:00.000Z");
+    expect(state.items[0].pendingFeedbackBatch).toEqual(item.pendingFeedbackBatch);
+  });
+
+  it("restores pending feedback batches across restart and flushes them after the saved deadline", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("FB-RST-1"));
+    orch.getItem("FB-RST-1")!.reviewCompleted = true;
+
+    const tmpDir = join(require("os").tmpdir(), `nw-reconstruct-feedback-${Date.now()}`);
+    const wtDir = join(tmpDir, ".ninthwave", ".worktrees");
+    const wtPath = join(wtDir, "ninthwave-FB-RST-1");
+    require("fs").mkdirSync(wtPath, { recursive: true });
+
+    const daemonState: DaemonState = {
+      pid: 1234,
+      startedAt: "2026-03-29T00:00:00Z",
+      updatedAt: "2026-03-29T00:01:30Z",
+      items: [
+        {
+          id: "FB-RST-1",
+          state: "ci-passed",
+          prNumber: 77,
+          title: "Test item",
+          lastTransition: "2026-03-29T00:00:00Z",
+          ciFailCount: 0,
+          retryCount: 0,
+          reviewCompleted: true,
+          pendingFeedbackBatch: {
+            deadline: "2026-03-29T00:02:00.000Z",
+            comments: [{
+              id: 7002,
+              body: "Please address the last reviewer nit before merge.",
+              author: "reviewer",
+              createdAt: "2026-03-29T00:01:00Z",
+              commentType: "issue",
+            }],
+          },
+        },
+      ],
+    };
+
+    reconstructState(
+      orch,
+      tmpDir,
+      wtDir,
+      undefined,
+      () => "FB-RST-1\t77\tready",
+      daemonState,
+    );
+
+    const item = orch.getItem("FB-RST-1")!;
+    expect(item.pendingFeedbackBatch).toEqual(daemonState.items[0].pendingFeedbackBatch);
+
+    const actions = orch.processTransitions(
+      { items: [{ id: "FB-RST-1", prNumber: 77, prState: "open", ciStatus: "pass", headSha: "sha-1" }], readyIds: [] },
+      new Date("2026-03-29T00:02:30Z"),
+    );
+
+    expect(actions.some((action) => action.type === "send-message" && action.itemId === "FB-RST-1")).toBe(true);
+    expect(item.pendingFeedbackBatch).toBeUndefined();
+    expect(item.reviewCompleted).toBe(false);
+    expect(item.state).toBe("review-pending");
+
+    require("fs").rmSync(tmpDir, { recursive: true, force: true });
+  });
+});
+
 describe("serializeOrchestratorState includes CI fail counters", () => {
   it("serializes ciFailCount and ciFailCountTotal in daemon state items", () => {
     const { serializeOrchestratorState } = require("../core/daemon.ts");

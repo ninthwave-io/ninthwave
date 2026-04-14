@@ -7472,6 +7472,68 @@ describe("Orchestrator", () => {
     });
   });
 
+  describe("debounced human feedback batches", () => {
+    for (const mergeStrategy of ["auto", "bypass"] as const) {
+      it(`holds ${mergeStrategy} merge progression until the feedback batch resolves`, () => {
+        orch = new Orchestrator({ sessionLimit: 5, mergeStrategy, bypassEnabled: mergeStrategy === "bypass" });
+        const itemId = `H-BATCH-${mergeStrategy.toUpperCase()}`;
+        orch.addItem(makeWorkItem(itemId));
+        const item = orch.getItem(itemId)!;
+        item.reviewCompleted = true;
+        item.prNumber = 45;
+        item.workspaceRef = "workspace:batch";
+        item.lastReviewedCommitSha = "abc123";
+        orch.hydrateState(item.id, "ci-passed");
+
+        const waitActions = orch.processTransitions(
+          snapshotWith([
+            {
+              id: item.id,
+              workerAlive: true,
+              ciStatus: "pass",
+              prState: "open",
+              headSha: "abc123",
+              newComments: [{
+                id: 991,
+                body: "Please address the edge-case handling before merge.",
+                author: "reviewer",
+                createdAt: "2026-03-29T00:01:00Z",
+                commentType: "issue",
+              }],
+            },
+          ]),
+          new Date("2026-03-29T00:01:30Z"),
+        );
+
+        expect(waitActions.some((a) => a.type === "merge")).toBe(false);
+        expect(item.state).toBe("ci-passed");
+        expect(item.pendingFeedbackBatch).toEqual(expect.objectContaining({
+          deadline: "2026-03-29T00:02:00.000Z",
+        }));
+
+        const flushActions = orch.processTransitions(
+          snapshotWith([
+            {
+              id: item.id,
+              workerAlive: true,
+              ciStatus: "pass",
+              prState: "open",
+              headSha: "abc123",
+            },
+          ]),
+          new Date("2026-03-29T00:02:30Z"),
+        );
+
+        expect(flushActions.some((a) => a.type === "merge")).toBe(false);
+        expect(flushActions.some((a) => a.type === "send-message")).toBe(true);
+        expect(item.pendingFeedbackBatch).toBeUndefined();
+        expect(item.reviewCompleted).toBe(false);
+        expect(item.state).toBe("review-pending");
+        expect(item.pendingFeedbackMessage).toContain("edge-case handling");
+      });
+    }
+  });
+
   // ── skipReview ─────────────────────────────────────────────────────────
 
   describe("skipReview", () => {

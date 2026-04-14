@@ -15,7 +15,7 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { spawn as nodeSpawn } from "node:child_process";
-import type { OrchestratorItem } from "./orchestrator.ts";
+import type { OrchestratorItem, PendingFeedbackBatch } from "./orchestrator.ts";
 import type { CrewRemoteItemSnapshot } from "./crew.ts";
 import type { InboxSnapshot } from "./commands/inbox.ts";
 import { resolveCliRespawnCommand } from "./cli-spawn.ts";
@@ -63,6 +63,8 @@ export interface DaemonStateItem {
   stderrTail?: string;
   /** ISO timestamp of the last comment check for this item's PR. */
   lastCommentCheck?: string;
+  /** Debounced trusted human PR comments waiting for a batched relay. */
+  pendingFeedbackBatch?: PendingFeedbackBatch;
   /** Whether a rebase request is in progress for this item. */
   rebaseRequested?: boolean;
   /** ISO timestamp of the last orchestrator-issued rebase nudge to the worker. */
@@ -707,6 +709,7 @@ export function serializeOrchestratorState(
         ...(item.exitCode != null ? { exitCode: item.exitCode } : {}),
         ...(item.stderrTail ? { stderrTail: item.stderrTail } : {}),
         ...(item.lastCommentCheck ? { lastCommentCheck: item.lastCommentCheck } : {}),
+        ...(item.pendingFeedbackBatch ? { pendingFeedbackBatch: item.pendingFeedbackBatch } : {}),
         ...(item.rebaseRequested ? { rebaseRequested: item.rebaseRequested } : {}),
         ...(item.lastRebaseNudgeAt ? { lastRebaseNudgeAt: item.lastRebaseNudgeAt } : {}),
         ...(item.rebaseNudgeCount != null ? { rebaseNudgeCount: item.rebaseNudgeCount } : {}),

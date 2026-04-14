@@ -21,6 +21,8 @@ import {
   type MergeStrategy,
   type ItemSnapshot,
   type PollSnapshot,
+  type PendingFeedbackBatch,
+  type PendingFeedbackComment,
   type Action,
   type ActionType,
   type ActionResult,
@@ -272,7 +274,7 @@ export class Orchestrator {
       for (const item of this.getItemsByState("review-pending")) {
         const snap = snapshotMap.get(item.id);
         if (snap?.ciStatus === "pass") {
-          actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
+          actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
         }
       }
     }
@@ -578,6 +580,10 @@ export class Orchestrator {
     // 2. Rebase tracking housekeeping (before state-specific handlers)
     this.updateRebaseTracking(item, snap);
 
+    // 3. Ingest any newly observed trusted human PR comments into the debounced
+    // feedback batch before state-specific handlers decide whether merge may proceed.
+    this.ingestPendingFeedbackBatch(item, snap);
+
     const prevState = item.state;
     let actions: Action[];
 
@@ -715,10 +721,9 @@ export class Orchestrator {
       }
     }
 
-    // Relay trusted PR comments to workers
-    actions.push(...this.processComments(item, snap, actions));
-
-    return actions;
+    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
+    if (!feedback) return actions;
+    return [...actions, ...feedback.actions];
   }
 
   /** Handle implementing state. */
@@ -946,22 +951,24 @@ export class Orchestrator {
     return [{ type: "retry", itemId: item.id }];
   }
 
-  /** Collect human PR feedback for parked-item relaunches and advance the comment cursor. */
-  private collectParkedFeedback(
-    item: OrchestratorItem,
-    snap: ItemSnapshot | undefined,
-  ): { message: string; reactions: Action[] } | undefined {
-    if (!snap?.newComments?.length) return undefined;
-
-    const humanComments = snap.newComments.filter((comment) => {
+  private humanFeedbackComments(
+    comments: PendingFeedbackComment[] | undefined,
+  ): PendingFeedbackComment[] {
+    if (!comments?.length) return [];
+    return comments.filter((comment) => {
       if (AGENT_PR_COMMENT_RE.test(comment.body)) return false;
       if (hasNinthwaveHtmlCommentMarker(comment.body)) return false;
       return true;
     });
+  }
 
-    if (humanComments.length === 0) return undefined;
+  private ingestPendingFeedbackBatch(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+  ): void {
+    if (!snap?.newComments?.length) return;
 
-    const latestCreatedAt = humanComments
+    const latestCreatedAt = snap.newComments
       .map((comment) => comment.createdAt)
       .sort()
       .pop();
@@ -969,20 +976,99 @@ export class Orchestrator {
       item.lastCommentCheck = latestCreatedAt;
     }
 
-    const message = humanComments
+    const humanComments = this.humanFeedbackComments(snap.newComments);
+    if (humanComments.length === 0) return;
+
+    const existingBatch = item.pendingFeedbackBatch;
+    const byKey = new Map<string, PendingFeedbackComment>();
+    for (const comment of existingBatch?.comments ?? []) {
+      byKey.set(this.pendingFeedbackCommentKey(comment), comment);
+    }
+    for (const comment of humanComments) {
+      byKey.set(this.pendingFeedbackCommentKey(comment), comment);
+    }
+
+    const latestHumanCreatedAt = humanComments
+      .map((comment) => comment.createdAt)
+      .sort()
+      .pop();
+    const deadline = new Date(
+      new Date(latestHumanCreatedAt ?? latestCreatedAt ?? new Date().toISOString()).getTime() + TIMEOUTS.humanFeedbackDebounce,
+    ).toISOString();
+
+    item.pendingFeedbackBatch = {
+      comments: Array.from(byKey.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+      deadline: existingBatch && existingBatch.deadline > deadline ? existingBatch.deadline : deadline,
+    };
+  }
+
+  private pendingFeedbackCommentKey(comment: PendingFeedbackComment): string {
+    return `${comment.commentType ?? "issue"}:${comment.id ?? "no-id"}:${comment.createdAt}:${comment.author}:${comment.body}`;
+  }
+
+  private formatPendingFeedbackMessage(item: OrchestratorItem, batch: PendingFeedbackBatch): string {
+    const label = batch.comments.length === 1 ? "comment" : "comments";
+    const body = batch.comments
       .map((comment) => `@${comment.author} commented on PR #${item.prNumber}:\n\n${comment.body}`)
       .join("\n\n");
+    return `[ORCHESTRATOR] Review Feedback Batch: ${batch.comments.length} trusted human ${label} on PR #${item.prNumber}.\n\n${body}`;
+  }
 
-    const reactions: Action[] = humanComments
-      .filter((comment) => comment.id != null)
+  private feedbackReactionActions(item: OrchestratorItem, batch: PendingFeedbackBatch): Action[] {
+    return batch.comments
+      .filter((comment) => comment.id != null && comment.commentType != null)
       .map((comment) => ({
         type: "react-to-comment" as const,
         itemId: item.id,
         commentId: comment.id,
         commentType: comment.commentType,
       }));
+  }
 
-    return { message, reactions };
+  private resolvePendingFeedbackBatch(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+    now: Date,
+  ): { hold: boolean; actions: Action[] } | null {
+    const batch = item.pendingFeedbackBatch;
+    if (!batch || batch.comments.length === 0) return null;
+
+    const deadlineMs = new Date(batch.deadline).getTime();
+    if (Number.isFinite(deadlineMs) && now.getTime() < deadlineMs) {
+      return { hold: true, actions: [] };
+    }
+
+    item.pendingFeedbackBatch = undefined;
+    const message = this.formatPendingFeedbackMessage(item, batch);
+    const reactions = this.feedbackReactionActions(item, batch);
+
+    if (item.sessionParked) {
+      return {
+        hold: true,
+        actions: [...reactions, ...this.respawnForFeedback(item, message)],
+      };
+    }
+
+    if (item.reviewCompleted) {
+      item.reviewCompleted = false;
+      item.pendingFeedbackMessage = message;
+      item.lastReviewedCommitSha = snap?.headSha ?? item.lastReviewedCommitSha ?? null;
+      if (item.state === "ci-passed") {
+        this.transition(item, "review-pending", snap?.eventTime);
+      }
+    }
+
+    return {
+      hold: true,
+      actions: [
+        ...reactions,
+        {
+          type: "send-message",
+          itemId: item.id,
+          message,
+        },
+      ],
+    };
   }
 
   /** Handle ci-failed state: retry circuit breaker, recovery, notification, unresponsive detection. */
@@ -1061,7 +1147,9 @@ export class Orchestrator {
       }
     }
 
-    return actions;
+    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
+    if (!feedback) return actions;
+    return [...actions, ...feedback.actions];
   }
 
   /** Handle ci-pending state: detect CI status changes. */
@@ -1113,8 +1201,11 @@ export class Orchestrator {
 
     if (ciStatus === "pass") {
       this.transition(item, "ci-passed", snap?.eventTime);
-      return this.evaluateMerge(item, snap, snap?.eventTime);
+      return this.evaluateMerge(item, snap, snap?.eventTime, now);
     }
+
+    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
+    if (feedback) return feedback.actions;
 
     return [];
   }
@@ -1165,7 +1256,7 @@ export class Orchestrator {
     }
 
     // CI still passing -- evaluate merge
-    return this.evaluateMerge(item, snap, snap?.eventTime);
+    return this.evaluateMerge(item, snap, snap?.eventTime, now);
   }
 
   /** Handle review-pending state. */
@@ -1177,6 +1268,9 @@ export class Orchestrator {
     const actions: Action[] = [];
     // External merge and rebase tracking handled by interceptors.
 
+    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
+    if (feedback) return feedback.actions;
+
     // Re-evaluate merge when:
     // 1. GitHub review approved and CI passes, OR
     // 2. AI review completed, CI passes, and merge strategy allows auto-merge
@@ -1186,24 +1280,16 @@ export class Orchestrator {
       && snap?.ciStatus === "pass"
       && (this.config.mergeStrategy === "auto" || this.config.mergeStrategy === "bypass");
     if ((snap?.reviewDecision === "APPROVED" && snap?.ciStatus === "pass") || canAutoMerge) {
-      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
+      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
       return actions;
     }
 
-    // Resume parked session: human requested changes on a parked item.
-    // Reset reviewCompleted so the worker can address the feedback, and respawn.
+    // Resume parked session immediately when GitHub review requests changes,
+    // even if no freeform human comments accompanied the review.
     if (item.sessionParked && snap?.reviewDecision === "CHANGES_REQUESTED") {
-      const feedback = this.collectParkedFeedback(item, snap);
-      const feedbackMessage = feedback?.message
+      const feedbackMessage = item.pendingFeedbackMessage
         ?? `GitHub review requested changes on PR #${item.prNumber}.`;
-      return [...(feedback?.reactions ?? []), ...this.respawnForFeedback(item, feedbackMessage)];
-    }
-
-    if (item.sessionParked) {
-      const feedback = this.collectParkedFeedback(item, snap);
-      if (feedback) {
-        return [...feedback.reactions, ...this.respawnForFeedback(item, feedback.message)];
-      }
+      return this.respawnForFeedback(item, feedbackMessage);
     }
 
     // CI status changes -- worker pushed fixes after review feedback.
@@ -1273,7 +1359,7 @@ export class Orchestrator {
 
       if (ciStatus === "pass") {
         this.transition(item, "ci-passed", snap?.eventTime);
-        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
+        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
         return actions;
       }
     }
@@ -1308,7 +1394,7 @@ export class Orchestrator {
     if (item.reviewCompleted && this.config.skipReview) {
       this.transition(item, "ci-passed", snap?.eventTime);
       actions.push({ type: "clean-review", itemId: item.id });
-      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
+      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
       return actions;
     }
 
@@ -1377,7 +1463,7 @@ export class Orchestrator {
           statusState: "success",
           statusDescription: `Review passed: ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking`,
         });
-        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime));
+        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
         return actions;
       }
 
@@ -1412,6 +1498,9 @@ export class Orchestrator {
         return actions;
       }
     }
+
+    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
+    if (feedback) return feedback.actions;
 
     return actions;
   }
@@ -1621,84 +1710,17 @@ export class Orchestrator {
     return actions;
   }
 
-  // ── States where PR comment relay is active ────────────────────
-  private static readonly COMMENT_RELAY_STATES: Set<OrchestratorItemState> = new Set([
-    "ci-pending", "ci-passed", "ci-failed", "review-pending", "reviewing",
-  ]);
-
-  /**
-   * Process new trusted PR comments and generate relay/action messages.
-   * Comments with "rebase" keyword trigger daemon-rebase directly.
-   * All other comments are relayed to the worker via send-message.
-   * Updates lastCommentCheck to prevent duplicate relay.
-   */
-  private processComments(
-    item: OrchestratorItem,
-    snap: ItemSnapshot | undefined,
-    existingActions: Action[],
-  ): Action[] {
-    if (!Orchestrator.COMMENT_RELAY_STATES.has(item.state)) return [];
-    if (!snap?.newComments || snap.newComments.length === 0) return [];
-    if (!item.prNumber) return [];
-
-    const actions: Action[] = [];
-
-    // Update lastCommentCheck to the latest comment timestamp
-    const latestCreatedAt = snap.newComments
-      .map((c) => c.createdAt)
-      .sort()
-      .pop();
-    if (latestCreatedAt) {
-      item.lastCommentCheck = latestCreatedAt;
-    }
-
-    // Check if daemon-rebase already queued for this item (avoid duplicates)
-    const hasDaemonRebase = existingActions.some(
-      (a) => a.type === "daemon-rebase" && a.itemId === item.id,
-    );
-
-    for (const comment of snap.newComments) {
-      // Skip comments from any ninthwave agent (Orchestrator, Implementer, Reviewer, Forward-Fixer, Rebaser)
-      if (AGENT_PR_COMMENT_RE.test(comment.body)) continue;
-      // Skip ninthwave HTML comment markers on auto-generated comments.
-      if (hasNinthwaveHtmlCommentMarker(comment.body)) continue;
-
-      actions.push({
-        type: "react-to-comment",
-        itemId: item.id,
-        commentId: comment.id,
-        commentType: comment.commentType,
-      });
-
-      if (/\brebase\b/i.test(comment.body)) {
-        // "rebase" keyword → trigger daemon-rebase directly (only if not already queued)
-        if (!hasDaemonRebase) {
-          actions.push({
-            type: "daemon-rebase",
-            itemId: item.id,
-            message: `[ORCHESTRATOR] Rebase Request: @${comment.author} requested rebase on PR #${item.prNumber}.`,
-          });
-        }
-      } else {
-        // Relay comment to worker
-        actions.push({
-          type: "send-message",
-          itemId: item.id,
-          message: `[ORCHESTRATOR] Review Feedback: @${comment.author} commented on PR #${item.prNumber}:\n\n${comment.body}`,
-        });
-      }
-    }
-
-    return actions;
-  }
-
   /** Evaluate whether to merge based on merge strategy. Carries eventTime through chained transitions. */
   private evaluateMerge(
     item: OrchestratorItem,
     snap: ItemSnapshot | undefined,
     eventTime?: string,
+    now: Date = new Date(),
   ): Action[] {
     const actions: Action[] = [];
+
+    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
+    if (feedback) return feedback.actions;
 
     // Review gate: item must pass AI review before merge.
     // When skipReview is enabled, bypass the gate entirely -- treat as already reviewed.
