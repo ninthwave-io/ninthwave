@@ -94,6 +94,12 @@ function writeRawUserConfig(homeDir: string, raw: string): void {
   writeFileSync(join(configDir, "config.json"), raw);
 }
 
+function writeProjectLocalConfig(repo: string, config: unknown): void {
+  const configDir = join(repo, ".ninthwave");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "config.local.json"), JSON.stringify(config, null, 2));
+}
+
 function seedCanonicalAgent(repo: string, filename: string, instructions: string): void {
   const agentsDir = join(repo, "agents");
   mkdirSync(agentsDir, { recursive: true });
@@ -2059,6 +2065,156 @@ describe("launchAiSession agentName", () => {
     expect(cmd).not.toContain("NINTHWAVE_LAUNCH_MODE");
     expect(errorSpy).toHaveBeenCalledWith("Warning: ~/.ninthwave/config.json contains malformed JSON, ignoring.");
     errorSpy.mockRestore();
+  });
+
+  it("env-only override prepends export without dropping claude default flags", () => {
+    const mockMux = createMockMux();
+    const repo = setupTempRepo();
+    const homeDir = setupTempDir("nw-home-");
+    writeUserConfig(homeDir, {
+      ai_tool_overrides: {
+        claude: { env: { CLAUDE_CONFIG_DIR: "/Users/you/.claude-alt" } },
+      },
+    });
+    const promptFile = join(repo, "prompt.txt");
+    writeFileSync(promptFile, "test prompt");
+
+    launchAiSession("claude", repo, "T-1", "Test", promptFile, mockMux, {
+      userConfigHome: homeDir,
+    });
+
+    const cmd = mockMux.launchWorkspace.mock.calls[0]![1] as string;
+    expect(cmd).toContain("export CLAUDE_CONFIG_DIR='/Users/you/.claude-alt'");
+    expect(cmd).toContain("claude --name 'T-1 Test'");
+    expect(cmd).toContain("--permission-mode bypassPermissions");
+    expect(cmd).toContain("--agent ninthwave-implementer");
+    expect(cmd).toContain("--append-system-prompt");
+    expect(cmd).toContain("-- Start");
+    expect(cmd).not.toContain("NINTHWAVE_LAUNCH_MODE");
+  });
+
+  it.each(["opencode", "codex", "copilot"] as const)(
+    "env-only override prepends export for %s without dropping default command",
+    (tool) => {
+      const mockMux = createMockMux();
+      const repo = setupTempRepo();
+      if (tool === "codex") {
+        seedCanonicalAgent(repo, "implementer.md", "implementer instructions");
+      }
+      const homeDir = setupTempDir("nw-home-");
+      writeUserConfig(homeDir, {
+        ai_tool_overrides: {
+          [tool]: { env: { FOO: "bar" } },
+        },
+      });
+      const promptFile = join(repo, "prompt.txt");
+      writeFileSync(promptFile, "test prompt");
+
+      launchAiSession(tool, repo, "T-1", "Test", promptFile, mockMux, {
+        userConfigHome: homeDir,
+        projectRoot: repo,
+      });
+
+      const cmd = mockMux.launchWorkspace.mock.calls[0]![1] as string;
+      expect(cmd).toMatch(/^export FOO='bar' &&/);
+      expect(cmd).toContain(`exec ${tool}`);
+      expect(cmd).toContain("PROMPT=$(cat ");
+      expect(cmd).not.toContain("NINTHWAVE_LAUNCH_MODE");
+    },
+  );
+
+  it("env_rotation cycles through values across successive launches", () => {
+    const homeDir = setupTempDir("nw-home-");
+    writeUserConfig(homeDir, {
+      ai_tool_overrides: {
+        claude: {
+          env_rotation: {
+            CLAUDE_CONFIG_DIR: ["/a/profile-1", "/b/profile-2", "/c/profile-3"],
+          },
+        },
+      },
+    });
+
+    const captured: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const mockMux = createMockMux();
+      const repo = setupTempRepo();
+      const promptFile = join(repo, "prompt.txt");
+      writeFileSync(promptFile, "test prompt");
+      launchAiSession("claude", repo, `T-${i}`, "Test", promptFile, mockMux, {
+        userConfigHome: homeDir,
+      });
+      captured.push(mockMux.launchWorkspace.mock.calls[0]![1] as string);
+    }
+
+    expect(captured[0]).toContain("CLAUDE_CONFIG_DIR='/a/profile-1'");
+    expect(captured[1]).toContain("CLAUDE_CONFIG_DIR='/b/profile-2'");
+    expect(captured[2]).toContain("CLAUDE_CONFIG_DIR='/c/profile-3'");
+    expect(captured[3]).toContain("CLAUDE_CONFIG_DIR='/a/profile-1'");
+    expect(captured[4]).toContain("CLAUDE_CONFIG_DIR='/b/profile-2'");
+    expect(captured[5]).toContain("CLAUDE_CONFIG_DIR='/c/profile-3'");
+    expect(captured[6]).toContain("CLAUDE_CONFIG_DIR='/a/profile-1'");
+  });
+
+  it("project config.local.json overrides user config per env key", () => {
+    const mockMux = createMockMux();
+    const repo = setupTempRepo();
+    const homeDir = setupTempDir("nw-home-");
+    writeUserConfig(homeDir, {
+      ai_tool_overrides: {
+        claude: {
+          env: {
+            CLAUDE_CONFIG_DIR: "/home/default",
+            USER_ONLY: "user",
+          },
+        },
+      },
+    });
+    writeProjectLocalConfig(repo, {
+      ai_tool_overrides: {
+        claude: { env: { CLAUDE_CONFIG_DIR: "/project/override" } },
+      },
+    });
+    const promptFile = join(repo, "prompt.txt");
+    writeFileSync(promptFile, "test prompt");
+
+    launchAiSession("claude", repo, "T-1", "Test", promptFile, mockMux, {
+      userConfigHome: homeDir,
+      projectRoot: repo,
+    });
+
+    const cmd = mockMux.launchWorkspace.mock.calls[0]![1] as string;
+    expect(cmd).toContain("CLAUDE_CONFIG_DIR='/project/override'");
+    expect(cmd).not.toContain("CLAUDE_CONFIG_DIR='/home/default'");
+    expect(cmd).toContain("USER_ONLY='user'");
+    expect(cmd).toContain("claude --name 'T-1 Test'");
+  });
+
+  it("command-bearing override still replaces the command (legacy semantics)", () => {
+    const mockMux = createMockMux();
+    const repo = setupTempRepo();
+    const homeDir = setupTempDir("nw-home-");
+    writeUserConfig(homeDir, {
+      ai_tool_overrides: {
+        claude: {
+          command: "/custom/claude",
+          env: { CLAUDE_CONFIG_DIR: "/home/x" },
+        },
+      },
+    });
+    const promptFile = join(repo, "prompt.txt");
+    writeFileSync(promptFile, "test prompt");
+
+    launchAiSession("claude", repo, "T-1", "Test", promptFile, mockMux, {
+      userConfigHome: homeDir,
+    });
+
+    const cmd = mockMux.launchWorkspace.mock.calls[0]![1] as string;
+    expect(cmd).toContain("exec '/custom/claude'");
+    expect(cmd).toContain("NINTHWAVE_LAUNCH_MODE='launch'");
+    expect(cmd).toContain("CLAUDE_CONFIG_DIR='/home/x'");
+    expect(cmd).not.toContain("export ");
+    expect(cmd).not.toContain("claude --name");
   });
 });
 

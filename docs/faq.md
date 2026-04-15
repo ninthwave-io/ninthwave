@@ -320,6 +320,47 @@ Switching tools doesn't require code changes -- ninthwave orchestrates at the se
 
 Most user repos can choose whether to commit those generated copies. The ninthwave repo itself ignores them and tracks only the canonical sources in `skills/`, `agents/`, and the root `CLAUDE.md`. User-owned instruction files such as `AGENTS.md` stay outside that managed-artifact set, so ninthwave will not create or overwrite them. See the [Codex CLI guide](codex-cli.md) for the Codex-specific command shapes and `.codex/agents/` details.
 
+### How do I pick a Claude Code profile or rotate across several?
+
+Claude Code reads its auth and settings from the directory named by `CLAUDE_CONFIG_DIR` (default `~/.claude`). You can tell ninthwave to launch workers with a specific profile, or to spread launches round-robin across a pool of profiles, by setting `ai_tool_overrides` in a ninthwave config file.
+
+Pin a single profile for one repo (gitignored because the path is user-specific):
+
+```json
+// .ninthwave/config.local.json
+{
+  "ai_tool_overrides": {
+    "claude": {
+      "env": { "CLAUDE_CONFIG_DIR": "/Users/you/.claude-work" }
+    }
+  }
+}
+```
+
+Round-robin across a pool (useful for dodging the Claude 5-hour session limit -- each new worker picks the next profile in the list, so a pool of N profiles effectively multiplies your hour budget by N):
+
+```json
+// ~/.ninthwave/config.json
+{
+  "ai_tool_overrides": {
+    "claude": {
+      "env_rotation": {
+        "CLAUDE_CONFIG_DIR": [
+          "/Users/you/.claude",
+          "/Users/you/.claude-alt"
+        ]
+      }
+    }
+  }
+}
+```
+
+Precedence is `.ninthwave/config.local.json` > `.ninthwave/config.json` > `~/.ninthwave/config.json`, per env key. Rotation counters are persisted to `~/.ninthwave/state/rotation.json`, keyed by tool + env variable, so separate repos sharing a pool advance together.
+
+The same pattern works for any tool (`opencode`, `codex`, `copilot`) and any env variable -- `CLAUDE_CONFIG_DIR` is just the first real consumer.
+
+**Where to put what:** `ai_tool_overrides` belongs in `.ninthwave/config.local.json` (gitignored by the deny-by-default `.ninthwave/.gitignore` that `nw init` writes) whenever the values are user-specific -- which absolute local paths almost always are. `.ninthwave/config.json` is for project-shared settings you want committed (e.g. `review_external`, `crew_url`). Use `~/.ninthwave/config.json` for defaults that should follow your user across every repo.
+
 ---
 
 ## How It Works

@@ -5,7 +5,7 @@ import { join, basename } from "path";
 import { warn, info } from "../output.ts";
 import { run } from "../shell.ts";
 import { userStateDir } from "../daemon.ts";
-import { loadUserConfig } from "../config.ts";
+import { loadMergedProjectConfig, loadUserConfig } from "../config.ts";
 import {
   fetchOrigin as defaultFetchOrigin,
   ffMerge as defaultFfMerge,
@@ -28,6 +28,7 @@ import {
   isAiToolId,
   getToolProfile,
   defaultLaunchDeps,
+  mergeToolOverrides,
   type LaunchDeps,
   type LaunchOverride,
   resolveConfiguredBuiltInLaunchOverride,
@@ -188,9 +189,19 @@ function resolveConfiguredLaunchOverride(
   tool: string,
   mode: BuiltInToolLaunchMode,
   homeOverride?: string,
+  projectRoot?: string,
 ): LaunchOverride | undefined {
   if (!isAiToolId(tool)) return undefined;
-  return resolveConfiguredBuiltInLaunchOverride(tool, mode, loadUserConfig(homeOverride).ai_tool_overrides);
+  const userOverrides = loadUserConfig(homeOverride).ai_tool_overrides;
+  const projectOverrides = projectRoot
+    ? loadMergedProjectConfig(projectRoot).ai_tool_overrides
+    : undefined;
+  // Project (shared + local) overrides layer on top of user overrides so
+  // a repo can pin or rotate profiles independently of the user default.
+  const merged = mergeToolOverrides(userOverrides, projectOverrides);
+  return resolveConfiguredBuiltInLaunchOverride(tool, mode, merged, {
+    rotationHome: homeOverride,
+  });
 }
 
 /**
@@ -295,7 +306,7 @@ export function launchAiSession(
   const launchOverride =
     options.launchOverride ??
     resolveTestLaunchOverride() ??
-    resolveConfiguredLaunchOverride(tool, launchMode, options.userConfigHome);
+    resolveConfiguredLaunchOverride(tool, launchMode, options.userConfigHome, projectRoot);
   const { cmd } = buildCmd({ wsName, projectRoot, worktreePath, agentName, promptFile, id, stateDir, launchOverride }, deps);
 
   const wsRef = mux.launchWorkspace(worktreePath, cmd, id);

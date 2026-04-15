@@ -13,6 +13,7 @@ import {
 } from "./tui-settings.ts";
 import {
   isAiToolId,
+  mergeToolOverrides,
   type BuiltInAiToolOverrides,
   type BuiltInToolOverrideConfig,
   type BuiltInToolOverrideModeConfig,
@@ -22,6 +23,14 @@ import {
 export interface ProjectConfig {
   review_external: boolean;
   crew_url?: string;
+  /**
+   * Per-tool launch overrides. User-specific; belongs in
+   * `.ninthwave/config.local.json` (gitignored) rather than `config.json`
+   * because values like `CLAUDE_CONFIG_DIR` point at the developer's local
+   * home. `loadMergedProjectConfig` layers the local file over the shared
+   * one so consumers don't need to know which file holds which field.
+   */
+  ai_tool_overrides?: BuiltInAiToolOverrides;
 }
 
 function parseProjectCrewUrl(value: unknown): string | undefined {
@@ -42,29 +51,78 @@ function parseProjectCrewUrl(value: unknown): string | undefined {
  * Load project config from .ninthwave/config.json (JSON format).
  * Returns defaults when the file is missing or malformed.
  * Unknown keys are silently ignored.
+ *
+ * This reads only the *shared* (committable) config file. Fields that are
+ * user-specific (e.g. `ai_tool_overrides` with absolute local paths) live
+ * in `.ninthwave/config.local.json` -- use `loadMergedProjectConfig` when
+ * consumers need both.
  */
 export function loadConfig(projectRoot: string): ProjectConfig {
-  const defaults: ProjectConfig = {
-    review_external: false,
-  };
+  return loadProjectConfigFile(
+    join(projectRoot, ".ninthwave", "config.json"),
+    true,
+  );
+}
 
-  const configPath = join(projectRoot, ".ninthwave", "config.json");
-  if (!existsSync(configPath)) return defaults;
+/**
+ * Load the gitignored local overlay at .ninthwave/config.local.json.
+ * Returns an empty partial config when the file is missing or malformed.
+ *
+ * Any field in ProjectConfig may appear here and will override the shared
+ * `config.json` when read via `loadMergedProjectConfig`. The canonical use
+ * is `ai_tool_overrides`, which points at the developer's local home.
+ */
+export function loadLocalConfig(projectRoot: string): Partial<ProjectConfig> {
+  return loadProjectConfigFile(
+    join(projectRoot, ".ninthwave", "config.local.json"),
+    false,
+  );
+}
+
+/**
+ * Load `.ninthwave/config.json` merged with `.ninthwave/config.local.json`.
+ * Local wins per key; `ai_tool_overrides` is deep-merged per tool / per
+ * mode / per env key via `mergeToolOverrides`.
+ */
+export function loadMergedProjectConfig(projectRoot: string): ProjectConfig {
+  const shared = loadConfig(projectRoot);
+  const local = loadLocalConfig(projectRoot);
+  const merged: ProjectConfig = { ...shared };
+  if (local.review_external !== undefined) merged.review_external = local.review_external;
+  if (local.crew_url !== undefined) merged.crew_url = local.crew_url;
+  const overrides = mergeToolOverrides(shared.ai_tool_overrides, local.ai_tool_overrides);
+  if (overrides) merged.ai_tool_overrides = overrides;
+  return merged;
+}
+
+function loadProjectConfigFile<T extends boolean>(
+  configPath: string,
+  withDefaults: T,
+): T extends true ? ProjectConfig : Partial<ProjectConfig> {
+  const defaults: ProjectConfig = { review_external: false };
+  const empty: Partial<ProjectConfig> = {};
+  const fallback = (withDefaults ? defaults : empty) as T extends true ? ProjectConfig : Partial<ProjectConfig>;
+
+  if (!existsSync(configPath)) return fallback;
 
   try {
     const raw = readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return defaults;
+      return fallback;
     }
 
+    const result: Partial<ProjectConfig> = withDefaults ? { ...defaults } : {};
+    if (withDefaults || parsed.review_external !== undefined) {
+      result.review_external = parsed.review_external === true;
+    }
     const crewUrl = parseProjectCrewUrl(parsed.crew_url);
-    return {
-      review_external: parsed.review_external === true,
-      ...(crewUrl === undefined ? {} : { crew_url: crewUrl }),
-    };
+    if (crewUrl !== undefined) result.crew_url = crewUrl;
+    const overrides = parseBuiltInAiToolOverrides(parsed.ai_tool_overrides);
+    if (overrides) result.ai_tool_overrides = overrides;
+    return result as T extends true ? ProjectConfig : Partial<ProjectConfig>;
   } catch {
-    return defaults;
+    return fallback;
   }
 }
 
@@ -144,6 +202,18 @@ function parseOverrideEnv(value: unknown): Record<string, string> | undefined {
   return envEntries.length > 0 ? Object.fromEntries(envEntries) : undefined;
 }
 
+function parseOverrideEnvRotation(value: unknown): Record<string, string[]> | undefined {
+  if (!isPlainObject(value)) return undefined;
+
+  const result: Record<string, string[]> = {};
+  for (const [key, listValue] of Object.entries(value)) {
+    if (!Array.isArray(listValue)) continue;
+    const items = listValue.filter((entry): entry is string => typeof entry === "string");
+    if (items.length > 0) result[key] = items;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 function parseBuiltInToolOverrideModeConfig(value: unknown): BuiltInToolOverrideModeConfig | undefined {
   if (!isPlainObject(value)) return undefined;
 
@@ -157,6 +227,9 @@ function parseBuiltInToolOverrideModeConfig(value: unknown): BuiltInToolOverride
 
   const env = parseOverrideEnv(value.env);
   if (env) result.env = env;
+
+  const envRotation = parseOverrideEnvRotation(value.env_rotation);
+  if (envRotation) result.env_rotation = envRotation;
 
   return Object.keys(result).length > 0 ? result : undefined;
 }

@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync as defaultMkdirSync, readFileSync as defaultReadFileSync, writeFileSync as defaultWriteFileSync } from "fs";
 import { join } from "path";
 import { run as defaultRun } from "./shell.ts";
+import { pickRotatedEnv, type RotationDeps } from "./rotation.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,14 @@ export interface BuiltInToolOverrideModeConfig {
   args?: string[];
   /** Optional extra environment variables for the override command. */
   env?: Record<string, string>;
+  /**
+   * Optional per-env-key rotation pools. For each entry, one value is picked
+   * round-robin from the list per launch and merged into `env` (with rotation
+   * winning on conflicts). Counter state is persisted globally so separate
+   * projects sharing the same pool advance together -- useful for spreading
+   * session-hour load across e.g. multiple CLAUDE_CONFIG_DIR profiles.
+   */
+  env_rotation?: Record<string, string[]>;
 }
 
 /** User-configurable built-in tool override with optional per-mode patches. */
@@ -344,11 +353,20 @@ function shQuote(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
+/** Options affecting how overrides are resolved (e.g. rotation state dir). */
+export interface OverrideResolveOpts {
+  /** Override home dir for rotation-counter persistence (tests only). */
+  rotationHome?: string;
+  /** Injected fs ops for rotation-counter persistence (tests only). */
+  rotationDeps?: RotationDeps;
+}
+
 /** Resolve the effective built-in launch override for one tool and mode. */
 export function resolveBuiltInLaunchOverride(
   toolId: AiToolId,
   mode: BuiltInToolLaunchMode,
   overrides?: BuiltInAiToolOverrides,
+  opts?: OverrideResolveOpts,
 ): LaunchOverride {
   const profile = getToolProfile(toolId);
   const toolOverride = overrides?.[toolId];
@@ -357,9 +375,17 @@ export function resolveBuiltInLaunchOverride(
     ...(toolOverride?.args ?? []),
     ...(modeOverride?.args ?? []),
   ];
+  const rotation = {
+    ...(toolOverride?.env_rotation ?? {}),
+    ...(modeOverride?.env_rotation ?? {}),
+  };
+  const rotatedEnv = Object.keys(rotation).length > 0
+    ? pickRotatedEnv(toolId, rotation, opts?.rotationHome, opts?.rotationDeps)
+    : {};
   const env = {
     ...(toolOverride?.env ?? {}),
     ...(modeOverride?.env ?? {}),
+    ...rotatedEnv,
   };
 
   return {
@@ -374,9 +400,15 @@ function hasBuiltInOverrideFields(config?: BuiltInToolOverrideModeConfig): boole
     config && (
       typeof config.command === "string" ||
       (config.args?.length ?? 0) > 0 ||
-      Object.keys(config.env ?? {}).length > 0
+      Object.keys(config.env ?? {}).length > 0 ||
+      Object.keys(config.env_rotation ?? {}).length > 0
     ),
   );
+}
+
+/** True when the override only customizes env (no command / args replacement). */
+function isEnvOnlyOverride(override: LaunchOverride): boolean {
+  return !override.args && !!override.env && Object.keys(override.env).length > 0;
 }
 
 /** Resolve a mode-specific built-in launch override only when one is configured. */
@@ -384,13 +416,70 @@ export function resolveConfiguredBuiltInLaunchOverride(
   toolId: AiToolId,
   mode: BuiltInToolLaunchMode,
   overrides?: BuiltInAiToolOverrides,
+  opts?: OverrideResolveOpts,
 ): LaunchOverride | undefined {
   const toolOverride = overrides?.[toolId];
   if (!toolOverride) return undefined;
   if (!hasBuiltInOverrideFields(toolOverride) && !hasBuiltInOverrideFields(toolOverride[mode])) {
     return undefined;
   }
-  return resolveBuiltInLaunchOverride(toolId, mode, overrides);
+  return resolveBuiltInLaunchOverride(toolId, mode, overrides, opts);
+}
+
+/** Shallow-merge two built-in override maps; `overlay` wins per key. */
+export function mergeToolOverrides(
+  base?: BuiltInAiToolOverrides,
+  overlay?: BuiltInAiToolOverrides,
+): BuiltInAiToolOverrides | undefined {
+  if (!base) return overlay;
+  if (!overlay) return base;
+  const result: BuiltInAiToolOverrides = { ...base };
+  for (const [toolId, overlayTool] of Object.entries(overlay)) {
+    if (!isAiToolId(toolId) || !overlayTool) continue;
+    const baseTool = result[toolId];
+    result[toolId] = mergeBuiltInToolOverrideConfig(baseTool, overlayTool);
+  }
+  return result;
+}
+
+function mergeBuiltInToolOverrideConfig(
+  base: BuiltInToolOverrideConfig | undefined,
+  overlay: BuiltInToolOverrideConfig,
+): BuiltInToolOverrideConfig {
+  if (!base) return overlay;
+  const result: BuiltInToolOverrideConfig = {
+    ...mergeBuiltInToolOverrideModeConfig(base, overlay),
+  };
+  const launch = mergeMaybeMode(base.launch, overlay.launch);
+  if (launch) result.launch = launch;
+  const headless = mergeMaybeMode(base.headless, overlay.headless);
+  if (headless) result.headless = headless;
+  return result;
+}
+
+function mergeMaybeMode(
+  base: BuiltInToolOverrideModeConfig | undefined,
+  overlay: BuiltInToolOverrideModeConfig | undefined,
+): BuiltInToolOverrideModeConfig | undefined {
+  if (!base) return overlay;
+  if (!overlay) return base;
+  return mergeBuiltInToolOverrideModeConfig(base, overlay);
+}
+
+function mergeBuiltInToolOverrideModeConfig(
+  base: BuiltInToolOverrideModeConfig,
+  overlay: BuiltInToolOverrideModeConfig,
+): BuiltInToolOverrideModeConfig {
+  const result: BuiltInToolOverrideModeConfig = {};
+  if (overlay.command !== undefined) result.command = overlay.command;
+  else if (base.command !== undefined) result.command = base.command;
+  const args = overlay.args ?? base.args;
+  if (args && args.length > 0) result.args = args;
+  const env = { ...(base.env ?? {}), ...(overlay.env ?? {}) };
+  if (Object.keys(env).length > 0) result.env = env;
+  const rotation = { ...(base.env_rotation ?? {}), ...(overlay.env_rotation ?? {}) };
+  if (Object.keys(rotation).length > 0) result.env_rotation = rotation;
+  return result;
 }
 
 function buildLaunchOverrideCmd(
@@ -400,6 +489,13 @@ function buildLaunchOverrideCmd(
 ): string | null {
   const override = opts.launchOverride;
   if (!override) return null;
+
+  // Env-only overrides leave the tool's default launch command intact and
+  // are applied via applyEnvPrefix() at the end of each tool's build step.
+  // This preserves the default flags (e.g. claude --name / --agent / ...).
+  if (isEnvOnlyOverride(override) && override.command === getToolProfile(toolId).command) {
+    return null;
+  }
 
   const env = {
     ...(override.env ?? {}),
@@ -418,6 +514,28 @@ function buildLaunchOverrideCmd(
   const args = (override.args ?? []).map(shQuote).join(" ");
 
   return `${envPrefix} exec ${shQuote(override.command)}${args ? ` ${args}` : ""}`;
+}
+
+/** Prepend env-only override values to a built-in launch command. */
+function applyEnvPrefix(cmd: string, opts: LaunchOpts, toolId: AiToolId): string {
+  const override = opts.launchOverride;
+  if (!override || !isEnvOnlyOverride(override)) return cmd;
+  // Only apply when the override did not customize command/args; otherwise
+  // buildLaunchOverrideCmd already produced the final wrapper.
+  if (override.command !== getToolProfile(toolId).command) return cmd;
+
+  const env = override.env ?? {};
+  const entries = Object.entries(env);
+  if (entries.length === 0) return cmd;
+  // Use `export ... && <cmd>` rather than a `VAR=val cmd` prefix because
+  // some built-in commands (opencode, codex, copilot) start with shell
+  // assignments like `PROMPT=$(cat '...') && ...`; a simple var-prefix would
+  // parse those as additional shell-local assignments and never export to
+  // the final tool. `export` is universally safe.
+  const exports = entries
+    .map(([key, value]) => `${key}=${shQuote(value)}`)
+    .join(" ");
+  return `export ${exports} && ${cmd}`;
 }
 
 // ── Non-Claude idle contract ──────────────────────────────────────────────────
@@ -484,7 +602,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         `claude --name '${opts.wsName}' --permission-mode bypassPermissions` +
         ` --agent ${opts.agentName}` +
         ` --append-system-prompt "$(cat '.ninthwave/.prompt')" -- Start`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "claude"), initialPrompt: "" };
     },
     buildHeadlessCmd(opts, _deps): LaunchCmdResult {
       const overrideCmd = buildLaunchOverrideCmd("claude", "headless", opts);
@@ -495,7 +613,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         ` --agent ${opts.agentName}` +
         ` --append-system-prompt "$(cat '.ninthwave/.prompt')"` +
         ` "Start"`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "claude"), initialPrompt: "" };
     },
   },
   {
@@ -526,7 +644,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         `PROMPT=$(cat '${promptDataFile}')` +
         ` && rm -f '${promptDataFile}'` +
         ` && exec opencode --agent ${opts.agentName} --prompt "$PROMPT"`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "opencode"), initialPrompt: "" };
     },
     buildHeadlessCmd(opts, deps): LaunchCmdResult {
       const overrideCmd = buildLaunchOverrideCmd("opencode", "headless", opts);
@@ -538,7 +656,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         `PROMPT=$(cat '${promptDataFile}')` +
         ` && rm -f '${promptDataFile}'` +
         ` && exec opencode run "$PROMPT" --agent ${opts.agentName}`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "opencode"), initialPrompt: "" };
     },
   },
   {
@@ -561,7 +679,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         `PROMPT=$(cat '${promptDataFile}')` +
         ` && rm -f '${promptDataFile}'` +
         ` && exec codex --dangerously-bypass-approvals-and-sandbox "$PROMPT"`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "codex"), initialPrompt: "" };
     },
     buildHeadlessCmd(opts, deps): LaunchCmdResult {
       const overrideCmd = buildLaunchOverrideCmd("codex", "headless", opts);
@@ -573,7 +691,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         `PROMPT=$(cat '${promptDataFile}')` +
         ` && rm -f '${promptDataFile}'` +
         ` && exec codex exec --dangerously-bypass-approvals-and-sandbox "$PROMPT"`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "codex"), initialPrompt: "" };
     },
   },
   {
@@ -600,7 +718,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         `PROMPT=$(cat '${promptDataFile}')` +
         ` && rm -f '${promptDataFile}'` +
         ` && exec copilot --agent=${runtimeAgentName} --allow-all -i "$PROMPT"`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "copilot"), initialPrompt: "" };
     },
     buildHeadlessCmd(opts, deps): LaunchCmdResult {
       const overrideCmd = buildLaunchOverrideCmd("copilot", "headless", opts);
@@ -614,7 +732,7 @@ export const AI_TOOL_PROFILES: AiToolProfile[] = [
         ` && rm -f '${promptDataFile}'` +
         ` && exec copilot -p "$PROMPT" --agent=${runtimeAgentName}` +
         ` --allow-all-tools --allow-all-paths --allow-all-urls --no-ask-user`;
-      return { cmd, initialPrompt: "" };
+      return { cmd: applyEnvPrefix(cmd, opts, "copilot"), initialPrompt: "" };
     },
   },
 ];
