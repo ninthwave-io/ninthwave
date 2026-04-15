@@ -79,7 +79,6 @@ describe("makeBrokerHasher", () => {
     expect(hash("H-BAJ-2")).toBe("iQ_0ZkX1oVsd1md_gOjogY");
   });
 
-
   it("throws at factory time when the secret is not canonical base64-encoded 32 bytes", () => {
     // Wrong type.
     expect(() => makeBrokerHasher(undefined as unknown as string)).toThrow(TypeError);
