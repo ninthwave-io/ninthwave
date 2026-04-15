@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "fs";
 import { setupTempRepo, cleanupTempRepos } from "./helpers.ts";
+import { stripJsonComments } from "../core/config.ts";
 import {
   detectInstalledMuxes,
   detectInstalledAITools,
@@ -386,7 +387,7 @@ describe("onboard", () => {
 
     expect(savedUpdates).toEqual([{ ai_tools: ["claude"] }]);
 
-    const projectConfig = JSON.parse(readFileSync(join(projectDir, ".ninthwave", "config.json"), "utf8"));
+    const projectConfig = JSON.parse(stripJsonComments(readFileSync(join(projectDir, ".ninthwave", "config.json"), "utf8")));
     expect(projectConfig).not.toHaveProperty("ai_tools");
   });
 

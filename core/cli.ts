@@ -12,10 +12,12 @@ import { ensureMuxInteractiveOrDie } from "./mux.ts";
 import { loadOrGenerateProjectIdentity } from "./config.ts";
 
 /**
- * Backfill `project_id` / `broker_secret` into `.ninthwave/config.json` when
- * an existing repo predates those fields. Safe no-op for projects that have
- * not yet been initialized (no `.ninthwave/` directory). Never fatal --
- * identity generation is best-effort and should not block the CLI.
+ * Backfill the project identity when an existing repo predates those fields.
+ * `project_id` lands in committed `.ninthwave/config.json`; `broker_secret`
+ * lands in gitignored `.ninthwave/config.local.json`. Safe no-op for
+ * projects that have not yet been initialized (no `.ninthwave/` directory).
+ * Never fatal -- identity generation is best-effort and should not block
+ * the CLI.
  */
 function ensureProjectIdentity(projectRoot: string): void {
   if (!existsSync(join(projectRoot, ".ninthwave"))) return;

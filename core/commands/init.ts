@@ -41,7 +41,12 @@ import {
   pruneManagedGeneratedEntries,
 } from "./setup.ts";
 import { AI_TOOL_PROFILES } from "../ai-tools.ts";
-import { generateProjectIdentity, loadConfig } from "../config.ts";
+import {
+  generateProjectIdentity,
+  loadConfig,
+  loadLocalConfig,
+  loadOrGenerateProjectIdentity,
+} from "../config.ts";
 import { seedOpencodeConfig } from "../opencode-config.ts";
 
 // --- Detection types ---
@@ -521,43 +526,47 @@ export function detectAll(
 // --- Config generation ---
 
 /**
- * Generate .ninthwave/config.json content.
+ * Leading JSONC header written to `.ninthwave/config.json`. Tells readers
+ * (humans and our own loader) that the file is JSONC and points at
+ * `config.local.json` for the `broker_secret`. The filename stays `.json`
+ * to match tsconfig/VSCode precedent and avoid churn in docs and external
+ * references; our loader uses `stripJsonComments` before `JSON.parse`.
+ */
+const CONFIG_JSON_HEADER = `// Ninthwave project config (JSONC).
+// broker_secret lives in .ninthwave/config.local.json (gitignored). To
+// share a broker namespace, pass the secret to teammates out of band and
+// have them paste it into their own config.local.json.
+`;
+
+/**
+ * Generate `.ninthwave/config.json` content. Emits a JSONC header followed
+ * by a JSON body with the public identity and (optionally) `crew_url`.
  *
- * Always emits `project_id` and `broker_secret`: if `existingConfig` supplies
- * them they are preserved verbatim, otherwise a fresh pair is generated via
- * `generateProjectIdentity` so the committed file identifies the project to
- * the broker from first launch.
+ * `broker_secret` is intentionally omitted -- it is provisioned into
+ * `.ninthwave/config.local.json` by `loadOrGenerateProjectIdentity` after
+ * this file is written, so the committed config never carries a secret by
+ * default.
+ *
+ * If `existingConfig` supplies a `project_id`, it is preserved verbatim so
+ * re-running `nw init` never rotates the project's public identity.
  */
 export function generateConfig(
   _detection: DetectionResult,
   existingConfig?: {
     crew_url?: string;
     project_id?: string;
-    broker_secret?: string;
   },
 ): string {
   const config: {
     crew_url?: string;
     project_id?: string;
-    broker_secret?: string;
   } = {};
   if (existingConfig?.crew_url) {
     config.crew_url = existingConfig.crew_url;
   }
-
-  // Identity fields: prefer existing values so re-running `nw init` never
-  // rotates the project's identity; generate only what's missing.
-  const existingProjectId = existingConfig?.project_id;
-  const existingBrokerSecret = existingConfig?.broker_secret;
-  if (existingProjectId && existingBrokerSecret) {
-    config.project_id = existingProjectId;
-    config.broker_secret = existingBrokerSecret;
-  } else {
-    const fresh = generateProjectIdentity();
-    config.project_id = existingProjectId ?? fresh.project_id;
-    config.broker_secret = existingBrokerSecret ?? fresh.broker_secret;
-  }
-  return JSON.stringify(config, null, 2) + "\n";
+  config.project_id =
+    existingConfig?.project_id ?? generateProjectIdentity().project_id;
+  return CONFIG_JSON_HEADER + JSON.stringify(config, null, 2) + "\n";
 }
 
 // --- Summary printing ---
@@ -808,8 +817,21 @@ export function initProject(
   const existingConfig = loadConfig(projectDir);
   mkdirSync(join(projectDir, ".ninthwave"), { recursive: true });
   writeFileSync(configPath, generateConfig(detection, existingConfig));
+  // Provision the broker_secret into .ninthwave/config.local.json so the
+  // sensitive half of the identity never lands in version control. If the
+  // project already has a secret in either file (e.g. a team that chose to
+  // commit it deliberately), this no-ops.
+  const localBefore = loadLocalConfig(projectDir).broker_secret;
+  loadOrGenerateProjectIdentity(projectDir);
+  const localAfter = loadLocalConfig(projectDir).broker_secret;
+  const wroteLocalSecret = localBefore === undefined && localAfter !== undefined;
   console.log("Configured:");
   console.log(`  .ninthwave/config.json ${DIM}(project settings)${RESET}`);
+  if (wroteLocalSecret) {
+    console.log(
+      `  .ninthwave/config.local.json ${DIM}(local-only; contains broker_secret)${RESET}`,
+    );
+  }
 
   // 5. Run scaffolding (with agent selection)
   scaffold(projectDir, bundleDir, opts?.agentSelection);

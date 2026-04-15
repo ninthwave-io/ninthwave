@@ -438,7 +438,7 @@ Crew mode allows multiple operators (each running their own `nw` orchestration s
 nw --connect
 ```
 
-Membership is derived from the project config (`project_id` + `broker_secret` in `.ninthwave/config.json`). Two daemons with the same values land in the same crew automatically -- no codes to share.
+Membership is derived from the project config: `project_id` lives in committed `.ninthwave/config.json`, and `broker_secret` lives in gitignored `.ninthwave/config.local.json`. Two daemons with the same pair of values land in the same crew automatically -- no codes to share. Teammates who want a shared namespace pass the `broker_secret` out of band and paste it into their own `config.local.json`.
 
 The broker handles session-bounded scheduling with author-affinity (tasks route to the operator who created them when possible).
 

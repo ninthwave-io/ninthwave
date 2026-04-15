@@ -33,11 +33,11 @@ export interface ProjectConfig {
    */
   project_id?: string;
   /**
-   * Per-project shared secret (32 random bytes, base64-encoded) used to
-   * authenticate this project to the broker. Lives in the committed
-   * `.ninthwave/config.json` by default so all clones of the project agree
-   * on the same identity, and can be overridden per-developer in
-   * `.ninthwave/config.local.json`.
+   * Per-project secret (32 random bytes, base64-encoded) used to authenticate
+   * this project to the broker. Always generated into the gitignored
+   * `.ninthwave/config.local.json` so a random secret never lands in version
+   * control; teammates share the value out of band (password manager, secure
+   * chat, etc.) and paste it into their own local overlay.
    */
   broker_secret?: string;
   /**
@@ -113,11 +113,12 @@ export function generateProjectIdentity(): { project_id: string; broker_secret: 
 }
 
 /**
- * Ensure `.ninthwave/config.json` contains a `project_id` and a
- * `broker_secret`. Missing fields are generated with
- * `generateProjectIdentity` and merged into the file without clobbering
- * unknown keys. Values already present in `config.local.json` also count as
- * satisfying the requirement and do not trigger a write.
+ * Ensure the project has a `project_id` and a `broker_secret`. Missing
+ * fields are generated with `generateProjectIdentity` and written to the
+ * appropriate file: `project_id` (public) lands in committed
+ * `.ninthwave/config.json`; `broker_secret` (sensitive) lands in gitignored
+ * `.ninthwave/config.local.json`. A value already present in either file
+ * counts as satisfying the requirement and does not trigger a write.
  *
  * Returns the resolved identity (committed + local overlay applied).
  */
@@ -127,11 +128,9 @@ export function loadOrGenerateProjectIdentity(
   const shared = loadConfig(projectRoot);
   const local = loadLocalConfig(projectRoot);
 
-  // Writes happen at the shared-config layer only; the local overlay is
-  // read-only from our perspective. If the local file supplies a value, we
-  // treat the shared side as "already satisfied" so we don't force a
-  // commit-worthy field into the shared file just because a developer
-  // happened to override it locally.
+  // Either file satisfying a field counts as "already present"; local wins
+  // on reads but we don't treat a local value as a reason to re-write the
+  // shared file, and vice versa.
   const effectiveProjectId = local.project_id ?? shared.project_id;
   const effectiveBrokerSecret = local.broker_secret ?? shared.broker_secret;
 
@@ -146,15 +145,11 @@ export function loadOrGenerateProjectIdentity(
   }
 
   const generated = generateProjectIdentity();
-  const updates: Partial<ProjectConfig> = {};
-  if (needsProjectId && shared.project_id === undefined) {
-    updates.project_id = generated.project_id;
+  if (needsProjectId) {
+    saveConfig(projectRoot, { project_id: generated.project_id });
   }
-  if (needsBrokerSecret && shared.broker_secret === undefined) {
-    updates.broker_secret = generated.broker_secret;
-  }
-  if (Object.keys(updates).length > 0) {
-    saveConfig(projectRoot, updates);
+  if (needsBrokerSecret) {
+    saveLocalConfig(projectRoot, { broker_secret: generated.broker_secret });
   }
 
   return {
@@ -212,6 +207,55 @@ export function loadMergedProjectConfig(projectRoot: string): ProjectConfig {
   return merged;
 }
 
+/**
+ * Strip `//` line comments and `/* ... *\/` block comments from JSONC
+ * content, respecting string literals (including escaped quotes) so that a
+ * `//` inside `"…"` is preserved. We accept JSONC in `.ninthwave/config.json`
+ * so the init-generated file can carry a header comment pointing at
+ * `config.local.json` for the `broker_secret`; the file extension stays
+ * `.json` (tsconfig-style) to avoid churn in docs and external references.
+ */
+export function stripJsonComments(raw: string): string {
+  let out = "";
+  let i = 0;
+  const n = raw.length;
+  while (i < n) {
+    const ch = raw[i];
+    const next = raw[i + 1];
+    if (ch === '"') {
+      // String literal -- copy through, honoring escapes so `\"` does not close.
+      out += ch;
+      i++;
+      while (i < n) {
+        const c = raw[i];
+        out += c;
+        i++;
+        if (c === "\\" && i < n) {
+          out += raw[i];
+          i++;
+          continue;
+        }
+        if (c === '"') break;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < n && raw[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < n && !(raw[i] === "*" && raw[i + 1] === "/")) i++;
+      if (i < n) i += 2;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 function loadProjectConfigFile<T extends boolean>(
   configPath: string,
   withDefaults: T,
@@ -224,7 +268,7 @@ function loadProjectConfigFile<T extends boolean>(
 
   try {
     const raw = readFileSync(configPath, "utf-8");
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(stripJsonComments(raw));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return fallback;
     }
@@ -255,12 +299,33 @@ export function saveConfig(
 ): void {
   const configPath = join(projectRoot, ".ninthwave", "config.json");
 
-  // Read existing raw JSON to preserve unknown keys
+  saveMergedConfigFile(configPath, updates);
+}
+
+/**
+ * Save partial config updates to `.ninthwave/config.local.json`. Mirrors
+ * `saveConfig` but targets the gitignored overlay so secrets (notably
+ * `broker_secret`) and developer-local values (e.g. `ai_tool_overrides`)
+ * never land in a tracked file. Read-merge-write preserves unknown keys.
+ */
+export function saveLocalConfig(
+  projectRoot: string,
+  updates: Partial<ProjectConfig>,
+): void {
+  const configPath = join(projectRoot, ".ninthwave", "config.local.json");
+  saveMergedConfigFile(configPath, updates);
+}
+
+function saveMergedConfigFile(
+  configPath: string,
+  updates: Partial<ProjectConfig>,
+): void {
+  // Read existing raw JSON (JSONC-tolerant) to preserve unknown keys.
   let existing: Record<string, unknown> = {};
   if (existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, "utf-8");
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(stripJsonComments(raw));
       if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
         existing = parsed;
       }
@@ -269,7 +334,6 @@ export function saveConfig(
     }
   }
 
-  // Merge updates (only defined values)
   const merged = { ...existing };
   for (const [key, value] of Object.entries(updates)) {
     if (value !== undefined) {

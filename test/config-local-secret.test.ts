@@ -1,18 +1,21 @@
-// Tests for the committed-vs-local override of `broker_secret`.
+// Tests for the local-only storage of `broker_secret`.
 //
-// The broker_secret lives in committed `.ninthwave/config.json` by default so
-// all clones of a project share the same identity, but a fork or single
-// developer can point at a different broker by dropping a secret into the
-// gitignored `.ninthwave/config.local.json` overlay. This file documents
-// and enforces that override precedence.
+// `broker_secret` is always generated into the gitignored
+// `.ninthwave/config.local.json` so a random secret never lands in version
+// control. Teammates who want to share a broker namespace pass the value
+// out of band and paste it into their own `config.local.json`. The loader
+// still accepts a `broker_secret` supplied in either file (local wins), so
+// migrations and hand-edited configs resolve correctly. This file
+// documents and enforces that default and the override precedence.
 
 import { describe, it, expect, afterEach } from "vitest";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { mkdirSync, writeFileSync } from "fs";
 import {
   loadConfig,
   loadLocalConfig,
   loadMergedProjectConfig,
+  loadOrGenerateProjectIdentity,
 } from "../core/config.ts";
 import { setupTempRepo, cleanupTempRepos } from "./helpers.ts";
 
@@ -68,7 +71,7 @@ describe("broker_secret override via config.local.json", () => {
     expect(merged.project_id).toBe("00000000-0000-4000-8000-000000000001");
   });
 
-  it("a malformed broker_secret in config.local.json is ignored and the committed value is used", () => {
+  it("a malformed broker_secret in config.local.json is ignored and the config.json value is used", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
@@ -89,7 +92,7 @@ describe("broker_secret override via config.local.json", () => {
     expect(merged.broker_secret).toBe(ZERO_SECRET_A);
   });
 
-  it("a broker_secret in config.local.json with no committed counterpart still takes effect", () => {
+  it("a broker_secret in config.local.json with no counterpart in config.json still takes effect", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
@@ -102,5 +105,66 @@ describe("broker_secret override via config.local.json", () => {
 
     const merged = loadMergedProjectConfig(repo);
     expect(merged.broker_secret).toBe(THIRTY_TWO_EIGHTS_SECRET);
+  });
+
+  it("generates broker_secret into config.local.json and leaves config.json secret-free", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    // Committed config carries only the public project_id.
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ project_id: "00000000-0000-4000-8000-000000000002" }),
+    );
+
+    const identity = loadOrGenerateProjectIdentity(repo);
+
+    // broker_secret must NOT have landed in the committed file.
+    const sharedRaw = JSON.parse(
+      readFileSync(join(configDir, "config.json"), "utf-8"),
+    );
+    expect(sharedRaw).not.toHaveProperty("broker_secret");
+
+    // It must have landed in the gitignored overlay.
+    const localPath = join(configDir, "config.local.json");
+    expect(existsSync(localPath)).toBe(true);
+    const localRaw = JSON.parse(readFileSync(localPath, "utf-8"));
+    expect(localRaw.broker_secret).toBe(identity.broker_secret);
+    expect(identity.project_id).toBe("00000000-0000-4000-8000-000000000002");
+  });
+
+  it("does not rewrite either file when both identity fields are already present", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    const sharedPath = join(configDir, "config.json");
+    const localPath = join(configDir, "config.local.json");
+    writeFileSync(
+      sharedPath,
+      JSON.stringify({ project_id: "00000000-0000-4000-8000-000000000003" }),
+    );
+    writeFileSync(
+      localPath,
+      JSON.stringify({ broker_secret: THIRTY_TWO_EIGHTS_SECRET }),
+    );
+
+    const sharedBefore = readFileSync(sharedPath, "utf-8");
+    const localBefore = readFileSync(localPath, "utf-8");
+    loadOrGenerateProjectIdentity(repo);
+    expect(readFileSync(sharedPath, "utf-8")).toBe(sharedBefore);
+    expect(readFileSync(localPath, "utf-8")).toBe(localBefore);
+  });
+
+  it("tolerates JSONC comments in .ninthwave/config.json", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      `// header comment explaining the file\n{\n  "project_id": "00000000-0000-4000-8000-000000000004"\n}\n`,
+    );
+
+    const shared = loadConfig(repo);
+    expect(shared.project_id).toBe("00000000-0000-4000-8000-000000000004");
   });
 });

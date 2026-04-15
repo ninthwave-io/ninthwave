@@ -1,1 +1,7 @@
-{}
+// Ninthwave project config (JSONC).
+// broker_secret lives in .ninthwave/config.local.json (gitignored). To
+// share a broker namespace, pass the secret to teammates out of band and
+// have them paste it into their own config.local.json.
+{
+  "project_id": "060fcb64-691c-45bc-9083-3eff7e64a4b9"
+}

@@ -263,29 +263,42 @@ describe("generateProjectIdentity", () => {
 });
 
 describe("loadOrGenerateProjectIdentity", () => {
-  it("writes both fields when config.json is absent", () => {
+  it("writes project_id into config.json and broker_secret into config.local.json when both are absent", () => {
     const repo = setupTempRepo();
     const identity = loadOrGenerateProjectIdentity(repo);
     expect(identity.project_id).toMatch(UUID_V4_PATTERN);
     expect(identity.broker_secret).toMatch(BROKER_SECRET_PATTERN);
 
-    const configPath = join(repo, ".ninthwave", "config.json");
-    expect(existsSync(configPath)).toBe(true);
-    const onDisk = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(onDisk.project_id).toBe(identity.project_id);
-    expect(onDisk.broker_secret).toBe(identity.broker_secret);
+    const sharedPath = join(repo, ".ninthwave", "config.json");
+    const localPath = join(repo, ".ninthwave", "config.local.json");
+
+    // Public identity lands in committed config.
+    expect(existsSync(sharedPath)).toBe(true);
+    const sharedOnDisk = JSON.parse(readFileSync(sharedPath, "utf-8"));
+    expect(sharedOnDisk.project_id).toBe(identity.project_id);
+    expect(sharedOnDisk).not.toHaveProperty("broker_secret");
+
+    // Secret lands in the gitignored overlay.
+    expect(existsSync(localPath)).toBe(true);
+    const localOnDisk = JSON.parse(readFileSync(localPath, "utf-8"));
+    expect(localOnDisk.broker_secret).toBe(identity.broker_secret);
+    expect(localOnDisk).not.toHaveProperty("project_id");
   });
 
-  it("is idempotent when both fields are already present", () => {
+  it("is idempotent when both fields are already present (broker_secret in local)", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
-    const committed = {
-      project_id: SAMPLE_UUID_A,
-      broker_secret: ZERO_SECRET,
-      custom_key: "hello",
-    };
-    writeFileSync(join(configDir, "config.json"), JSON.stringify(committed));
+    const sharedWritten = { project_id: SAMPLE_UUID_A, custom_key: "hello" };
+    const localWritten = { broker_secret: ZERO_SECRET };
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify(sharedWritten),
+    );
+    writeFileSync(
+      join(configDir, "config.local.json"),
+      JSON.stringify(localWritten),
+    );
 
     const identity = loadOrGenerateProjectIdentity(repo);
     expect(identity).toEqual({
@@ -293,14 +306,35 @@ describe("loadOrGenerateProjectIdentity", () => {
       broker_secret: ZERO_SECRET,
     });
 
-    // File contents unchanged except for pretty-printing by saveConfig -- but
-    // we expect no write at all, so the raw bytes should still match the
-    // original compact JSON.
-    const rawAfter = readFileSync(join(configDir, "config.json"), "utf-8");
-    expect(rawAfter).toBe(JSON.stringify(committed));
+    // No write should have happened to either file.
+    expect(readFileSync(join(configDir, "config.json"), "utf-8")).toBe(
+      JSON.stringify(sharedWritten),
+    );
+    expect(readFileSync(join(configDir, "config.local.json"), "utf-8")).toBe(
+      JSON.stringify(localWritten),
+    );
   });
 
-  it("generates only the missing field when one is already present", () => {
+  it("accepts a broker_secret already present in config.json (hand-edited or legacy configs)", () => {
+    const repo = setupTempRepo();
+    const configDir = join(repo, ".ninthwave");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "config.json"),
+      JSON.stringify({ project_id: SAMPLE_UUID_A, broker_secret: ZERO_SECRET }),
+    );
+
+    const identity = loadOrGenerateProjectIdentity(repo);
+    expect(identity).toEqual({
+      project_id: SAMPLE_UUID_A,
+      broker_secret: ZERO_SECRET,
+    });
+
+    // Must not create a local overlay when the shared file already satisfies.
+    expect(existsSync(join(configDir, "config.local.json"))).toBe(false);
+  });
+
+  it("generates only the missing field when project_id is already present", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
@@ -313,14 +347,21 @@ describe("loadOrGenerateProjectIdentity", () => {
     expect(identity.project_id).toBe(SAMPLE_UUID_A);
     expect(identity.broker_secret).toMatch(BROKER_SECRET_PATTERN);
 
-    const onDisk = JSON.parse(
+    // Shared file is not touched (project_id already present).
+    const sharedOnDisk = JSON.parse(
       readFileSync(join(configDir, "config.json"), "utf-8"),
     );
-    expect(onDisk.project_id).toBe(SAMPLE_UUID_A);
-    expect(onDisk.broker_secret).toBe(identity.broker_secret);
+    expect(sharedOnDisk.project_id).toBe(SAMPLE_UUID_A);
+    expect(sharedOnDisk).not.toHaveProperty("broker_secret");
+
+    // Local overlay got the generated secret.
+    const localOnDisk = JSON.parse(
+      readFileSync(join(configDir, "config.local.json"), "utf-8"),
+    );
+    expect(localOnDisk.broker_secret).toBe(identity.broker_secret);
   });
 
-  it("preserves unrelated keys when merging generated fields", () => {
+  it("preserves unrelated keys in config.json when only adding project_id", () => {
     const repo = setupTempRepo();
     const configDir = join(repo, ".ninthwave");
     mkdirSync(configDir, { recursive: true });
@@ -340,7 +381,8 @@ describe("loadOrGenerateProjectIdentity", () => {
     expect(onDisk.crew_url).toBe("wss://crew.example/ws");
     expect(onDisk.custom_key).toBe("hello");
     expect(onDisk.project_id).toMatch(UUID_V4_PATTERN);
-    expect(onDisk.broker_secret).toMatch(BROKER_SECRET_PATTERN);
+    // broker_secret is never written to the shared file by the default path.
+    expect(onDisk).not.toHaveProperty("broker_secret");
   });
 
   it("does not persist identity into config.json when already supplied via config.local.json", () => {
