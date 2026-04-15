@@ -925,7 +925,23 @@ export function executeSendMessage(
     item.pendingFeedbackLiveDeliveryArmed = undefined;
   }
 
+  drainPendingReactions(item, ctx, deps);
   return { success: true };
+}
+
+/** Drain deferred comment reactions after successful feedback delivery or relaunch. */
+function drainPendingReactions(
+  item: OrchestratorItem,
+  ctx: ExecutionContext,
+  deps: OrchestratorDeps,
+): void {
+  if (!item.pendingCommentReactions?.length || !deps.gh.addCommentReaction) return;
+  for (const r of item.pendingCommentReactions) {
+    try {
+      deps.gh.addCommentReaction(ctx.projectRoot, r.commentId, r.commentType, "eyes");
+    } catch { /* best-effort */ }
+  }
+  item.pendingCommentReactions = undefined;
 }
 
 /** Add an acknowledgement reaction to a human PR comment. */
@@ -1128,6 +1144,13 @@ export function executeRetry(
   // Preserve the worktree and branch -- the retried worker will launch
   // into the existing worktree and pick up committed state from the
   // previous attempt (including any auto-saved WIP).
+
+  // Feedback relaunch: drain deferred reactions now that we have
+  // committed to the relaunch path.
+  if (item.needsFeedbackResponse) {
+    drainPendingReactions(item, ctx, deps);
+  }
+
   return { success: true };
 }
 

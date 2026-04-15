@@ -1031,17 +1031,6 @@ export class Orchestrator {
     return `[ORCHESTRATOR] Review Feedback Batch: ${batch.comments.length} trusted human ${label} on PR #${item.prNumber}.\n\n${body}`;
   }
 
-  private feedbackReactionActions(item: OrchestratorItem, batch: PendingFeedbackBatch): Action[] {
-    return batch.comments
-      .filter((comment) => comment.id != null && comment.commentType != null)
-      .map((comment) => ({
-        type: "react-to-comment" as const,
-        itemId: item.id,
-        commentId: comment.id,
-        commentType: comment.commentType,
-      }));
-  }
-
   private feedbackBatchDeliveryMode(
     item: OrchestratorItem,
     snap: ItemSnapshot | undefined,
@@ -1070,12 +1059,17 @@ export class Orchestrator {
     }
 
     const message = this.formatPendingFeedbackMessage(item, batch);
-    const reactions = this.feedbackReactionActions(item, batch);
     const deliveryMode = this.feedbackBatchDeliveryMode(item, snap);
 
     if (deliveryMode === "wait") {
       return { hold: true, actions: [] };
     }
+
+    // Store pending reactions on the item -- they are drained by the
+    // execution layer only after successful delivery or relaunch.
+    item.pendingCommentReactions = batch.comments
+      .filter((c) => c.id != null && c.commentType != null)
+      .map((c) => ({ commentId: c.id!, commentType: c.commentType! }));
 
     item.pendingFeedbackBatch = undefined;
     item.lastReviewedCommitSha = snap?.headSha ?? item.lastReviewedCommitSha ?? null;
@@ -1086,7 +1080,7 @@ export class Orchestrator {
     if (deliveryMode === "relaunch") {
       return {
         hold: true,
-        actions: [...reactions, ...this.respawnForFeedback(item, message)],
+        actions: this.respawnForFeedback(item, message),
       };
     }
 
@@ -1104,7 +1098,6 @@ export class Orchestrator {
     return {
       hold: true,
       actions: [
-        ...reactions,
         {
           type: "send-message",
           itemId: item.id,

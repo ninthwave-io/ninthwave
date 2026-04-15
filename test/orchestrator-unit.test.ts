@@ -3536,7 +3536,7 @@ describe("processComments (via processTransitions)", () => {
     expect(sendMsg!.message).toContain("Please fix the error handling");
   });
 
-  it("processComments emits react-to-comment for each human comment", () => {
+  it("processComments defers reactions to item state instead of emitting react-to-comment actions", () => {
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
     orch.getItem("H-1-1")!.reviewCompleted = true;
@@ -3556,9 +3556,12 @@ describe("processComments (via processTransitions)", () => {
       }]),
     );
 
-    expect(actions.filter((a) => a.type === "react-to-comment" && a.itemId === "H-1-1")).toEqual([
-      { type: "react-to-comment", itemId: "H-1-1", commentId: 201, commentType: "issue" },
-      { type: "react-to-comment", itemId: "H-1-1", commentId: 202, commentType: "review" },
+    // No react-to-comment actions emitted -- reactions are deferred to execution
+    expect(actions.filter((a) => a.type === "react-to-comment")).toHaveLength(0);
+    // Reactions stored on item for execution-layer draining
+    expect(orch.getItem("H-1-1")!.pendingCommentReactions).toEqual([
+      { commentId: 201, commentType: "issue" },
+      { commentId: 202, commentType: "review" },
     ]);
   });
 
@@ -4048,7 +4051,7 @@ describe("processComments (via processTransitions)", () => {
     expect(item.lastCommentCheck).toBe("2026-01-15T12:01:00Z");
   });
 
-  it("parked item emits react-to-comment on human feedback comments", () => {
+  it("parked item defers reactions to item state on human feedback comments", () => {
     const orch = new Orchestrator({ mergeStrategy: "manual" });
     orch.addItem(makeWorkItem("H-1-1"));
     orch.hydrateState("H-1-1", "review-pending");
@@ -4069,10 +4072,14 @@ describe("processComments (via processTransitions)", () => {
       FEEDBACK_FLUSH_NOW,
     );
 
-    const reaction = actions.find((a) => a.type === "react-to-comment" && a.itemId === "H-1-1");
-    expect(reaction).toBeDefined();
-    expect(reaction!.commentId).toBe(901);
-    expect(reaction!.commentType).toBe("issue");
+    // No react-to-comment actions emitted -- deferred to execution
+    expect(actions.filter((a) => a.type === "react-to-comment")).toHaveLength(0);
+    // Reactions stored on item
+    expect(item.pendingCommentReactions).toEqual([
+      { commentId: 901, commentType: "issue" },
+    ]);
+    // Relaunch is still scheduled
+    expect(actions.some((a) => a.type === "retry" && a.itemId === "H-1-1")).toBe(true);
   });
 
   it("skips orchestrator's own audit-trail comments", () => {
@@ -4199,9 +4206,11 @@ describe("processComments (via processTransitions)", () => {
     expect(sendMsgs).toHaveLength(1);
     expect(sendMsgs[0]!.message).toContain("@alice");
     expect(sendMsgs[0]!.message).toContain("@bob");
-    expect(actions.filter((a) => a.type === "react-to-comment" && a.itemId === "H-1-1")).toEqual([
-      { type: "react-to-comment", itemId: "H-1-1", commentId: 1001, commentType: "issue" },
-      { type: "react-to-comment", itemId: "H-1-1", commentId: 1002, commentType: "review" },
+    // Reactions deferred to execution -- not in processTransitions output
+    expect(actions.filter((a) => a.type === "react-to-comment")).toHaveLength(0);
+    expect(orch.getItem("H-1-1")!.pendingCommentReactions).toEqual([
+      { commentId: 1001, commentType: "issue" },
+      { commentId: 1002, commentType: "review" },
     ]);
     // lastCommentCheck should be the latest comment timestamp
     expect(orch.getItem("H-1-1")!.lastCommentCheck).toBe("2026-01-15T12:02:00Z");
@@ -4306,8 +4315,10 @@ describe("processComments (via processTransitions)", () => {
     expect(sendMsgs).toHaveLength(1);
     expect(sendMsgs[0]!.message).toContain("@reviewer");
     expect(sendMsgs[0]!.message).toContain("error handling for the edge case");
-    expect(actions.filter((a) => a.type === "react-to-comment" && a.itemId === "H-1-1")).toEqual([
-      { type: "react-to-comment", itemId: "H-1-1", commentId: 1404, commentType: "review" },
+    // Reactions deferred -- not in processTransitions output
+    expect(actions.filter((a) => a.type === "react-to-comment")).toHaveLength(0);
+    expect(orch.getItem("H-1-1")!.pendingCommentReactions).toEqual([
+      { commentId: 1404, commentType: "review" },
     ]);
   });
 
@@ -4338,9 +4349,11 @@ describe("processComments (via processTransitions)", () => {
     expect(sendMsg!.message).toContain("@reviewer");
     expect(sendMsg!.message).toContain("Please fix the error handling");
 
-    const reactActions = actions.filter((a) => a.type === "react-to-comment" && a.itemId === "H-1-1");
-    expect(reactActions).toHaveLength(1);
-    expect(reactActions[0]!.commentId).toBe(1601);
+    // Reactions deferred to execution layer -- not in processTransitions output
+    expect(actions.filter((a) => a.type === "react-to-comment")).toHaveLength(0);
+    expect(orch.getItem("H-1-1")!.pendingCommentReactions).toEqual([
+      { commentId: 1601, commentType: "issue" },
+    ]);
   });
 
   it("relays GitHub review body comments", () => {
@@ -4415,6 +4428,188 @@ describe("react-to-comment action execution", () => {
 
     expect(result).toEqual({ success: true });
     expect(addCommentReactionMock).toHaveBeenCalledWith("/tmp/project", 42, "review", "eyes");
+  });
+
+  it("send-message drains pendingCommentReactions on successful delivery", () => {
+    const hubRepo = setupTempRepo();
+    const worktreeDir = join(hubRepo, ".ninthwave", ".worktrees");
+    const worktreePath = join(worktreeDir, "ninthwave-H-1-1");
+    mkdirSync(worktreePath, { recursive: true });
+
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.workspaceRef = "workspace:1";
+    item.pendingCommentReactions = [
+      { commentId: 201, commentType: "issue" },
+      { commentId: 202, commentType: "review" },
+    ];
+
+    const addCommentReactionMock = vi.fn();
+    const deps: OrchestratorDeps = {
+      git: { fetchOrigin: () => {}, ffMerge: () => {} },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        addCommentReaction: addCommentReactionMock,
+      },
+      mux: { closeWorkspace: () => true },
+      workers: { launchSingleItem: () => null },
+      cleanup: { cleanSingleWorktree: () => true },
+      io: { writeInbox: () => {} },
+    };
+
+    const ctx: ExecutionContext = {
+      projectRoot: hubRepo,
+      worktreeDir,
+      workDir: join(hubRepo, ".ninthwave", "work"),
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction(
+      { type: "send-message", itemId: "H-1-1", message: "test feedback" },
+      ctx,
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(addCommentReactionMock).toHaveBeenCalledTimes(2);
+    expect(addCommentReactionMock).toHaveBeenCalledWith(hubRepo, 201, "issue", "eyes");
+    expect(addCommentReactionMock).toHaveBeenCalledWith(hubRepo, 202, "review", "eyes");
+    expect(item.pendingCommentReactions).toBeUndefined();
+  });
+
+  it("send-message does not drain reactions on delivery failure", () => {
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    const item = orch.getItem("H-1-1")!;
+    // No workspaceRef and no worktreePath -- delivery will fail
+    item.pendingCommentReactions = [
+      { commentId: 301, commentType: "issue" },
+    ];
+
+    const addCommentReactionMock = vi.fn();
+    const deps: OrchestratorDeps = {
+      git: { fetchOrigin: () => {}, ffMerge: () => {} },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        addCommentReaction: addCommentReactionMock,
+      },
+      mux: { closeWorkspace: () => true },
+      workers: { launchSingleItem: () => null },
+      cleanup: { cleanSingleWorktree: () => true },
+      io: { writeInbox: () => {} },
+    };
+
+    const ctx: ExecutionContext = {
+      projectRoot: "/tmp/project",
+      worktreeDir: "/tmp/nonexistent-worktrees",
+      workDir: "/tmp/project/.ninthwave/work",
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction(
+      { type: "send-message", itemId: "H-1-1", message: "test feedback" },
+      ctx,
+      deps,
+    );
+
+    expect(result.success).toBe(false);
+    expect(addCommentReactionMock).not.toHaveBeenCalled();
+    // Reactions preserved for next delivery attempt
+    expect(item.pendingCommentReactions).toEqual([
+      { commentId: 301, commentType: "issue" },
+    ]);
+  });
+
+  it("retry drains pendingCommentReactions on feedback relaunch", () => {
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    const item = orch.getItem("H-1-1")!;
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "test feedback";
+    item.pendingCommentReactions = [
+      { commentId: 401, commentType: "review" },
+    ];
+
+    const addCommentReactionMock = vi.fn();
+    const deps: OrchestratorDeps = {
+      git: { fetchOrigin: () => {}, ffMerge: () => {} },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        addCommentReaction: addCommentReactionMock,
+      },
+      mux: { closeWorkspace: () => true },
+      workers: { launchSingleItem: () => null },
+      cleanup: { cleanSingleWorktree: () => true },
+      io: { writeInbox: () => {} },
+    };
+
+    const ctx: ExecutionContext = {
+      projectRoot: "/tmp/project",
+      worktreeDir: "/tmp/worktrees",
+      workDir: "/tmp/project/.ninthwave/work",
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction(
+      { type: "retry", itemId: "H-1-1" },
+      ctx,
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(addCommentReactionMock).toHaveBeenCalledTimes(1);
+    expect(addCommentReactionMock).toHaveBeenCalledWith("/tmp/project", 401, "review", "eyes");
+    expect(item.pendingCommentReactions).toBeUndefined();
+  });
+
+  it("retry does not drain reactions when not a feedback relaunch", () => {
+    const orch = new Orchestrator();
+    orch.addItem(makeWorkItem("H-1-1"));
+    const item = orch.getItem("H-1-1")!;
+    item.needsCiFix = true;
+    // needsFeedbackResponse is false/undefined -- this is a CI fix retry
+    item.pendingCommentReactions = [
+      { commentId: 501, commentType: "issue" },
+    ];
+
+    const addCommentReactionMock = vi.fn();
+    const deps: OrchestratorDeps = {
+      git: { fetchOrigin: () => {}, ffMerge: () => {} },
+      gh: {
+        prMerge: () => true,
+        prComment: () => true,
+        addCommentReaction: addCommentReactionMock,
+      },
+      mux: { closeWorkspace: () => true },
+      workers: { launchSingleItem: () => null },
+      cleanup: { cleanSingleWorktree: () => true },
+      io: { writeInbox: () => {} },
+    };
+
+    const ctx: ExecutionContext = {
+      projectRoot: "/tmp/project",
+      worktreeDir: "/tmp/worktrees",
+      workDir: "/tmp/project/.ninthwave/work",
+      aiTool: "claude",
+    };
+
+    const result = orch.executeAction(
+      { type: "retry", itemId: "H-1-1" },
+      ctx,
+      deps,
+    );
+
+    expect(result.success).toBe(true);
+    expect(addCommentReactionMock).not.toHaveBeenCalled();
+    // Reactions preserved -- not a feedback relaunch
+    expect(item.pendingCommentReactions).toEqual([
+      { commentId: 501, commentType: "issue" },
+    ]);
   });
 });
 
