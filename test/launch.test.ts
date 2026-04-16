@@ -2183,8 +2183,16 @@ describe("launchAiSession agentName", () => {
 
     expect(captured[0]).not.toContain("CLAUDE_CONFIG_DIR=");
     expect(captured[0]).not.toContain("export ");
+    // A null rotation pick must still invoke the full default Claude
+    // launch command (flags + system prompt), not a bare `claude`.
+    expect(captured[0]).toContain("claude --name 'T-0 Test'");
+    expect(captured[0]).toContain("--append-system-prompt");
     expect(captured[1]).toContain("CLAUDE_CONFIG_DIR='/rot/profile-2'");
+    expect(captured[1]).toContain("claude --name 'T-1 Test'");
+    expect(captured[1]).toContain("--append-system-prompt");
     expect(captured[2]).not.toContain("CLAUDE_CONFIG_DIR=");
+    expect(captured[2]).toContain("claude --name 'T-2 Test'");
+    expect(captured[2]).toContain("--append-system-prompt");
   });
 
   it("project config.local.json overrides user config per env key", () => {

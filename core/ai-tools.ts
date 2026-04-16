@@ -404,9 +404,13 @@ function hasBuiltInOverrideFields(config?: BuiltInToolOverrideModeConfig): boole
   );
 }
 
-/** True when the override only customizes env (no command / args replacement). */
-function isEnvOnlyOverride(override: LaunchOverride): boolean {
-  return !override.args && !!override.env && Object.keys(override.env).length > 0;
+/** True when the override leaves the tool's default command + args intact,
+ *  so the default build path can construct the full invocation and any env
+ *  vars can be layered on via applyEnvPrefix(). Covers env-only overrides,
+ *  env_rotation-only overrides, and no-op cases such as a null rotation pick
+ *  with no plain env fallback. */
+function preservesDefaultCommand(override: LaunchOverride, toolId: AiToolId): boolean {
+  return !override.args && override.command === getToolProfile(toolId).command;
 }
 
 /** Resolve a mode-specific built-in launch override only when one is configured. */
@@ -488,10 +492,12 @@ function buildLaunchOverrideCmd(
   const override = opts.launchOverride;
   if (!override) return null;
 
-  // Env-only overrides leave the tool's default launch command intact and
-  // are applied via applyEnvPrefix() at the end of each tool's build step.
-  // This preserves the default flags (e.g. claude --name / --agent / ...).
-  if (isEnvOnlyOverride(override) && override.command === getToolProfile(toolId).command) {
+  // Overrides that leave the default command + args intact fall through to
+  // the tool's own build path; applyEnvPrefix() layers env vars (if any)
+  // afterwards. This preserves the default flags (e.g. claude --name /
+  // --agent / --append-system-prompt). Covers env-only overrides,
+  // env_rotation, and no-op rotation picks (all nulls resolved).
+  if (preservesDefaultCommand(override, toolId)) {
     return null;
   }
 
@@ -514,13 +520,10 @@ function buildLaunchOverrideCmd(
   return `${envPrefix} exec ${shQuote(override.command)}${args ? ` ${args}` : ""}`;
 }
 
-/** Prepend env-only override values to a built-in launch command. */
+/** Prepend env override values to a built-in launch command. */
 function applyEnvPrefix(cmd: string, opts: LaunchOpts, toolId: AiToolId): string {
   const override = opts.launchOverride;
-  if (!override || !isEnvOnlyOverride(override)) return cmd;
-  // Only apply when the override did not customize command/args; otherwise
-  // buildLaunchOverrideCmd already produced the final wrapper.
-  if (override.command !== getToolProfile(toolId).command) return cmd;
+  if (!override || !preservesDefaultCommand(override, toolId)) return cmd;
 
   const env = override.env ?? {};
   const entries = Object.entries(env);
