@@ -2192,6 +2192,30 @@ export function scrollStatusItemIntoView(
     ?? orderedOffsets[orderedOffsets.length - 1]!;
 }
 
+/** Count work items whose rendered span starts at or after `firstHiddenLineIndex`. */
+function countHiddenItemsBelow(
+  layout: VisibleStatusLayoutMetadata,
+  firstHiddenLineIndex: number,
+): number {
+  let count = 0;
+  for (const span of Object.values(layout.renderedLineSpans)) {
+    if (span.startLineIndex >= firstHiddenLineIndex) count++;
+  }
+  return count;
+}
+
+/** Count work items whose rendered span ends before `firstVisibleLineIndex`. */
+function countHiddenItemsAbove(
+  layout: VisibleStatusLayoutMetadata,
+  firstVisibleLineIndex: number,
+): number {
+  let count = 0;
+  for (const span of Object.values(layout.renderedLineSpans)) {
+    if (span.endLineIndex < firstVisibleLineIndex) count++;
+  }
+  return count;
+}
+
 /**
  * Render a full-screen frame from a FrameLayout, slicing item lines to fit
  * the viewport between pinned header and footer. Adds scroll indicators
@@ -2224,10 +2248,13 @@ export function renderFullScreenFrame(
   // Assemble output
   const output: string[] = [...headerLines];
 
-  // Scroll-up indicator
+  // Scroll-up indicator (count items, not raw lines which include sub-lines)
   const hiddenAbove = clampedOffset;
   if (hiddenAbove > 0) {
-    output.push(`  ${DIM}↑ ${hiddenAbove} more above${RESET}`);
+    const count = visibleLayout
+      ? countHiddenItemsAbove(visibleLayout, clampedOffset)
+      : hiddenAbove;
+    output.push(`  ${DIM}↑ ${count} more above${RESET}`);
   }
 
   output.push(...visibleItems);
@@ -2237,10 +2264,13 @@ export function renderFullScreenFrame(
     output.push(formatQueueSummary(queuedCount));
   }
 
-  // Scroll-down indicator
+  // Scroll-down indicator (count items, not raw lines which include sub-lines)
   const hiddenBelow = Math.max(0, itemLines.length - clampedOffset - effectiveViewport);
   if (hiddenBelow > 0 && !visibleRange.queuePinned) {
-    output.push(`  ${DIM}↓ ${hiddenBelow} more below${RESET}`);
+    const count = visibleLayout
+      ? countHiddenItemsBelow(visibleLayout, clampedOffset + effectiveViewport)
+      : hiddenBelow;
+    output.push(`  ${DIM}↓ ${count} more below${RESET}`);
   }
 
   output.push(...footerLines);

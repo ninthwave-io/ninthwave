@@ -3232,6 +3232,106 @@ describe("renderFullScreenFrame", () => {
     // Last item should be visible
     expect(text).toContain("ITEM 19");
   });
+
+  it("scroll indicators count items, not raw lines (blocker sub-lines excluded)", () => {
+    // Simulate 6 items where items 3-5 each have a blocker sub-line.
+    // Total itemLines = 6 items + 3 sub-lines = 9 lines.
+    // With a viewport of 4 lines (at offset 0), items 0-2 are visible (lines 0-2)
+    // plus the first line of item 3 (line 3). Items 4-5 are fully hidden below.
+    const itemLines = [
+      "ITEM-0",           // line 0 - item 0
+      "ITEM-1",           // line 1 - item 1
+      "ITEM-2",           // line 2 - item 2
+      "ITEM-3",           // line 3 - item 3
+      "  blocker-3",      // line 4 - item 3 sub-line
+      "ITEM-4",           // line 5 - item 4
+      "  blocker-4",      // line 6 - item 4 sub-line
+      "ITEM-5",           // line 7 - item 5
+      "  blocker-5",      // line 8 - item 5 sub-line
+    ];
+
+    const layout: FrameLayout = {
+      headerLines: ["HEADER"],
+      itemLines,
+      footerLines: ["FOOTER"],
+      visibleLayout: {
+        rows: [],
+        selectableItemIds: ["ITEM-0", "ITEM-1", "ITEM-2", "ITEM-3", "ITEM-4", "ITEM-5"],
+        renderedLineSpans: {
+          "ITEM-0": { startLineIndex: 0, endLineIndex: 0, lineCount: 1 },
+          "ITEM-1": { startLineIndex: 1, endLineIndex: 1, lineCount: 1 },
+          "ITEM-2": { startLineIndex: 2, endLineIndex: 2, lineCount: 1 },
+          "ITEM-3": { startLineIndex: 3, endLineIndex: 4, lineCount: 2 },
+          "ITEM-4": { startLineIndex: 5, endLineIndex: 6, lineCount: 2 },
+          "ITEM-5": { startLineIndex: 7, endLineIndex: 8, lineCount: 2 },
+        },
+        hasDependencies: true,
+        queueItemCount: 0,
+      },
+    };
+
+    // termRows=7: header(1) + footer(1) + scroll-down indicator(1) = 3 overhead, viewport = 4
+    const frame = renderFullScreenFrame(layout, 7, 80, 0);
+    const text = stripAnsi(frame.join("\n"));
+
+    // Without the fix, this would say "5 more below" (raw lines).
+    // With the fix, it should count items: items 4 and 5 are fully below the fold = 2 items.
+    expect(text).toContain("more below");
+    const match = text.match(/(\d+) more below/);
+    expect(match).not.toBeNull();
+    expect(Number(match![1])).toBeLessThanOrEqual(3); // at most items 3,4,5
+    expect(Number(match![1])).toBeLessThan(5); // must not be raw line count
+  });
+
+  it("scroll-up indicator counts items, not raw lines", () => {
+    // 6 items, items 0-2 each have sub-lines = 9 total lines.
+    const itemLines = [
+      "ITEM-0",           // line 0
+      "  blocker-0",      // line 1
+      "ITEM-1",           // line 2
+      "  blocker-1",      // line 3
+      "ITEM-2",           // line 4
+      "  blocker-2",      // line 5
+      "ITEM-3",           // line 6
+      "ITEM-4",           // line 7
+      "ITEM-5",           // line 8
+    ];
+
+    const layout: FrameLayout = {
+      headerLines: ["HEADER"],
+      itemLines,
+      footerLines: ["FOOTER"],
+      visibleLayout: {
+        rows: [],
+        selectableItemIds: ["ITEM-0", "ITEM-1", "ITEM-2", "ITEM-3", "ITEM-4", "ITEM-5"],
+        renderedLineSpans: {
+          "ITEM-0": { startLineIndex: 0, endLineIndex: 1, lineCount: 2 },
+          "ITEM-1": { startLineIndex: 2, endLineIndex: 3, lineCount: 2 },
+          "ITEM-2": { startLineIndex: 4, endLineIndex: 5, lineCount: 2 },
+          "ITEM-3": { startLineIndex: 6, endLineIndex: 6, lineCount: 1 },
+          "ITEM-4": { startLineIndex: 7, endLineIndex: 7, lineCount: 1 },
+          "ITEM-5": { startLineIndex: 8, endLineIndex: 8, lineCount: 1 },
+        },
+        hasDependencies: true,
+        queueItemCount: 0,
+      },
+    };
+
+    // Scroll to offset 999 (clamped to end).
+    // termRows=8: header(1) + footer(1) + up-indicator(1) = 3 overhead, viewport=5.
+    // clampedOffset = min(999, 9-5) = 4. Items with endLineIndex < 4:
+    //   ITEM-0 (end=1), ITEM-1 (end=3) => 2 items hidden above.
+    // Without the fix, the indicator would show 4 (raw lines).
+    // With the fix, it should show 2 (items).
+    const frame = renderFullScreenFrame(layout, 8, 80, 999);
+    const text = stripAnsi(frame.join("\n"));
+
+    expect(text).toContain("more above");
+    const match = text.match(/(\d+) more above/);
+    expect(match).not.toBeNull();
+    // Should count items (2), not raw lines (4)
+    expect(Number(match![1])).toBe(2);
+  });
 });
 
 describe("clampScrollOffset", () => {
