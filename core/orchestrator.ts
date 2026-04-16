@@ -189,10 +189,24 @@ export class Orchestrator {
     (this.config as { skipReview: boolean }).skipReview = skip;
     if (skip) {
       // Drain in-flight review items: mark reviewCompleted so the next cycle
-      // transitions them out of reviewing state naturally.
+      // transitions them out of reviewing/review-pending state naturally.
       for (const item of this.items.values()) {
-        if (item.state === "reviewing") {
+        if (item.state === "reviewing" || item.state === "review-pending") {
           item.reviewCompleted = true;
+        }
+      }
+    } else {
+      // Backfill: items that auto-skipped review (reviewCompleted set by
+      // skipReview gate, not by an actual review verdict) should now go
+      // through review. Auto-skipped items have reviewRound 0/undefined
+      // because no review was ever launched.
+      for (const item of this.items.values()) {
+        if (
+          item.reviewCompleted
+          && (!item.reviewRound || item.reviewRound === 0)
+          && !["merged", "done", "stuck", "blocked", "queued", "ready", "launching", "implementing"].includes(item.state)
+        ) {
+          item.reviewCompleted = false;
         }
       }
     }
@@ -1397,6 +1411,22 @@ export class Orchestrator {
     const actions: Action[] = [];
     // External merge and rebase tracking handled by interceptors.
 
+    // Drain: skipReview toggled on while item was in review-pending state.
+    // reviewCompleted was set by setSkipReview(); skip remaining feedback loop
+    // and chain to evaluateMerge.
+    if (item.reviewCompleted && this.config.skipReview) {
+      this.transition(item, "ci-passed", snap?.eventTime);
+      actions.push({
+        type: "set-commit-status",
+        itemId: item.id,
+        prNumber: item.prNumber,
+        statusState: "success",
+        statusDescription: "Reviews disabled",
+      });
+      actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
+      return actions;
+    }
+
     // Feedback-done signal: worker addressed feedback without code changes.
     // Must run before continuePendingFeedbackHandoff, which would re-stamp
     // lastReviewedCommitSha and try to respawn the worker.
@@ -1565,6 +1595,13 @@ export class Orchestrator {
     if (item.reviewCompleted && this.config.skipReview) {
       this.transition(item, "ci-passed", snap?.eventTime);
       actions.push({ type: "clean-review", itemId: item.id });
+      actions.push({
+        type: "set-commit-status",
+        itemId: item.id,
+        prNumber: item.prNumber,
+        statusState: "success",
+        statusDescription: "Reviews disabled",
+      });
       actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
       return actions;
     }

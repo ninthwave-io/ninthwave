@@ -7812,6 +7812,147 @@ describe("Orchestrator", () => {
       expect(actions.some(a => a.type === "launch-review")).toBe(true);
       expect(actions.some(a => a.type === "merge")).toBe(false);
     });
+
+    it("setSkipReview(true) drains review-pending items", () => {
+      const orch = new Orchestrator({ skipReview: false, mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "reviewing");
+      const item = orch.getItem("H-1-1")!;
+      item.prNumber = 10;
+      item.workspaceRef = "workspace:1";
+      item.reviewWorkspaceRef = "workspace:review-1";
+      // Simulate review completing with changes requested -> review-pending
+      item.reviewCompleted = false;
+      item.reviewRound = 1;
+      item.lastReviewedCommitSha = "abc123";
+      orch.hydrateState("H-1-1", "review-pending");
+
+      // Toggle skipReview at runtime
+      orch.setSkipReview(true);
+
+      // reviewCompleted should be set immediately by setSkipReview
+      expect(item.reviewCompleted).toBe(true);
+
+      // Next processTransitions should drain and chain to merge
+      const actions = orch.processTransitions(
+        snapshotWith([{
+          id: "H-1-1",
+          workerAlive: true,
+          ciStatus: "pass",
+          prState: "open",
+          isMergeable: true,
+        }]),
+      );
+
+      expect(actions.some(a => a.type === "set-commit-status"
+        && (a as { statusDescription?: string }).statusDescription === "Reviews disabled")).toBe(true);
+      expect(actions.some(a => a.type === "merge")).toBe(true);
+      expect(item.state).toBe("merging");
+    });
+
+    it("setSkipReview(false) backfills ci-passed items that were auto-skipped", () => {
+      const orch = new Orchestrator({ skipReview: true, mergeStrategy: "manual" });
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "ci-passed");
+      const item = orch.getItem("H-1-1")!;
+      item.prNumber = 10;
+      item.workspaceRef = "workspace:1";
+      // Simulate auto-skip: reviewCompleted set by skipReview gate, no review launched
+      item.reviewCompleted = true;
+      item.reviewRound = 0;
+
+      // Toggle skipReview off -- should backfill
+      orch.setSkipReview(false);
+
+      // reviewCompleted should be reset
+      expect(item.reviewCompleted).toBe(false);
+
+      // Next processTransitions should launch a review
+      const actions = orch.processTransitions(
+        snapshotWith([{
+          id: "H-1-1",
+          workerAlive: true,
+          ciStatus: "pass",
+          prState: "open",
+          isMergeable: true,
+        }]),
+      );
+
+      expect(item.state).toBe("reviewing");
+      expect(actions.some(a => a.type === "launch-review")).toBe(true);
+    });
+
+    it("setSkipReview(false) does NOT re-review genuinely reviewed items", () => {
+      const orch = new Orchestrator({ skipReview: true, mergeStrategy: "manual" });
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "review-pending");
+      const item = orch.getItem("H-1-1")!;
+      item.prNumber = 10;
+      item.workspaceRef = "workspace:1";
+      // Genuinely reviewed: reviewRound >= 1
+      item.reviewCompleted = true;
+      item.reviewRound = 2;
+
+      orch.setSkipReview(false);
+
+      // reviewCompleted should remain true -- item was genuinely reviewed
+      expect(item.reviewCompleted).toBe(true);
+    });
+
+    it("setSkipReview(false) does NOT affect terminal states", () => {
+      const orch = new Orchestrator({ skipReview: true, mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.addItem(makeWorkItem("H-1-2"));
+      orch.addItem(makeWorkItem("H-1-3"));
+      orch.hydrateState("H-1-1", "merged");
+      orch.hydrateState("H-1-2", "done");
+      orch.hydrateState("H-1-3", "stuck");
+      const item1 = orch.getItem("H-1-1")!;
+      const item2 = orch.getItem("H-1-2")!;
+      const item3 = orch.getItem("H-1-3")!;
+      item1.reviewCompleted = true;
+      item1.reviewRound = 0;
+      item2.reviewCompleted = true;
+      item2.reviewRound = 0;
+      item3.reviewCompleted = true;
+      item3.reviewRound = 0;
+
+      orch.setSkipReview(false);
+
+      // Terminal states should not be touched
+      expect(item1.reviewCompleted).toBe(true);
+      expect(item2.reviewCompleted).toBe(true);
+      expect(item3.reviewCompleted).toBe(true);
+    });
+
+    it("setSkipReview(true) drain emits commit status on reviewing items", () => {
+      const orch = new Orchestrator({ skipReview: false, mergeStrategy: "auto" });
+      orch.addItem(makeWorkItem("H-1-1"));
+      orch.hydrateState("H-1-1", "reviewing");
+      const item = orch.getItem("H-1-1")!;
+      item.prNumber = 10;
+      item.workspaceRef = "workspace:1";
+      item.reviewWorkspaceRef = "workspace:review-1";
+
+      orch.setSkipReview(true);
+
+      const actions = orch.processTransitions(
+        snapshotWith([{
+          id: "H-1-1",
+          workerAlive: true,
+          ciStatus: "pass",
+          prState: "open",
+          isMergeable: true,
+        }]),
+      );
+
+      const statusAction = actions.find(a =>
+        a.type === "set-commit-status"
+        && (a as { statusDescription?: string }).statusDescription === "Reviews disabled",
+      );
+      expect(statusAction).toBeDefined();
+      expect(actions.some(a => a.type === "clean-review")).toBe(true);
+    });
   });
 
 });
