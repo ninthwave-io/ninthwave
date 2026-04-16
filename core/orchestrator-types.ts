@@ -249,6 +249,10 @@ export function getStateData<S extends keyof StateDataMap>(
 export interface OrchestratorConfig {
   /** Max concurrent items in all session states (launching/implementing/ci-pending/ci-passed/ci-failed/rebasing/reviewing/review-pending/merging). */
   maxInflight: number;
+  /** Runtime flow-control flag. When false, no new items launch but in-flight items continue
+   *  through their full lifecycle (CI, review, rebase, fix-forward all proceed).
+   *  Not persisted -- each session starts with acceptingWork = true. */
+  acceptingWork: boolean;
   /** When to auto-merge: auto (CI pass, respects review gate + CHANGES_REQUESTED), manual (never auto-merge), bypass (admin override, skips branch protection human review). */
   mergeStrategy: MergeStrategy;
   /** Whether the bypass merge strategy is available. Must be enabled via --dangerously-bypass CLI flag. */
@@ -646,6 +650,7 @@ export interface ActionResult {
 
 export const DEFAULT_CONFIG: OrchestratorConfig = {
   maxInflight: 1,
+  acceptingWork: true,
   mergeStrategy: "auto",
   bypassEnabled: false,
   maxCiRetries: 5,

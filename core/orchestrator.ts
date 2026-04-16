@@ -145,6 +145,25 @@ export class Orchestrator {
   }
 
   /**
+   * Set the acceptingWork flow-control flag at runtime.
+   * When false, launchReadyItems() returns empty -- new items do not launch.
+   * In-flight items continue through their full lifecycle normally.
+   */
+  setAcceptingWork(accepting: boolean): void {
+    (this.config as { acceptingWork: boolean }).acceptingWork = accepting;
+  }
+
+  /**
+   * Toggle the acceptingWork flag. Returns the new value.
+   * Mnemonic: "pause intake" -- stop new launches without interrupting in-flight work.
+   */
+  toggleAcceptingWork(): boolean {
+    const next = !this.config.acceptingWork;
+    (this.config as { acceptingWork: boolean }).acceptingWork = next;
+    return next;
+  }
+
+  /**
    * Change the merge strategy at runtime.
    * "bypass" is only allowed when config.bypassEnabled is true (set via --dangerously-bypass).
    * Existing review-pending items are re-evaluated on the next poll cycle so strategy
@@ -2250,9 +2269,12 @@ export class Orchestrator {
       .map((i) => ({ id: i.id, prNumber: i.prNumber!, title: i.workItem.title }));
   }
 
-  /** Launch ready items up to session limit. Returns launch actions. */
+  /** Launch ready items up to session limit. Returns launch actions.
+   *  Gated by `config.acceptingWork`: when false, returns no actions so the drain
+   *  mode stops new launches while letting in-flight items continue normally. */
   private launchReadyItems(): Action[] {
     const actions: Action[] = [];
+    if (!this.config.acceptingWork) return actions;
     const readyItems = this.getItemsByState("ready");
     const slotsAvailable = this.availableInflightSlots;
 

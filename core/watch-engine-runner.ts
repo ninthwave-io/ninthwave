@@ -30,6 +30,7 @@ export interface WatchEngineSnapshotEvent {
   interactiveTiming?: InteractiveWatchTiming;
   runtime: {
     paused: boolean;
+    acceptingWork: boolean;
     mergeStrategy: MergeStrategy;
     maxInflight: number;
     reviewMode: ReviewMode;
@@ -53,6 +54,7 @@ export interface RuntimeCollaborationActionResult {
 
 export type WatchEngineControlCommand =
   | { type: "set-paused"; paused: boolean; source?: string }
+  | { type: "set-accepting-work"; accepting: boolean; source?: string }
   | { type: "set-merge-strategy"; strategy: MergeStrategy; source?: string }
   | { type: "set-max-inflight"; limit: number; source?: string }
   | { type: "set-review-mode"; mode: ReviewMode; source?: string }
@@ -63,6 +65,7 @@ export type WatchEngineControlCommand =
 
 export interface RuntimeControlHandlers {
   onPauseChange?: (paused: boolean) => void;
+  onAcceptingWorkChange?: (accepting: boolean) => void;
   onStrategyChange?: (strategy: MergeStrategy) => void;
   onMaxInflightChange?: (delta: number) => void;
   onReviewChange?: (mode: ReviewMode) => void;
@@ -101,6 +104,9 @@ export function createRuntimeControlHandlers(
   return {
     onPauseChange: (paused) => {
       deps.sendControl({ type: "set-paused", paused, source: "keyboard" });
+    },
+    onAcceptingWorkChange: (accepting) => {
+      deps.sendControl({ type: "set-accepting-work", accepting, source: "keyboard" });
     },
     onStrategyChange: (strategy) => {
       deps.sendControl({ type: "set-merge-strategy", strategy, source: "keyboard" });
@@ -227,6 +233,9 @@ export function createWatchEngineRunner(
   deps: WatchEngineRunnerDeps,
 ): WatchEngineRunner {
   let paused = false;
+  // acceptingWork mirrors the orchestrator's runtime flag. Starts true and is
+  // driven purely through control commands (not persisted across sessions).
+  let acceptingWork = deps.orch.config.acceptingWork;
   let reviewMode = deps.initialReviewMode;
   let collaborationMode = deps.initialCollaborationMode;
   let activeAbortController: AbortController | undefined;
@@ -249,6 +258,7 @@ export function createWatchEngineRunner(
       ...(interactiveTiming ? { interactiveTiming } : {}),
       runtime: {
         paused,
+        acceptingWork,
         mergeStrategy: deps.orch.config.mergeStrategy,
         maxInflight: deps.getMaxInflight(),
         reviewMode,
@@ -269,6 +279,20 @@ export function createWatchEngineRunner(
           paused,
           source: command.source ?? "runtime-control",
         });
+        return;
+      }
+      case "set-accepting-work": {
+        if (acceptingWork === command.accepting) return;
+        acceptingWork = command.accepting;
+        deps.orch.setAcceptingWork(acceptingWork);
+        emitLog({
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "accepting_work_changed",
+          acceptingWork,
+          source: command.source ?? "runtime-control",
+        });
+        emitSnapshot();
         return;
       }
       case "set-merge-strategy": {

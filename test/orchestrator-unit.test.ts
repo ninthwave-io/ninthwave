@@ -852,6 +852,97 @@ describe("setMaxInflight", () => {
   });
 });
 
+// ── acceptingWork (drain mode) ───────────────────────────────────────
+
+describe("acceptingWork (drain mode)", () => {
+  it("defaults to true", () => {
+    const orch = new Orchestrator();
+    expect(orch.config.acceptingWork).toBe(true);
+  });
+
+  it("toggleAcceptingWork flips the flag and returns the new value", () => {
+    const orch = new Orchestrator();
+    expect(orch.toggleAcceptingWork()).toBe(false);
+    expect(orch.config.acceptingWork).toBe(false);
+    expect(orch.toggleAcceptingWork()).toBe(true);
+    expect(orch.config.acceptingWork).toBe(true);
+  });
+
+  it("setAcceptingWork sets the flag directly", () => {
+    const orch = new Orchestrator();
+    orch.setAcceptingWork(false);
+    expect(orch.config.acceptingWork).toBe(false);
+    orch.setAcceptingWork(true);
+    expect(orch.config.acceptingWork).toBe(true);
+  });
+
+  it("launchReadyItems returns no launch actions when acceptingWork is false, even with slots", () => {
+    const orch = new Orchestrator({ maxInflight: 3 });
+    orch.addItem(makeWorkItem("A"));
+    orch.addItem(makeWorkItem("B"));
+    orch.setAcceptingWork(false);
+
+    const actions = orch.processTransitions({ items: [], readyIds: ["A", "B"] }, NOW);
+
+    expect(actions.filter((a) => a.type === "launch")).toEqual([]);
+    // Items are promoted queued -> ready but not to launching.
+    expect(orch.getItem("A")!.state).toBe("ready");
+    expect(orch.getItem("B")!.state).toBe("ready");
+  });
+
+  it("toggling acceptingWork back to true resumes launches on the next cycle", () => {
+    const orch = new Orchestrator({ maxInflight: 2 });
+    orch.addItem(makeWorkItem("A"));
+    orch.setAcceptingWork(false);
+
+    orch.processTransitions({ items: [], readyIds: ["A"] }, NOW);
+    expect(orch.getItem("A")!.state).toBe("ready");
+
+    orch.setAcceptingWork(true);
+    const actions = orch.processTransitions({ items: [], readyIds: ["A"] }, NOW);
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "A")).toBe(true);
+    expect(orch.getItem("A")!.state).toBe("launching");
+  });
+
+  it("in-flight items continue through their lifecycle when acceptingWork is false", () => {
+    const orch = new Orchestrator({ maxInflight: 3, gracePeriodMs: 0 });
+    orch.addItem(makeWorkItem("A"));
+    orch.addItem(makeWorkItem("B"));
+    orch.getItem("A")!.reviewCompleted = true;
+    orch.getItem("B")!.reviewCompleted = true;
+    orch.hydrateState("A", "implementing");
+    orch.hydrateState("B", "ci-pending");
+    orch.getItem("A")!.workspaceRef = "workspace:A";
+    orch.getItem("B")!.workspaceRef = "workspace:B";
+    orch.getItem("B")!.prNumber = 42;
+
+    orch.setAcceptingWork(false);
+
+    // A gets a PR -> implementing should move to ci-pending as normal
+    // B has passing CI -> should move to ci-passed as normal
+    orch.processTransitions(
+      snapshotWith([
+        { id: "A", prNumber: 41, prState: "open", ciStatus: "pending", workerAlive: true },
+        { id: "B", prNumber: 42, prState: "open", ciStatus: "pass", workerAlive: true },
+      ]),
+      NOW,
+    );
+
+    expect(orch.getItem("A")!.state).toBe("ci-pending");
+    expect(orch.getItem("B")!.state).not.toBe("ci-pending");
+  });
+
+  it("+/- style maxInflight adjustments still apply while acceptingWork is false", () => {
+    const orch = new Orchestrator({ maxInflight: 2 });
+    orch.setAcceptingWork(false);
+    orch.setMaxInflight(5);
+    expect(orch.config.maxInflight).toBe(5);
+    orch.setMaxInflight(1);
+    expect(orch.config.maxInflight).toBe(1);
+    expect(orch.config.acceptingWork).toBe(false);
+  });
+});
+
 // ── handleImplementing (tested via processTransitions) ───────────────
 
 describe("handleImplementing", () => {

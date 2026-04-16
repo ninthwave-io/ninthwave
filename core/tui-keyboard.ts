@@ -122,6 +122,10 @@ export interface TuiState {
   maxInflight?: number;
   /** Pending session limit request awaiting engine acknowledgement. */
   pendingMaxInflight?: number;
+  /** Engine-confirmed acceptingWork flag from the latest snapshot. When false, new items do not launch. */
+  acceptingWork?: boolean;
+  /** Pending acceptingWork request awaiting engine acknowledgement. */
+  pendingAcceptingWork?: boolean;
   /** Current merge strategy (per-daemon, cycled via Shift+Tab). */
   mergeStrategy: MergeStrategy;
   /** Pending merge strategy selection waiting for debounce to settle. */
@@ -190,6 +194,8 @@ export interface TuiState {
   onStrategyChange?: (strategy: MergeStrategy) => void;
   /** Called when the paused state changes via keyboard control. */
   onPauseChange?: (paused: boolean) => void;
+  /** Called when the acceptingWork flag changes via keyboard control. */
+  onAcceptingWorkChange?: (accepting: boolean) => void;
   /** Called when the user cycles panel mode via Tab (for preference persistence). */
   onPanelModeChange?: (mode: PanelMode) => void;
   /** Called when the user presses +/- to adjust session limit. Receives the delta (+1 or -1). */
@@ -220,6 +226,8 @@ export interface TuiState {
 
 export interface TuiRuntimeSnapshot {
   paused: boolean;
+  /** Optional for backward compatibility; production engine always includes it. Defaults to true when absent. */
+  acceptingWork?: boolean;
   mergeStrategy: MergeStrategy;
   maxInflight: number;
   reviewMode: ReviewMode;
@@ -232,11 +240,24 @@ export function isTuiPaused(
   return tuiState.pendingPaused ?? tuiState.paused ?? false;
 }
 
+/**
+ * Effective acceptingWork view for the TUI: prefer the pending request if set,
+ * otherwise the engine-confirmed value, defaulting to true.
+ */
+export function isTuiAcceptingWork(
+  tuiState: Pick<TuiState, "acceptingWork" | "pendingAcceptingWork">,
+): boolean {
+  return tuiState.pendingAcceptingWork ?? tuiState.acceptingWork ?? true;
+}
+
 export function applyRuntimeSnapshotToTuiState(
   tuiState: TuiState,
   runtime: TuiRuntimeSnapshot,
 ): void {
   tuiState.paused = runtime.paused;
+  const runtimeAccepting = runtime.acceptingWork ?? true;
+  tuiState.acceptingWork = runtimeAccepting;
+  tuiState.viewOptions.acceptingWork = runtimeAccepting;
   tuiState.maxInflight = runtime.maxInflight;
   tuiState.mergeStrategy = runtime.mergeStrategy;
   tuiState.viewOptions.mergeStrategy = runtime.mergeStrategy;
@@ -262,6 +283,9 @@ export function applyRuntimeSnapshotToTuiState(
   }
   if (tuiState.pendingPaused === runtime.paused) {
     tuiState.pendingPaused = undefined;
+  }
+  if (tuiState.pendingAcceptingWork === runtimeAccepting) {
+    tuiState.pendingAcceptingWork = undefined;
   }
 
   tuiState.collaborationIntent = collaborationIntentFromMode(
@@ -685,6 +709,21 @@ export function setupKeyboardShortcuts(
     tuiState.onPauseChange?.(paused);
   };
 
+  const setAcceptingWork = (accepting: boolean) => {
+    if (!tuiState) return;
+    const currentAccepting = isTuiAcceptingWork(tuiState);
+    if (accepting === currentAccepting) return;
+    const canonicalAccepting = tuiState.acceptingWork ?? true;
+    tuiState.pendingAcceptingWork =
+      accepting === canonicalAccepting && tuiState.pendingAcceptingWork === undefined
+        ? undefined
+        : accepting;
+    // Reflect the pending value in viewOptions so the next render surfaces drain mode
+    // immediately, without waiting for an engine snapshot.
+    tuiState.viewOptions.acceptingWork = accepting;
+    tuiState.onAcceptingWorkChange?.(accepting);
+  };
+
   const onData = (key: string) => {
     if (key === "q") {
       if (tuiState?.ctrlCPending
@@ -781,7 +820,6 @@ export function setupKeyboardShortcuts(
     if (isTuiPaused(tuiState)) {
       switch (key) {
         case "\x1b":
-        case "p":
           setPaused(false);
           break;
         default:
@@ -813,7 +851,8 @@ export function setupKeyboardShortcuts(
         }
         break;
       case "p":
-        setPaused(!isTuiPaused(tuiState));
+        // "pause intake": toggle acceptingWork so new launches stop while in-flight items continue.
+        setAcceptingWork(!isTuiAcceptingWork(tuiState));
         break;
       case "d":
         tuiState.viewOptions.showBlockerDetail = !tuiState.viewOptions.showBlockerDetail;

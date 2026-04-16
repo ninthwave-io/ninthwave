@@ -473,6 +473,7 @@ export function detectTuiMode(isDaemonChild: boolean, jsonFlag: boolean, isTTY: 
 
 export interface InteractiveEngineTransportRuntime {
   paused: boolean;
+  acceptingWork: boolean;
   mergeStrategy: MergeStrategy;
   maxInflight: number;
   reviewMode: "off" | "on";
@@ -1157,6 +1158,7 @@ async function runInteractiveOperatorParentSession(
     return {
       daemonState: serializeOrchestratorState(orch.getAllItems(), process.pid, daemonStartedAt, {
         maxInflight: runtime.maxInflight,
+        acceptingWork: runtime.acceptingWork,
         ...(opts.futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
       }),
       runtime,
@@ -1165,6 +1167,7 @@ async function runInteractiveOperatorParentSession(
 
   let operatorLastSnapshot = buildQueuedState(currentItemIds, {
     paused: false,
+    acceptingWork: true,
     mergeStrategy: opts.mergeStrategy,
     maxInflight: opts.maxInflight,
     reviewMode: opts.reviewMode,
@@ -1188,10 +1191,13 @@ async function runInteractiveOperatorParentSession(
       collaborationIntent: collaborationIntentFromMode(operatorLastSnapshot.runtime.collaborationMode),
       collaborationBusy: false,
       reviewMode: operatorLastSnapshot.runtime.reviewMode,
+      acceptingWork: operatorLastSnapshot.runtime.acceptingWork,
       ...(opts.futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
     },
     paused: false,
     pendingPaused: undefined,
+    acceptingWork: operatorLastSnapshot.runtime.acceptingWork,
+    pendingAcceptingWork: undefined,
     maxInflight: operatorLastSnapshot.runtime.maxInflight,
     pendingMaxInflight: undefined,
     mergeStrategy: operatorLastSnapshot.runtime.mergeStrategy,
@@ -1955,6 +1961,7 @@ export async function cmdOrchestrate(
   const initialCrewStatus = crewBroker?.getCrewStatus();
   const initialState = serializeOrchestratorState(orch.getAllItems(), process.pid, daemonStartedAt, {
     maxInflight,
+    acceptingWork: orch.config.acceptingWork,
     operatorId,
     remoteItemSnapshots: crewStatusToRemoteItemSnapshots(initialCrewStatus),
     crewStatus: crewStatusToDaemonCrewStatus(initialCrewStatus, crewBroker?.isConnected() ?? false),
@@ -1975,6 +1982,7 @@ export async function cmdOrchestrate(
     daemonState: initialState,
     runtime: {
       paused: false,
+      acceptingWork: orch.config.acceptingWork,
       mergeStrategy: orch.config.mergeStrategy,
       maxInflight,
       reviewMode: initialReviewMode,
@@ -2049,10 +2057,13 @@ export async function cmdOrchestrate(
       collaborationBusy: false,
       shutdownInProgress: false,
       reviewMode: initialReviewMode,
+      acceptingWork: orch.config.acceptingWork,
       ...(futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
     },
     paused: false,
     pendingPaused: undefined,
+    acceptingWork: orch.config.acceptingWork,
+    pendingAcceptingWork: undefined,
     maxInflight,
     pendingMaxInflight: undefined,
     mergeStrategy: orch.config.mergeStrategy,
@@ -2271,6 +2282,7 @@ export async function cmdOrchestrate(
     return serializeOrchestratorState(items, process.pid, daemonStartedAt, {
       statusPaneRef: null,
       maxInflight,
+      acceptingWork: orch.config.acceptingWork,
       operatorId,
       remoteItemSnapshots: crewStatusToRemoteItemSnapshots(crewStatus),
       heartbeats,
@@ -2474,6 +2486,7 @@ export async function cmdOrchestrate(
           for (const item of nextItems) nextOrch.addItem(item);
           const nextState = serializeOrchestratorState(nextOrch.getAllItems(), process.pid, daemonStartedAt, {
             maxInflight: operatorLastSnapshot.runtime.maxInflight,
+            acceptingWork: nextOrch.config.acceptingWork,
             operatorId,
             ...(futureOnlyStartup ? { emptyState: "watch-armed" as const } : {}),
           });

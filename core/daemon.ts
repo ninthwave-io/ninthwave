@@ -146,6 +146,8 @@ export interface DaemonState {
   updatedAt: string;
   statusPaneRef?: string | null;
   maxInflight?: number;
+  /** Runtime acceptingWork flag. When false, no new items launch but in-flight items continue. */
+  acceptingWork?: boolean;
   /** Alternate empty-state copy for armed watch sessions. */
   emptyState?: "watch-armed";
   /** Operator identity (git email of the human running this daemon). */
@@ -730,6 +732,7 @@ export function serializeOrchestratorState(
   extras?: {
     statusPaneRef?: string | null;
     maxInflight?: number;
+    acceptingWork?: boolean;
     operatorId?: string;
     emptyState?: "watch-armed";
     crewStatus?: DaemonCrewStatus;
@@ -744,6 +747,7 @@ export function serializeOrchestratorState(
     updatedAt: new Date().toISOString(),
     ...(extras?.statusPaneRef !== undefined ? { statusPaneRef: extras.statusPaneRef } : {}),
     ...(extras?.maxInflight !== undefined ? { maxInflight: extras.maxInflight } : {}),
+    ...(extras?.acceptingWork !== undefined ? { acceptingWork: extras.acceptingWork } : {}),
     ...(extras?.emptyState ? { emptyState: extras.emptyState } : {}),
     ...(extras?.operatorId !== undefined ? { operatorId: extras.operatorId } : {}),
     ...(extras?.crewStatus ? { crewStatus: extras.crewStatus } : {}),

@@ -90,6 +90,9 @@ export interface ViewOptions {
   emptyState?: EmptyStateMode;
   /** When true, render the mode indicator inline on the title line. */
   inlineModeIndicatorOnTitle?: boolean;
+  /** Runtime flow-control flag. When false, render a "NOT ACCEPTING" indicator
+   *  alongside the inflight count and mode line so operators can see drain mode is on. */
+  acceptingWork?: boolean;
 }
 
 export interface StartupOverlayState {
@@ -147,7 +150,7 @@ function formatStrategyFooterLine(
   pendingStrategyCountdownSeconds?: number,
 ): string {
   const badge = strategyFooterIndicator(strategy, pendingStrategy, pendingStrategyCountdownSeconds);
-  return `  ${badge} ${formatShortcutChord("shift+tab", "to toggle", { wrapInParens: true })}  ${formatShortcutHint("p", "pause")}  ${formatShortcutHint("q", "quit")}  ${formatShortcutHint("c", "controls")}  ${formatShortcutHint("?", "help")}`;
+  return `  ${badge} ${formatShortcutChord("shift+tab", "to toggle", { wrapInParens: true })}  ${formatShortcutHint("p", "drain")}  ${formatShortcutHint("q", "quit")}  ${formatShortcutHint("c", "controls")}  ${formatShortcutHint("?", "help")}`;
 }
 
 function formatShortcutHint(key: string, label: string): string {
@@ -1332,6 +1335,7 @@ export function formatStatusTable(
         queueHeader += `, ${fixForwardCount} fixing forward`;
       }
       queueHeader += ")";
+      queueHeader += acceptingWorkBadge(opts.acceptingWork);
 
       lines.push("");
       lines.push(`  ${DIM}${queueHeader}${RESET}`);
@@ -1370,6 +1374,7 @@ export function formatStatusTable(
         queueHeader += `, ${fixForwardCount} fixing forward`;
       }
       queueHeader += ")";
+      queueHeader += acceptingWorkBadge(opts.acceptingWork);
 
       lines.push("");
       lines.push(`  ${DIM}${queueHeader}${RESET}`);
@@ -1832,7 +1837,8 @@ function modeIndicatorText(viewOptions?: ViewOptions): string {
   if (!viewOptions) return "";
   const collab = viewOptions.collaborationMode;
   const review = viewOptions.reviewMode;
-  if (!collab && !review) return "";
+  const accepting = viewOptions.acceptingWork;
+  if (!collab && !review && accepting !== false) return "";
 
   const parts: string[] = [];
   if (collab) parts.push(collab);
@@ -1840,7 +1846,20 @@ function modeIndicatorText(viewOptions?: ViewOptions): string {
     const label = review === "off" ? "reviews off" : "reviews: on";
     parts.push(label);
   }
+  if (accepting === false) {
+    parts.push("NOT ACCEPTING");
+  }
   return parts.join(" · ");
+}
+
+/**
+ * Short drain-mode badge appended to the inflight count in the queue header
+ * when acceptingWork is false. Styled yellow so it stands out without
+ * swallowing the whole header.
+ */
+export function acceptingWorkBadge(acceptingWork?: boolean): string {
+  if (acceptingWork !== false) return "";
+  return `, ${YELLOW}not accepting${RESET}`;
 }
 
 /**
@@ -2001,6 +2020,7 @@ export function buildStatusLayout(
         if (maxInflight !== undefined) queueHeader += `, ${row.activeCount}/${maxInflight} in flight`;
         if (row.fixForwardCount && row.fixForwardCount > 0) queueHeader += `, ${row.fixForwardCount} fixing forward`;
         queueHeader += ")";
+        queueHeader += acceptingWorkBadge(opts.acceptingWork);
         itemLines.push(`  ${DIM}${queueHeader}${RESET}`);
         break;
       }
@@ -2834,7 +2854,7 @@ export function renderHelpOverlay(
     helpLine("?", "Toggle this help overlay"),
     helpLine("Enter/i", "Item detail panel"),
     helpLine("Escape", "Close overlay / pause or resume dashboard"),
-    helpLine("p", "Pause or resume dashboard"),
+    helpLine("p", "Pause intake -- stop new launches, in-flight work continues"),
     helpLine("q x2", "Quit (double-tap) from any TUI state"),
     helpLine("Ctrl+C x2", "Quit (double-tap)"),
     helpLine("d", "Toggle blocker sub-lines"),
@@ -2965,7 +2985,7 @@ export function renderPausedOverlay(
     ? `${RED}Closing...${RESET}`
     : opts?.ctrlCPending
       ? formatPendingQuitFooterLine(opts.pendingQuitKey).trimStart()
-    : `${formatShortcutHint("p", "resume")}  ${formatShortcutHint("q", "quit")}`;
+    : `${formatShortcutHint("esc", "resume")}  ${formatShortcutHint("q", "quit")}`;
   const overlayHintWidth = stripAnsiForWidth(overlayHint).length;
 
   const maxContentWidth = Math.max(

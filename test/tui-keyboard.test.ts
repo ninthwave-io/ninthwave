@@ -271,30 +271,61 @@ describe("setupKeyboardShortcuts", () => {
     cleanup();
   });
 
-  it("p toggles pause and resume", () => {
+  it("p toggles acceptingWork (drain mode)", () => {
     const ac = new AbortController();
     const stdin = makeFakeStdin();
+    const onAcceptingWorkChange = vi.fn();
     const onPauseChange = vi.fn();
-    const state = makeTuiState({ onPauseChange });
+    const state = makeTuiState({ acceptingWork: true, onAcceptingWorkChange, onPauseChange });
     const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
 
     stdin.emit("data", "p");
-    expect(state.pendingPaused).toBe(true);
-    expect(onPauseChange).toHaveBeenNthCalledWith(1, true);
+    expect(state.pendingAcceptingWork).toBe(false);
+    expect(state.viewOptions.acceptingWork).toBe(false);
+    expect(onAcceptingWorkChange).toHaveBeenNthCalledWith(1, false);
+    // p no longer triggers the modal pause overlay.
+    expect(onPauseChange).not.toHaveBeenCalled();
 
     applyRuntimeSnapshotToTuiState(state, {
-      paused: true,
+      paused: state.paused ?? false,
+      acceptingWork: false,
       mergeStrategy: state.mergeStrategy,
       maxInflight: state.maxInflight ?? 3,
       reviewMode: state.reviewMode,
       collaborationMode: state.collaborationMode,
     });
-    expect(state.paused).toBe(true);
-    expect(state.pendingPaused).toBeUndefined();
+    expect(state.acceptingWork).toBe(false);
+    expect(state.viewOptions.acceptingWork).toBe(false);
+    expect(state.pendingAcceptingWork).toBeUndefined();
 
     stdin.emit("data", "p");
-    expect(state.pendingPaused).toBe(false);
-    expect(onPauseChange).toHaveBeenNthCalledWith(2, false);
+    expect(state.pendingAcceptingWork).toBe(true);
+    expect(state.viewOptions.acceptingWork).toBe(true);
+    expect(onAcceptingWorkChange).toHaveBeenNthCalledWith(2, true);
+    cleanup();
+  });
+
+  it("+/- still adjust maxInflight while draining (acceptingWork=false)", () => {
+    const ac = new AbortController();
+    const stdin = makeFakeStdin();
+    const onMaxInflightChange = vi.fn();
+    const state = makeTuiState({
+      acceptingWork: false,
+      maxInflight: 3,
+      onMaxInflightChange,
+    });
+    const cleanup = setupKeyboardShortcuts(ac, () => {}, stdin as any, state);
+
+    stdin.emit("data", "+");
+    expect(onMaxInflightChange).toHaveBeenCalledWith(1);
+    expect(state.pendingMaxInflight).toBe(4);
+    // Drain flag is not affected by +/-.
+    expect(state.acceptingWork).toBe(false);
+
+    stdin.emit("data", "-");
+    expect(onMaxInflightChange).toHaveBeenCalledWith(-1);
+    expect(state.pendingMaxInflight).toBeUndefined();
+    expect(state.acceptingWork).toBe(false);
     cleanup();
   });
 
