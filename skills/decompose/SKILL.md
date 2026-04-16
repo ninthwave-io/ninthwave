@@ -58,7 +58,22 @@ Treat `.ninthwave/work/` as the live queue of open work: `/decompose` populates 
 
 4. Summarize the feature scope in 3-5 bullet points and confirm with the user.
 
-5. Assign a **feature code** for work item IDs. Derive from the feature name (e.g., "User Onboarding" -> `UO`, "Search & Filters" -> `SF`). Keep it 2-4 uppercase alphanumeric characters.
+5. **Internalize external specs.** If the spec or plan doc lives outside the repo (absolute path, home directory, `~/.claude/`, etc.), it must be brought into the repo so workers can access it. Workers clone from remote into isolated worktrees -- they cannot read files outside the repo.
+
+   Discover the project's documentation convention:
+   - Check for existing doc directories (`docs/`, `documentation/`, `doc/`, `specs/`, etc.)
+   - AskUserQuestion: show what you found (or that nothing exists), suggest a location, and ask where they'd like the plan doc stored. If no convention exists, recommend `docs/` as a standard default.
+
+   ```bash
+   mkdir -p <chosen-directory>
+   cp <external-path> <chosen-directory>/<descriptive-name>.md
+   git add <chosen-directory>/
+   git commit -m "docs: add <feature> plan document"
+   ```
+
+   Use the in-repo path for all subsequent references in work items.
+
+6. Assign a **feature code** for work item IDs. Derive from the feature name (e.g., "User Onboarding" -> `UO`, "Search & Filters" -> `SF`). Keep it 2-4 uppercase alphanumeric characters.
 
 ---
 
@@ -271,4 +286,5 @@ Explicitly remind the user that the files you just wrote are now the live queue.
 - **PR size discipline:** Split work items > ~500 LOC, combine < ~50 LOC
 - **File conflict awareness:** Items in the same batch should not modify the same files
 - **No VERSION/CHANGELOG:** work items should not mention modifying these files
+- **Portable references:** All paths in work items (Source, description, Key files) must be repo-relative. Workers clone from remote into isolated worktrees -- absolute paths and external files (home directories, tool config directories) are inaccessible. Referencing plan documentation for context is encouraged, but referenced files must be committed to the repo. If the source spec is external, internalize it during INTAKE.
 - **Idempotent:** Check `.ninthwave/work/` for existing files with the same ID before writing duplicates

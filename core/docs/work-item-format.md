@@ -67,6 +67,8 @@ Acceptance: <Conditions that make this work item "done". Concrete, verifiable st
 Key files: `path/to/file.ex`, `path/to/component.tsx:42`
 ```
 
+**All file references must be repo-relative.** Paths in `Source`, descriptions, and `Key files` must be relative to the repo root. Workers run in isolated worktrees cloned from remote and cannot access files outside the repository. When referencing plan documentation for context, ensure it is committed to the repo following the project's documentation conventions (e.g., `docs/feature-spec.md`).
+
 ## Required Fields
 
 | Field | Location | Format |
