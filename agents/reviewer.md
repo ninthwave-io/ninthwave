@@ -285,7 +285,9 @@ Inline comments are the primary feedback mechanism for the GitHub UI. Each findi
 
 #### Building the review payload
 
-Build the entire review as a single JSON payload passed via `--input`. Use an **unquoted** heredoc delimiter so shell variables (like `$COMMIT_SHA`) expand. Each inline comment needs `path`, `line`, `side`, and `body`:
+Build the entire review as a single JSON payload passed via `--input`. Use an **unquoted** heredoc delimiter so shell variables (like `$COMMIT_SHA`) expand. Each inline comment needs `path`, `line`, `side`, and `body`.
+
+**Marker requirement:** Every inline comment `body` must end with `\n\n<!-- ninthwave-reviewer -->`. This HTML comment marker prevents the orchestrator from misclassifying your comments as human feedback.
 
 ```bash
 # Get the latest commit SHA for the review
@@ -304,13 +306,13 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews \
       "path": "path/to/file.ts",
       "line": 42,
       "side": "RIGHT",
-      "body": "**suggestion (non-blocking):** Extract this retry timeout into a named constant so the policy stays in one place.\n\n\`\`\`suggestion\nconst RETRY_TIMEOUT_MS = 5000;\n\`\`\`"
+      "body": "**suggestion (non-blocking):** Extract this retry timeout into a named constant so the policy stays in one place.\n\n\`\`\`suggestion\nconst RETRY_TIMEOUT_MS = 5000;\n\`\`\`\n\n<!-- ninthwave-reviewer -->"
     },
     {
       "path": "path/to/other.ts",
       "line": 15,
       "side": "RIGHT",
-      "body": "**issue (blocking, security):** Validate this user-controlled path before interpolating it into the shell command.\n\nSuggested fix: reject unsafe characters before constructing the command."
+      "body": "**issue (blocking, security):** Validate this user-controlled path before interpolating it into the shell command.\n\nSuggested fix: reject unsafe characters before constructing the command.\n\n<!-- ninthwave-reviewer -->"
     }
   ]
 }

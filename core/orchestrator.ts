@@ -1575,19 +1575,68 @@ export class Orchestrator {
     const actions: Action[] = [];
     // External merge and rebase tracking handled by interceptors.
 
-    if (item.needsFeedbackResponse && item.pendingFeedbackMessage) {
-      return this.reopenReviewingForFeedback(item, snap);
+    // ── Verdict file (priority -- must run before feedback) ──────────
+    // Moved ahead of feedback to prevent the race where comments (agent
+    // or human) fire resolvePendingFeedbackBatch, killing the reviewer
+    // before the verdict file is read.  See diagnosis of PR #577.
+    if (snap?.reviewVerdict) {
+      const v = snap.reviewVerdict;
+
+      if (v.verdict === "approve") {
+        item.reviewCompleted = true;
+        item.lastReviewedCommitSha = snap?.headSha ?? null;
+        this.transition(item, "ci-passed", snap?.eventTime);
+        actions.push({ type: "clean-review", itemId: item.id });
+        actions.push({
+          type: "post-review",
+          itemId: item.id,
+          prNumber: item.prNumber,
+          verdict: v,
+        });
+        actions.push({
+          type: "set-commit-status",
+          itemId: item.id,
+          prNumber: item.prNumber,
+          statusState: "success",
+          statusDescription: `Review passed: ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking`,
+        });
+        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
+        return actions;
+      }
+
+      if (v.verdict === "request-changes") {
+        item.lastReviewedCommitSha = snap?.headSha ?? null;
+        this.transition(item, "review-pending", snap?.eventTime);
+        actions.push({ type: "clean-review", itemId: item.id });
+        actions.push({
+          type: "post-review",
+          itemId: item.id,
+          prNumber: item.prNumber,
+          verdict: v,
+        });
+        actions.push({
+          type: "set-commit-status",
+          itemId: item.id,
+          prNumber: item.prNumber,
+          statusState: "failure",
+          statusDescription: `Changes requested: ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking`,
+        });
+        const round = item.reviewRound ?? 1;
+        const feedbackMessage = `[ORCHESTRATOR] Review Feedback (round ${round}): ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking.\n\n${v.summary}`;
+        item.pendingFeedbackMessage = feedbackMessage;
+        actions.push({
+          type: "notify-review",
+          itemId: item.id,
+          message: feedbackMessage,
+        });
+        return actions;
+      }
     }
 
-    const feedback = this.resolvePendingFeedbackBatch(item, snap, now);
-    if (feedback) {
-      if (feedback.actions.length === 0) return [];
-      return this.reopenReviewingForFeedback(
-        item,
-        snap,
-        feedback.actions.filter((action) => action.type !== "send-message"),
-      );
-    }
+    // ── Feedback during review: deferred ─────────────────────────────
+    // Comments that arrive while the reviewer is running stay in
+    // pendingFeedbackBatch.  They are resolved after the verdict
+    // transitions the item (those handlers call resolvePendingFeedbackBatch).
 
     // Drain: skipReview toggled on while item was in reviewing state.
     // reviewCompleted was set by setSkipReview(); clean up the review worker
@@ -1647,62 +1696,22 @@ export class Orchestrator {
       return actions;
     }
 
-    // Verdict file detected → process review outcome
-    if (snap?.reviewVerdict) {
-      const v = snap.reviewVerdict;
-
-      if (v.verdict === "approve") {
-        item.reviewCompleted = true;
-        // Record HEAD so the SHA gate in handleImplementing/evaluateMerge blocks
-        // re-review on unchanged code if the item is later respawned for feedback.
-        item.lastReviewedCommitSha = snap?.headSha ?? null;
+    // ── Dead-reviewer recovery ───────────────────────────────────────
+    // If the reviewer died without writing a verdict (crash, timeout,
+    // OOM), recover by transitioning back to ci-passed for re-evaluation.
+    if (item.reviewWorkspaceRef) {
+      const liveness = this.checkWorkerLiveness(item, snap);
+      if (liveness === "dead") {
         this.transition(item, "ci-passed", snap?.eventTime);
         actions.push({ type: "clean-review", itemId: item.id });
-        actions.push({
-          type: "post-review",
-          itemId: item.id,
-          prNumber: item.prNumber,
-          verdict: v,
-        });
-        actions.push({
-          type: "set-commit-status",
-          itemId: item.id,
-          prNumber: item.prNumber,
-          statusState: "success",
-          statusDescription: `Review passed: ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking`,
-        });
-        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
-        return actions;
-      }
-
-      if (v.verdict === "request-changes") {
-        // Record the current branch HEAD so evaluateMerge's SHA gate blocks
-        // re-review until the implementer pushes a new commit.
-        item.lastReviewedCommitSha = snap?.headSha ?? null;
-        this.transition(item, "review-pending", snap?.eventTime);
-        actions.push({ type: "clean-review", itemId: item.id });
-        actions.push({
-          type: "post-review",
-          itemId: item.id,
-          prNumber: item.prNumber,
-          verdict: v,
-        });
         actions.push({
           type: "set-commit-status",
           itemId: item.id,
           prNumber: item.prNumber,
           statusState: "failure",
-          statusDescription: `Changes requested: ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking`,
+          statusDescription: "Review worker died without verdict -- will retry",
         });
-        const round = item.reviewRound ?? 1;
-        const feedbackMessage = `[ORCHESTRATOR] Review Feedback (round ${round}): ${v.blockingCount} blocking, ${v.nonBlockingCount} non-blocking.\n\n${v.summary}`;
-        // Store feedback for respawn if the implementer worker dies before addressing it.
-        item.pendingFeedbackMessage = feedbackMessage;
-        actions.push({
-          type: "notify-review",
-          itemId: item.id,
-          message: feedbackMessage,
-        });
+        actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
         return actions;
       }
     }

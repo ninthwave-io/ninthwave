@@ -3518,7 +3518,7 @@ describe("Orchestrator", () => {
         expect(item.lastReviewedCommitSha).toBe("merge-sha-1");
       });
 
-      it("reviewing waits for pending feedback before accepting an approve verdict", () => {
+      it("reviewing processes verdict immediately even when feedback is pending", () => {
         orch.addItem(makeWorkItem("X-1-2"));
         const item = orch.getItem("X-1-2")!;
         item.prNumber = 43;
@@ -3527,7 +3527,9 @@ describe("Orchestrator", () => {
         item.reviewWorkspaceRef = "workspace:review";
         orch.hydrateState("X-1-2", "reviewing");
 
-        const waitingActions = orch.processTransitions(
+        // Verdict and human comment arrive in the same poll.
+        // Verdict takes priority -- feedback is deferred to post-verdict state.
+        const actions = orch.processTransitions(
           snapshotWith([{
             id: "X-1-2",
             prState: "open",
@@ -3550,36 +3552,14 @@ describe("Orchestrator", () => {
           new Date("2026-03-29T00:01:30Z"),
         );
 
-        expect(waitingActions.some((a) => a.type === "merge")).toBe(false);
-        expect(waitingActions.some((a) => a.type === "post-review")).toBe(false);
-        expect(item.state).toBe("reviewing");
-        expect(item.pendingFeedbackBatch).toEqual(expect.objectContaining({
-          deadline: "2026-03-29T00:02:00.000Z",
-        }));
-
-        const flushActions = orch.processTransitions(
-          snapshotWith([{
-            id: "X-1-2",
-            workerAlive: true,
-            prState: "open",
-            ciStatus: "pass",
-            headSha: "review-sha-1",
-            reviewVerdict: {
-              verdict: "approve",
-              blockingCount: 0,
-              nonBlockingCount: 0,
-              summary: "Looks good.",
-            },
-          }]),
-          new Date("2026-03-29T00:02:30Z"),
-        );
-
-        expect(flushActions.some((a) => a.type === "clean-review")).toBe(true);
-        expect(flushActions.some((a) => a.type === "send-message")).toBe(true);
-        expect(flushActions.some((a) => a.type === "merge")).toBe(false);
-        expect(flushActions.some((a) => a.type === "post-review")).toBe(false);
-        expect(item.state).toBe("review-pending");
+        // Verdict processed immediately (not blocked by pending feedback)
+        expect(actions.some((a) => a.type === "post-review")).toBe(true);
+        expect(actions.some((a) => a.type === "clean-review")).toBe(true);
+        expect(item.state).not.toBe("reviewing");
+        expect(item.reviewCompleted).toBe(true);
         expect(item.lastReviewedCommitSha).toBe("review-sha-1");
+        // Feedback was ingested but deferred (not resolved during reviewing)
+        expect(item.pendingFeedbackBatch).toBeDefined();
       });
 
       it("stays merging with no actions during blind poll (no ciStatus)", () => {
