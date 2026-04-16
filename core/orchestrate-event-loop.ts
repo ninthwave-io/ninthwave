@@ -23,8 +23,6 @@ import { fetchOrigin, ffMerge } from "./git.ts";
 import { reconcile } from "./commands/reconcile.ts";
 import { cleanSingleWorktree } from "./commands/clean.ts";
 import { collectRunMetrics, parseWorkerTelemetry } from "./analytics.ts";
-import { parseAgentModel, readAgentFileContent } from "./agent-files.ts";
-import { getBundleDir } from "./paths.ts";
 import { readLatestTokenUsage } from "./token-usage.ts";
 import { AuthorCache } from "./git-author.ts";
 import {
@@ -433,22 +431,15 @@ export function handleActionExecution(
   // Report session_started for successful launches
   if (result.success && deps.crewBroker) {
     if (sessionEndedMetadata) {
-      deps.crewBroker.report("session_ended", action.itemId, sessionEndedMetadata, {
-        model: sessionEndedMetadata.model,
-      });
+      deps.crewBroker.report("session_ended", action.itemId, sessionEndedMetadata);
     }
 
     const launchTelemetry = getLaunchTelemetry(action.type);
     const orchItem = orch.getItem(action.itemId);
     if (launchTelemetry && orchItem) {
-      const model = readLaunchModel(ctx, launchTelemetry.filename) ?? undefined;
-      orchItem[launchTelemetry.modelField] = model;
       deps.crewBroker.report("session_started", action.itemId, {
         agent: orchItem.aiTool ?? ctx.aiTool ?? "unknown",
-        model: model ?? "unknown",
         role: launchTelemetry.role,
-      }, {
-        model,
       });
     }
   }
@@ -507,7 +498,7 @@ export function buildSessionEndedMetadata(
   item: OrchestratorItem,
   ctx: ExecutionContext,
   actionType: Action["type"],
-): { agent: string; model: string; role: LaunchTelemetryRole; durationMs?: number } | null {
+): { agent: string; role: LaunchTelemetryRole; durationMs?: number } | null {
   const telemetry = getSessionEndTelemetry(actionType);
   if (!telemetry) return null;
 
@@ -516,7 +507,6 @@ export function buildSessionEndedMetadata(
 
   return {
     agent: item.aiTool ?? ctx.aiTool ?? "unknown",
-    model: item[telemetry.modelField] ?? readLaunchModel(ctx, telemetry.filename) ?? "unknown",
     role: telemetry.role,
     durationMs: item.startedAt ? Date.now() - new Date(item.startedAt).getTime() : undefined,
   };
@@ -527,7 +517,6 @@ type LaunchTelemetryRole = "implementer" | "reviewer" | "rebaser" | "verifier";
 type LaunchTelemetryConfig = {
   role: LaunchTelemetryRole;
   filename: string;
-  modelField: "implementerModel" | "reviewerModel" | "rebaserModel" | "forwardFixerModel";
 };
 
 type SessionEndTelemetryConfig = LaunchTelemetryConfig & {
@@ -535,47 +524,41 @@ type SessionEndTelemetryConfig = LaunchTelemetryConfig & {
 };
 
 const LAUNCH_TELEMETRY_BY_ACTION: Partial<Record<Action["type"], LaunchTelemetryConfig>> = {
-  "launch": { role: "implementer", filename: "implementer.md", modelField: "implementerModel" },
-  "launch-review": { role: "reviewer", filename: "reviewer.md", modelField: "reviewerModel" },
-  "launch-rebaser": { role: "rebaser", filename: "rebaser.md", modelField: "rebaserModel" },
-  "launch-forward-fixer": { role: "verifier", filename: "forward-fixer.md", modelField: "forwardFixerModel" },
+  "launch": { role: "implementer", filename: "implementer.md" },
+  "launch-review": { role: "reviewer", filename: "reviewer.md" },
+  "launch-rebaser": { role: "rebaser", filename: "rebaser.md" },
+  "launch-forward-fixer": { role: "verifier", filename: "forward-fixer.md" },
 };
 
 const SESSION_END_TELEMETRY_BY_ACTION: Partial<Record<Action["type"], SessionEndTelemetryConfig>> = {
   "clean": {
     role: "implementer",
     filename: "implementer.md",
-    modelField: "implementerModel",
     workspaceField: "workspaceRef",
   },
   "retry": {
     role: "implementer",
     filename: "implementer.md",
-    modelField: "implementerModel",
     workspaceField: "workspaceRef",
   },
   "workspace-close": {
     role: "implementer",
     filename: "implementer.md",
-    modelField: "implementerModel",
     workspaceField: "workspaceRef",
   },
   "clean-review": {
     role: "reviewer",
     filename: "reviewer.md",
-    modelField: "reviewerModel",
     workspaceField: "reviewWorkspaceRef",
   },
   "clean-rebaser": {
     role: "rebaser",
     filename: "rebaser.md",
-    modelField: "rebaserModel",
     workspaceField: "rebaserWorkspaceRef",
   },
   "clean-forward-fixer": {
     role: "verifier",
     filename: "forward-fixer.md",
-    modelField: "forwardFixerModel",
     workspaceField: "fixForwardWorkspaceRef",
   },
 };
@@ -586,15 +569,6 @@ function getLaunchTelemetry(actionType: Action["type"]): LaunchTelemetryConfig |
 
 function getSessionEndTelemetry(actionType: Action["type"]): SessionEndTelemetryConfig | undefined {
   return SESSION_END_TELEMETRY_BY_ACTION[actionType];
-}
-
-function readLaunchModel(_ctx: ExecutionContext, filename: string): string | null {
-  const content = readAgentFileContent(getBundleDir(), filename);
-  return content ? parseAgentModel(content) : null;
-}
-
-function resolveCompletionModel(item: OrchestratorItem, ctx: ExecutionContext): string | undefined {
-  return item.implementerModel ?? readLaunchModel(ctx, "implementer.md") ?? undefined;
 }
 
 function buildCompletionReportMetadata(item: OrchestratorItem): Record<string, unknown> {
@@ -1262,7 +1236,6 @@ export async function orchestrateLoop(
           }
 
           try {
-            const model = resolveCompletionModel(orchItem, ctx);
             const completionAction = actions.find((action) => action.itemId === orchItem.id)
               ?? { type: "clean", itemId: orchItem.id };
             const tokenUsage = deps.readTokenUsage?.(orchItem, completionAction, ctx)
@@ -1270,7 +1243,6 @@ export async function orchestrateLoop(
                 since: orchItem.startedAt,
               });
             deps.crewBroker.report("complete", orchItem.id, buildCompletionReportMetadata(orchItem), {
-              model,
               tokenUsage,
             });
           } catch { /* best-effort */ }

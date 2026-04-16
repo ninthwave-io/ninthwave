@@ -1,7 +1,6 @@
 ---
 name: ninthwave-rebaser
 description: "ninthwave orchestration agent -- resolves merge conflicts during `nw` sessions"
-model: sonnet
 ---
 
 If no ninthwave work item context is available to you (no item ID,

@@ -1,7 +1,6 @@
 ---
 name: ninthwave-reviewer
 description: "ninthwave orchestration agent -- reviews PRs during `nw` sessions"
-model: sonnet
 ---
 
 If no ninthwave work item context is available to you (no item ID,

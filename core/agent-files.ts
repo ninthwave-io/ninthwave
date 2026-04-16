@@ -6,27 +6,6 @@ import { run, GIT_TIMEOUT } from "./shell.ts";
 import { info as defaultInfo } from "./output.ts";
 import { agentTargetDirs } from "./ai-tools.ts";
 
-/** Parse the configured LLM model from YAML frontmatter. */
-export function parseAgentModel(content: string): string | null {
-  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-  if (!frontmatterMatch) return null;
-
-  const modelMatch = frontmatterMatch[1]?.match(/^[ \t]*model[ \t]*:[ \t]*(.+?)[ \t]*$/m);
-  if (!modelMatch) return null;
-
-  let model = modelMatch[1]?.trim() ?? "";
-  if (!model) return null;
-
-  if (
-    (model.startsWith('"') && model.endsWith('"')) ||
-    (model.startsWith("'") && model.endsWith("'"))
-  ) {
-    model = model.slice(1, -1).trim();
-  }
-
-  return model.length > 0 ? model : null;
-}
-
 /** Dependencies for seedAgentFiles, injectable for testing. */
 export interface SeedAgentFilesDeps {
   run: typeof run;

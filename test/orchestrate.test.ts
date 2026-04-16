@@ -5546,11 +5546,11 @@ describe("orchestrateLoop crew mode", () => {
     };
   }
 
-  function createTelemetryCtx(agentFilename: string, model: string): ExecutionContext {
+  function createTelemetryCtx(agentFilename: string): ExecutionContext {
     const projectRoot = mkdtempSync(join(tmpdir(), "nw-telemetry-ctx-"));
     mkdirSync(join(projectRoot, ".ninthwave", "work"), { recursive: true });
     mkdirSync(join(projectRoot, "agents"), { recursive: true });
-    writeFileSync(join(projectRoot, "agents", agentFilename), `---\nmodel: ${model}\n---\n`);
+    writeFileSync(join(projectRoot, "agents", agentFilename), `---\n---\n`);
 
     return {
       ...defaultCtx,
@@ -5560,8 +5560,8 @@ describe("orchestrateLoop crew mode", () => {
     };
   }
 
-  it("reports session_started with configured model from agent frontmatter", async () => {
-    const ctx = createTelemetryCtx("implementer.md", "opus");
+  it("reports session_started with harness and role", async () => {
+    const ctx = createTelemetryCtx("implementer.md");
     try {
       const orch = new Orchestrator({ sessionLimit: 5, mergeStrategy: "auto" });
       orch.addItem(makeWorkItem("T-MODEL-1"));
@@ -5589,17 +5589,17 @@ describe("orchestrateLoop crew mode", () => {
       expect(reportCalls[0]).toEqual([
         "session_started",
         "T-MODEL-1",
-        { agent: "claude", model: "opus", role: "implementer" },
-        { model: "opus" },
+        { agent: "claude", role: "implementer" },
       ]);
       expect(reportCalls[0]![2]).not.toHaveProperty("provider");
+      expect(reportCalls[0]![2]).not.toHaveProperty("model");
     } finally {
       rmSync(ctx.projectRoot, { recursive: true, force: true });
     }
   });
 
-  it("builds session_ended metadata with harness and model from agent frontmatter", () => {
-    const ctx = createTelemetryCtx("implementer.md", "opus");
+  it("builds session_ended metadata with harness and role", () => {
+    const ctx = createTelemetryCtx("implementer.md");
     try {
       const startedAt = new Date(Date.now() - 1_000).toISOString();
       const metadata = buildSessionEndedMetadata({
@@ -5611,11 +5611,11 @@ describe("orchestrateLoop crew mode", () => {
 
       expect(metadata).toMatchObject({
         agent: "claude",
-        model: "opus",
         role: "implementer",
       });
       expect(metadata).toHaveProperty("durationMs");
       expect(metadata).not.toHaveProperty("provider");
+      expect(metadata).not.toHaveProperty("model");
     } finally {
       rmSync(ctx.projectRoot, { recursive: true, force: true });
     }
@@ -5778,14 +5778,13 @@ describe("orchestrateLoop crew mode", () => {
     expect(completedIds).toEqual([]);
   });
 
-  it("reports complete with model and token usage before broker.complete", async () => {
-    const ctx = createTelemetryCtx("implementer.md", "claude-sonnet-4-6");
+  it("reports complete with token usage before broker.complete", async () => {
+    const ctx = createTelemetryCtx("implementer.md");
     try {
       const orch = new Orchestrator({ fixForward: false, sessionLimit: 2, mergeStrategy: "auto" });
       orch.addItem(makeWorkItem("T-2"));
       orch.getItem("T-2")!.prNumber = 2;
       orch.getItem("T-2")!.startedAt = new Date(Date.now() - 5_000).toISOString();
-      orch.getItem("T-2")!.implementerModel = "claude-sonnet-4-6";
       orch.hydrateState("T-2", "merged");
 
       const { broker } = mockCrewBroker({
@@ -5811,7 +5810,6 @@ describe("orchestrateLoop crew mode", () => {
         "T-2",
         expect.objectContaining({ state: "done", prNumber: 2 }),
         {
-          model: "claude-sonnet-4-6",
           tokenUsage: { inputTokens: 100, outputTokens: 40, cacheTokens: 10 },
         },
       ]);

@@ -1,7 +1,6 @@
 ---
 name: ninthwave-implementer
 description: "ninthwave orchestration agent -- implements work items during `nw` sessions"
-model: opus
 ---
 
 If no ninthwave work item context is available to you (no item ID,

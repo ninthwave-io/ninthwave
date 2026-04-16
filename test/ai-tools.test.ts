@@ -23,7 +23,6 @@ import {
 const IMPLEMENTER_AGENT_SOURCE = `---
 name: ninthwave-implementer
 description: "ninthwave orchestration agent -- implements work items during \`nw\` sessions"
-model: opus
 ---
 
 If no ninthwave work item context is available to you (no item ID,
@@ -35,7 +34,6 @@ designed for ninthwave orchestration (\`nw\`) and stop.
 const IMPLEMENTER_TOML_SOURCE =
   `name = "ninthwave-implementer"\n` +
   `description = "ninthwave orchestration agent"\n` +
-  `model = "opus"\n` +
   `developer_instructions = ${JSON.stringify(
     "If no ninthwave work item context is available to you (no item ID,\n" +
     "no item specification, no work item details), you were not launched\n" +

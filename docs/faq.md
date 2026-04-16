@@ -361,6 +361,23 @@ Precedence is `.ninthwave/config.local.json` > `.ninthwave/config.json` > `~/.ni
 
 The same pattern works for any tool (`opencode`, `codex`, `copilot`) and any env variable -- `CLAUDE_CONFIG_DIR` is just the first real consumer.
 
+### How do I pick which model a tool uses?
+
+ninthwave does not declare models in agent frontmatter -- that knob was tool-specific and silently no-op on OpenCode and Copilot. Set the model the way each harness expects, either through the harness's own config or through `ai_tool_overrides` env vars. For example, to pin Claude Code to a specific model for every ninthwave-launched session:
+
+```json
+// .ninthwave/config.local.json
+{
+  "ai_tool_overrides": {
+    "claude": {
+      "env": { "ANTHROPIC_MODEL": "claude-opus-4-7" }
+    }
+  }
+}
+```
+
+Check each tool's docs for its own env-var/flag names (Codex, OpenCode, Copilot each use their own). Overrides apply per-tool; they are not currently keyed by agent role, so today the same model is used across implementer, reviewer, rebaser, and forward-fixer for any given harness.
+
 **Where to put what:** `ai_tool_overrides` belongs in `.ninthwave/config.local.json` (gitignored by the deny-by-default `.ninthwave/.gitignore` that `nw init` writes) whenever the values are user-specific -- which absolute local paths almost always are. `.ninthwave/config.json` is for project-shared settings you want committed (e.g. `crew_url`). Use `~/.ninthwave/config.json` for defaults that should follow your user across every repo.
 
 ---

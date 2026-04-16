@@ -172,7 +172,6 @@ export const STANDARD_AGENT_SOURCES_BY_NAME: Record<string, string> = {
 interface ParsedAgentSource {
   name: string;
   description: string;
-  model: string | null;
   developerInstructions: string;
 }
 
@@ -208,7 +207,6 @@ function parseAgentSource(source: string, sourceContent: string): ParsedAgentSou
   return {
     name: frontmatter.name ?? `ninthwave-${baseName}`,
     description: frontmatter.description ?? `ninthwave agent: ${baseName}`,
-    model: frontmatter.model ?? null,
     developerInstructions,
   };
 }
@@ -236,10 +234,8 @@ export function renderAgentArtifact(
   const lines = [
     `name = ${JSON.stringify(parsed.name)}`,
     `description = ${JSON.stringify(parsed.description)}`,
+    `developer_instructions = ${JSON.stringify(parsed.developerInstructions)}`,
   ];
-
-  if (parsed.model) lines.push(`model = ${JSON.stringify(parsed.model)}`);
-  lines.push(`developer_instructions = ${JSON.stringify(parsed.developerInstructions)}`);
 
   return { filename, content: `${lines.join("\n")}\n` };
 }
