@@ -1405,6 +1405,49 @@ describe("formatStatusTable", () => {
     expect(doneIndex).toBeLessThan(queueIndex);
   });
 
+  it("shows a drain-mode 'not accepting' badge in the queue header when acceptingWork is false", () => {
+    const items = [
+      makeStatusItem({ id: "A-1", state: "implementing" }),
+      makeStatusItem({ id: "Q-1", state: "queued" }),
+    ];
+    const table = stripAnsi(formatStatusTable(items, 100, 3, false, {
+      showBlockerDetail: true,
+      acceptingWork: false,
+    }));
+    expect(table).toContain("not accepting");
+    // Inflight count still renders normally.
+    expect(table).toContain("1/3 in flight");
+  });
+
+  it("omits the drain-mode badge when acceptingWork is true or absent", () => {
+    const items = [
+      makeStatusItem({ id: "A-1", state: "implementing" }),
+      makeStatusItem({ id: "Q-1", state: "queued" }),
+    ];
+    const defaultTable = stripAnsi(formatStatusTable(items, 100, 3));
+    expect(defaultTable).not.toContain("not accepting");
+
+    const acceptingTable = stripAnsi(formatStatusTable(items, 100, 3, false, {
+      showBlockerDetail: true,
+      acceptingWork: true,
+    }));
+    expect(acceptingTable).not.toContain("not accepting");
+  });
+
+  it("surfaces the drain label in buildStatusLayout queue header", () => {
+    const items = [
+      makeStatusItem({ id: "A-1", state: "implementing" }),
+      makeStatusItem({ id: "Q-1", state: "queued" }),
+    ];
+    const layout = buildStatusLayout(items, 100, 3, false, {
+      showBlockerDetail: true,
+      acceptingWork: false,
+    });
+    const queueLine = layout.itemLines.find((line) => stripAnsi(line).includes("Queue (1 waiting"));
+    expect(queueLine).toBeDefined();
+    expect(stripAnsi(queueLine!)).toContain("not accepting");
+  });
+
   it("sorts by blocked-by count ascending then ID alphanumeric", () => {
     const items = [
       makeStatusItem({ id: "Z-3", state: "queued", dependencies: ["A-1", "B-2"] }),
@@ -2982,7 +3025,7 @@ describe("buildStatusLayout", () => {
     const footerText = layout.footerLines.map(stripAnsi).join("\n");
     expect(footerText).toContain("› auto");
     expect(footerText).toContain("(shift+tab to toggle)");
-    expect(footerText).toContain("p pause");
+    expect(footerText).toContain("p drain");
     expect(footerText).toContain("q quit");
     expect(footerText).toContain("c controls");
     expect(footerText).toContain("? help");
@@ -2998,7 +3041,7 @@ describe("buildStatusLayout", () => {
     const footerText = layout.footerLines.map(stripAnsi).join("\n");
     expect(footerText).toContain("‖ manual");
     expect(footerText).toContain("(shift+tab to toggle)");
-    expect(footerText).toContain("p pause");
+    expect(footerText).toContain("p drain");
     expect(footerText).toContain("c controls");
   });
 
@@ -3010,7 +3053,7 @@ describe("buildStatusLayout", () => {
     const footerText = layout.footerLines.map(stripAnsi).join("\n");
     expect(footerText).toContain("» bypass");
     expect(footerText).toContain("(shift+tab to toggle)");
-    expect(footerText).toContain("p pause");
+    expect(footerText).toContain("p drain");
     expect(footerText).toContain("c controls");
   });
 
@@ -3020,7 +3063,7 @@ describe("buildStatusLayout", () => {
       mergeStrategy: "bypass",
     });
     const footerLine = stripAnsi(layout.footerLines[2] ?? "");
-    expect(footerLine).toContain("» bypass (shift+tab to toggle)  p pause");
+    expect(footerLine).toContain("» bypass (shift+tab to toggle)  p drain");
     expect(footerLine.length).toBeLessThanOrEqual(80);
   });
 
@@ -3035,7 +3078,7 @@ describe("buildStatusLayout", () => {
     expect(footerText).toContain("‖ manual (5s)");
     expect(footerText).not.toContain("› auto ->");
     expect(footerText).toContain("(shift+tab to toggle)");
-    expect(footerText).toContain("p pause");
+    expect(footerText).toContain("p drain");
     expect(footerText).toContain("c controls");
   });
 
@@ -3887,11 +3930,11 @@ describe("renderHelpOverlay", () => {
     expect(text).not.toContain("split view");
   });
 
-  it("explains layered Escape and p pause-resume behavior", () => {
+  it("explains layered Escape and p drain-mode behavior", () => {
     const lines = renderHelpOverlay(100, 40);
     const text = stripAnsi(lines.join("\n"));
     expect(text).toContain("Escape      Close overlay / pause or resume dashboard");
-    expect(text).toContain("p           Pause or resume dashboard");
+    expect(text).toContain("p           Pause intake -- stop new launches, in-flight work continues");
     expect(text).toContain("q x2        Quit (double-tap) from any TUI state");
   });
 
@@ -3994,7 +4037,7 @@ describe("renderPausedOverlay", () => {
     expect(lines).toHaveLength(24);
     expect(text).toContain("Paused");
     expect(text).toContain("Watch controls are paused.");
-    expect(text).toContain("p resume");
+    expect(text).toContain("esc resume");
     expect(text).toContain("q quit");
     expect(text).not.toContain("·");
 
@@ -4007,7 +4050,7 @@ describe("renderPausedOverlay", () => {
     expect(Math.abs(leftPad - rightPad)).toBeLessThanOrEqual(1);
 
     // Hint line should also be centered within the box
-    const hintLine = lines.map(stripAnsi).find((line) => line.includes("p resume") && line.includes("q quit"));
+    const hintLine = lines.map(stripAnsi).find((line) => line.includes("esc resume") && line.includes("q quit"));
     expect(hintLine).toBeDefined();
     const hintInner = hintLine!.slice(hintLine!.indexOf("│") + 1, hintLine!.lastIndexOf("│"));
     const hintText = hintInner.trim();
@@ -4031,27 +4074,27 @@ describe("renderPausedOverlay", () => {
     const lines = renderPausedOverlay(80, 24, { ctrlCPending: true, pendingQuitKey: "q" });
     const text = lines.map(stripAnsi).join("\n");
     expect(text).toContain("Press q again to quit");
-    expect(text).not.toContain("p resume");
+    expect(text).not.toContain("esc resume");
   });
 
   it("shows pending Ctrl-C message when ctrlCPending is true with ctrl-c key", () => {
     const lines = renderPausedOverlay(80, 24, { ctrlCPending: true, pendingQuitKey: "ctrl-c" });
     const text = lines.map(stripAnsi).join("\n");
     expect(text).toContain("Press Ctrl-C again to exit");
-    expect(text).not.toContain("p resume");
+    expect(text).not.toContain("esc resume");
   });
 
   it("shows closing message when shutdownInProgress is true", () => {
     const lines = renderPausedOverlay(80, 24, { shutdownInProgress: true });
     const text = lines.map(stripAnsi).join("\n");
     expect(text).toContain("Closing...");
-    expect(text).not.toContain("p resume");
+    expect(text).not.toContain("esc resume");
   });
 
   it("shows default hints when ctrlCPending is false", () => {
     const lines = renderPausedOverlay(80, 24, { ctrlCPending: false });
     const text = lines.map(stripAnsi).join("\n");
-    expect(text).toContain("p resume");
+    expect(text).toContain("esc resume");
     expect(text).toContain("q quit");
   });
 });

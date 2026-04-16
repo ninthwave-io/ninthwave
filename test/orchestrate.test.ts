@@ -6701,6 +6701,7 @@ describe("watch engine runner", () => {
     });
     expect(snapshots[0]!.runtime).toEqual({
       paused: false,
+      acceptingWork: true,
       mergeStrategy: "manual",
       maxInflight: 2,
       reviewMode: "on",
@@ -6755,6 +6756,7 @@ describe("watch engine runner", () => {
     expect(snapshots).toHaveLength(3);
     expect(snapshots[0]!.runtime).toEqual({
       paused: false,
+      acceptingWork: true,
       mergeStrategy: "manual",
       maxInflight: 2,
       reviewMode: "on",
@@ -6762,6 +6764,7 @@ describe("watch engine runner", () => {
     });
     expect(snapshots[1]!.runtime).toEqual({
       paused: true,
+      acceptingWork: true,
       mergeStrategy: "manual",
       maxInflight: 4,
       reviewMode: "off",
@@ -6769,6 +6772,7 @@ describe("watch engine runner", () => {
     });
     expect(snapshots[2]!.runtime).toEqual({
       paused: true,
+      acceptingWork: true,
       mergeStrategy: "auto",
       maxInflight: 4,
       reviewMode: "off",
@@ -6963,6 +6967,7 @@ describe("shared engine wrappers", () => {
     expect(detached.snapshotRuntimes).toEqual([
       {
         paused: false,
+        acceptingWork: true,
         mergeStrategy: "manual",
         maxInflight: 2,
         reviewMode: "on",
@@ -6970,6 +6975,7 @@ describe("shared engine wrappers", () => {
       },
       {
         paused: true,
+        acceptingWork: true,
         mergeStrategy: "manual",
         maxInflight: 4,
         reviewMode: "off",
@@ -6977,6 +6983,7 @@ describe("shared engine wrappers", () => {
       },
       {
         paused: true,
+        acceptingWork: true,
         mergeStrategy: "auto",
         maxInflight: 4,
         reviewMode: "off",
