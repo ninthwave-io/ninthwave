@@ -498,7 +498,7 @@ This can arrive as either a structured `[ORCHESTRATOR]` message or a plain-langu
    - Preserve the PR branch's intended behavior
    - Incorporate the newer base-branch changes instead of discarding them
    - Update imports, signatures, and callsites as needed
-   - `git add <resolved-files>` and `git rebase --continue`
+   - `git add <resolved-files>` and `GIT_EDITOR=true git rebase --continue` (GIT_EDITOR=true prevents interactive editor timeouts in non-interactive shell environments)
    - Do **not** `git rebase --abort` just because conflicts appeared
 6. Only if the conflicts are genuinely non-trivial or unresolvable after a reasonable attempt should you `git rebase --abort` and post a PR comment explaining the blocker and why rebaser/human attention is needed
 7. Required outcome: do not go back to idle until the branch is either successfully rebased and force-pushed, or you have posted the blocker comment for a genuinely non-trivial conflict

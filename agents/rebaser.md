@@ -60,7 +60,7 @@ Resolve each conflicting file:
 2. The PR's changes (ours) are the feature work -- preserve their intent
 3. Main's changes (theirs) are recently merged work -- incorporate them
 4. Resolve by combining both sides correctly. Do NOT discard either side
-5. `git add <resolved-file>` and `git rebase --continue`
+5. `git add <resolved-file>` and `GIT_EDITOR=true git rebase --continue` (GIT_EDITOR=true prevents interactive editor timeouts in non-interactive shell environments)
 
 **Rules for conflict resolution:**
 - Keep the feature's functionality intact
