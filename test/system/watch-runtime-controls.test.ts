@@ -202,8 +202,9 @@ describe("system: watch runtime controls", () => {
       expect(settledState.items.find((entry) => entry.id === "H-WRC-2")?.state).not.toBe("ready");
       // The fake AI writes state.env right before exit. With auto-merge closing
       // H-WRC-1's workspace quickly after merge, the orchestrator may SIGTERM
-      // the worker before the shell trap writes signaled state. Wait briefly
-      // for the latest worker to settle into either completed or signaled.
+      // the worker before the shell trap writes signaled state. Wait long
+      // enough for the shell trap to run under CI load (SIGTERM->SIGKILL
+      // escalation can consume several seconds on busy GitHub runners).
       const fakeAiStatus = await waitFor(() => {
         try {
           const status = readFakeAiState(harness.stateDir, run.runId).status;
