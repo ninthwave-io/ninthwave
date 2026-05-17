@@ -854,6 +854,13 @@ export interface StatusDisplay {
  * Matches the status table rendering in core/status-render.ts.
  */
 export function statusDisplayForState(state: OrchestratorItemState, flags?: { rebaseRequested?: boolean; reviewRound?: number }): StatusDisplay {
+  // When the daemon has flagged a merge conflict (rebaseRequested), surface a
+  // distinct pill instead of "CI Pending"/"CI Failed". GitHub's required CI Gate
+  // check stays pending while waiting on conflict resolution, so without this
+  // the user reads "CI Pending" when the real blocker is a stale base branch.
+  if (flags?.rebaseRequested && (state === "ci-pending" || state === "ci-failed")) {
+    return { text: "Conflicts -- rebase needed", icon: "arrow.triangle.branch", color: "#f59e0b" };
+  }
   switch (state) {
     case "implementing":
     case "launching":

@@ -105,13 +105,26 @@ describe("setProgressImpl", () => {
 });
 
 describe("statusDisplayForState", () => {
-  it("keeps underlying CI status when rebase is only requested", () => {
+  it("renders the conflict pill when rebase is requested on ci-pending or ci-failed", () => {
     expect(statusDisplayForState("ci-pending", { rebaseRequested: true })).toMatchObject({
+      text: "Conflicts -- rebase needed",
+      icon: "arrow.triangle.branch",
+      color: "#f59e0b",
+    });
+    expect(statusDisplayForState("ci-failed", { rebaseRequested: true })).toMatchObject({
+      text: "Conflicts -- rebase needed",
+      icon: "arrow.triangle.branch",
+      color: "#f59e0b",
+    });
+  });
+
+  it("renders the standard CI pills when no rebase is requested", () => {
+    expect(statusDisplayForState("ci-pending")).toMatchObject({
       text: "CI Pending",
       icon: "clock.fill",
       color: "#06b6d4",
     });
-    expect(statusDisplayForState("ci-failed", { rebaseRequested: true })).toMatchObject({
+    expect(statusDisplayForState("ci-failed")).toMatchObject({
       text: "CI Failed",
       icon: "xmark.circle",
       color: "#ef4444",
