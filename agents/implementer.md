@@ -353,18 +353,51 @@ Always create PRs through `nw pr-create`. It accepts the exact same flags as `gh
 
 ### Stacked PRs (BASE_BRANCH)
 
-If your system prompt includes `BASE_BRANCH: <branch>`, you are stacked on a dependency branch. Create the PR against the dependency branch instead of main:
+If your system prompt includes `BASE_BRANCH: <branch>`, you started stacked on a dependency branch. Before deciding whether to pass `--base`, figure out which of the three cases below matches your current state. `BASE_BRANCH` in your startup prompt is a *starting* signal, not a standing instruction -- the right target depends on what has happened to that branch and to yours since the session started.
+
+**Case (a): dependency branch is still open and you have *not* rebased your branch locally onto main.**
+
+Create the PR against the dependency branch so reviewers see only your changes, not the dependency's:
 
 ```bash
 nw pr-create --base $BASE_BRANCH --title "..." --body "..."
 ```
 
-This gives reviewers a clean diff showing only your changes, not the dependency's changes.
+**Case (b): dependency branch has already merged.**
 
-Before you use `--base $BASE_BRANCH`, confirm the dependency branch is still live. If the dependency has already merged, do **not** keep targeting the stale branch just because `BASE_BRANCH` was present in your startup prompt.
+Check with:
 
-- If `gh pr list --head "$BASE_BRANCH" --state merged --json number --limit 1` shows a merged PR for the dependency branch, create your PR normally without `--base`.
-- If `nw pr-create --base $BASE_BRANCH ...` fails because the base branch is gone or stale, fetch the default branch, rebase onto it, and retry `nw pr-create` without `--base`.
+```bash
+gh pr list --head "$BASE_BRANCH" --state merged --json number --limit 1
+```
+
+If that returns a merged PR, the dependency landed while you were waiting. Drop `--base` and create the PR against main:
+
+```bash
+nw pr-create --title "..." --body "..."
+```
+
+The merged dependency's commits drop out of your diff automatically once they are on main.
+
+**Case (c): dependency branch is still open, but you rebased your branch locally onto main.**
+
+This typically happens when a *sibling* dependency merged while you were waiting and you pulled main to incorporate it. After the local rebase, your branch's commit SHAs no longer match the remote `BASE_BRANCH` tip, so `nw pr-create --base $BASE_BRANCH` fails with:
+
+```
+No commits between $BASE_BRANCH and HEAD
+```
+
+That message is distinct from the "base branch gone or stale" failure in case (b). Drop `--base` (or pass `--base main` explicitly) and create the PR against main:
+
+```bash
+nw pr-create --title "..." --body "..."
+# or, equivalently:
+nw pr-create --base main --title "..." --body "..."
+```
+
+The sibling dependency's commits drop out of the diff once that dependency is merged into main.
+
+**Catch-all:** if `nw pr-create --base $BASE_BRANCH ...` fails for any other reason -- the base branch was deleted, force-pushed out from under you, or otherwise no longer reachable -- fetch the default branch, rebase onto it, and retry `nw pr-create` without `--base`.
 
 If `BASE_BRANCH` is **not** set in your system prompt, create the PR normally (no `--base` flag needed -- it defaults to main).
 
