@@ -155,6 +155,8 @@ Examples of failures this catches:
 
 For schema-dependent items: check the actual `*.ex` / `models.py` / type definitions. For package-integration items: read the installed source, not the docs. For "duplicated code" claims: confirm with grep or a code walk before quantifying.
 
+This validation is intentionally bounded: chase a claim down when a cheap `rg` or schema read would catch it, but do not try to validate every call site or every behavioral contract up front. When an inconsistency slips through and the implementer hits it at code-writing time, the catch-net is the "Scope Correction" section in `agents/implementer.md`, which prescribes per-pattern recovery (reword + decision log; rename instead of delete; ship-observable + `test.fixme` for unobservable; narrow + decision log on freshness drift).
+
 #### Refactor work items: prefer qualitative acceptance over numeric LOC
 
 Numeric line-reduction targets (`>= 150 lines net reduction`) on refactor-style items are a recurring pitfall. Refactor items typically ship with guardrails (`do not touch field bodies`, `parity preserving`); those guardrails cap the extractable surface. When the LOC target is unreachable under the item's own guardrails, every implementer faces the same false choice -- violate guardrails to hit the number, or burn cycles arguing the target was aspirational -- and reviewers re-litigate the trade-off on every PR in the wave.
