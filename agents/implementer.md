@@ -212,6 +212,51 @@ This keeps the orchestrator's PR-based lifecycle working (the orchestrator handl
 
 > **Important:** Do not silently skip a work item. Every work item must result in a PR -- either with code changes or as a no-op with an explanation.
 
+### Scope Correction: When the Work Item Is Wrong-Shaped
+
+Work items occasionally arrive with claims that turn out to be inconsistent with the actual code: a test plan asks for behavior the underlying function cannot produce, an "X is deleted" line names a symbol that is actively used elsewhere, an acceptance line describes a response shape the parser does not return, a round-trip test references wiring that does not exist, or an acceptance criterion was superseded by a sibling PR merging while this item sat queued.
+
+This is **not** a failure of `/decompose`. Validating every factual claim -- every call site, every behavioral contract, every migration path -- before authoring a work item would collapse the work item into "this is the implementation" and erase the implementer's leverage. The leverage on the implementer side is exactly this section: you have the real code in front of you at the moment the spec is being tested against reality. Use this section when that comparison fails.
+
+**Hard rules for every pattern below:**
+
+- Do **not** silently expand scope to make the original wording true.
+- Do **not** write red tests against behavior the code does not implement.
+- Do **not** argue that acceptance was aspirational. If acceptance is wrong, rewrite it (and record why).
+- **Always record a short entry under `.ninthwave/decisions/`** noting the original wording, what you observed in the code, and what you shipped instead. See the "Decisions Inbox" section below for the format.
+
+#### Pattern 1: test plan asks for behavior the code cannot produce
+
+You start writing the tests and discover the underlying function cannot return the outcomes the test plan describes (e.g., the solver test plan asks for an outcome the solver does not produce).
+
+Recovery: do **not** add stubs or speculative code to make the missing behavior appear. Either reword the test plan as "coverage of current behavior" -- assert what the code actually does on the same code paths, and record a decision log explaining the swap -- or stop and flag the spec inconsistency on the PR before doing further work. Both paths require a decision log; the difference is whether the PR ships test coverage or a "this item needs re-decomposition" comment.
+
+#### Pattern 2: acceptance line describes behavior the code does not exhibit
+
+The acceptance line states something concrete -- "returns 422 unknown_field", "emits PATCH X", "removes column Y" -- but reading the relevant parser, changeset, controller, or migration shows the code does something different (e.g., the parser silently drops unknown keys, no PATCH is emitted, the column is still referenced elsewhere).
+
+Recovery: read the relevant code first, reword acceptance to match the observed behavior, and record a decision log noting the original wording, what you observed, and what you shipped instead. The PR body should also include the rewritten acceptance line so reviewers see the corrected contract, not the original.
+
+#### Pattern 3: "X is deleted" criterion when the symbol is still used
+
+Before deleting any symbol named in an acceptance criterion, run `rg <symbol>` (or your project's equivalent) for call sites. If the symbol is actively used outside the work item's declared scope, deletion will break callers and almost certainly red CI.
+
+Recovery: **rename instead of delete** -- e.g., `Foo` -> `LegacyFoo`, `FooHelper` -> `BeforeAfterFooHelper` -- so the symbol survives for the callers while the new code path takes over the canonical name. Record a decision log naming the call sites that kept the renamed symbol and the neighbouring work item (if any) that is expected to delete it later.
+
+#### Pattern 4: acceptance assumes wiring that is not yet in place
+
+The acceptance criteria describe end-to-end behavior that depends on wiring landing elsewhere -- a host page still spreads an unsupported stub, a residual cleanup step does not fire on first paint, or an upstream prop is not yet plumbed through.
+
+Recovery: split the criteria into observable and unobservable. **Ship the observable assertions live** -- real tests, real assertions, green CI. For the unobservable assertions, write the test bodies but mark them `test.fixme` (or your test runner's pending equivalent) with a clear forward pointer to the work item that lands the missing wiring. Do **not** delete the unobservable tests -- the pending entry is the trail breadcrumb that says "this assertion has a home; it just cannot be exercised yet." Record a decision log listing which assertions shipped live, which are pending, and the work item ID they are waiting on.
+
+#### Pattern 5: acceptance criterion was superseded by a sibling PR
+
+Work items can sit queued for hours behind their dependencies. A sibling PR may have already shipped the change, deleted the file, or renamed the function while this item was waiting (the decompose-freshness drift case). Re-validate each acceptance criterion against `origin/main` at the start of implementation, after the Phase 3 rebase. If a criterion is unreachable as stated -- the target file is gone, the target line was changed, or the desired behavior is already present on main -- **narrow scope** to what is still meaningful and record a decision log. If the entire item is now superseded, switch to the No-Op Path above.
+
+#### When to stop instead of shipping
+
+If none of the patterns above apply, or the spec inconsistency is broad enough that no honest rewording lets the work item stay recognizable (the title, the priority, and the affected files would all need to change), stop and flag the inconsistency. Post a PR comment or open a friction log entry explaining what you found, and do **not** keep grinding on a work item that no longer describes the change you would ship. A clean "this work item needs to be re-decomposed" comment is recoverable; a confused PR that quietly redefined the work is not.
+
 ### Decisions Inbox
 
 If you make a material architectural, product, or testing decision that was **not** already specified by the work item, log it for review in `.ninthwave/decisions/`. Skip this when you only followed the existing spec or made trivial implementation choices.
