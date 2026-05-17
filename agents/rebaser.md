@@ -68,6 +68,7 @@ Resolve each conflicting file:
 - If a function signature changed on main, update the feature's callsites
 - Do NOT add new features or refactor existing code
 - Do NOT `git rebase --abort` and `git reset --hard` -- that destroys the PR's work
+- Any comments or test names you write follow `agents/implementer.md` §4 (Writing comments and test names): describe behavior, not the rebase or the work item. Do not introduce work item IDs into resolved code, comments, or test names. If the incoming side of a conflict already contains a work-item-ID comment or test name, leave it -- do not expand cleanup scope. The rule applies only to text the rebaser writes.
 
 ### If conflicts are unresolvable
 

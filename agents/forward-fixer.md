@@ -244,6 +244,7 @@ Then stop. The orchestrator will transition to stuck with your diagnostic output
 - **Fast exit on flaky failures** -- re-run CI, do not write code
 - **Branch from main** -- your worktree is already on main, not the original item's branch
 - **One fix per verification** -- if multiple things broke, fix the most critical one
+- **Comments and test names describe behavior, not the repair** -- any comments or test names you add must follow the standard in `agents/implementer.md` §4 (Writing comments and test names). Do not write `YOUR_VERIFY_ITEM_ID` or any work item ID (`[CHML]-[A-Z]+-[0-9]+`, `round-[0-9]+`) into source files, code comments, or test names. The ID belongs in the commit subject, PR title/body, and branch name -- which the templates above already cover.
 
 ## 5. PR Comment Conventions
 

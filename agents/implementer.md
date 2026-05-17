@@ -118,6 +118,27 @@ nw heartbeat --progress 0.0 --label "Starting"
 - Keep changes tightly scoped to files mentioned in the work item
 - If you discover related issues, note them in the PR body but do NOT fix them
 
+### Writing comments and test names
+
+The code you write outlives the work item. Comments and test names must read like they were written by someone who understood the domain, not by someone narrating today's workflow.
+
+**Comments:**
+
+- Default to none. Well-named identifiers already explain WHAT the code does.
+- Only add a comment when the WHY is non-obvious: a hidden constraint, a subtle invariant, a workaround for a specific bug, or behavior that would surprise a reader.
+- Never reference the current task, work item, round of review, fix, caller, or ticket. Phrases like `// fix from round 2`, `// added for M-MCX-12`, `// per reviewer feedback`, or `// used by checkout flow` rot the moment the work item closes. That context belongs in the PR description, the commit message, or `.ninthwave/decisions/` -- not in the source tree.
+- If you find yourself writing "this handles the case where X," consider whether a better-named variable or helper would eliminate the need for the comment entirely.
+
+**Test names** (`describe`, `it`, `test` titles, test filenames):
+
+- Describe the behavior under test, not the work item that introduced the test.
+  - Good: `it("rejects expired tokens with 401")`
+  - Bad:  `it("M-MCX-12: rejects expired tokens")`
+  - Bad:  `it("round-3 fix for token expiry")`
+- A reader six months from now should learn what is being tested from the title alone, with no need to look up an ID.
+
+**Where work item IDs belong:** PR title and body, commit subject and body, branch name, and ninthwave's own files under `.ninthwave/` (work items, decision logs, friction logs). Nowhere else.
+
 ### Progress updates
 
 Call `nw heartbeat` at natural milestones during implementation:
@@ -284,7 +305,14 @@ nw heartbeat --progress 0.7 --label "Tests passing"
 Run `git diff origin/main` and verify:
 1. **No scope drift** -- only files related to the work item were modified
 2. **No exposed secrets** -- no API keys, tokens, passwords, or credentials in the diff
-3. **No debug artifacts** -- no `console.log`, stray task-marker comments, or commented-out code
+3. **No debug artifacts** -- no `console.log` or commented-out code
+4. **Comments and test names follow the standard from §4** (describe behavior, not the work that produced them). As a final detection check, grep the diff for work item IDs leaking into source:
+   ```bash
+   git diff origin/main -- ':(exclude).ninthwave' | \
+     grep -nE '(\b[CHML]-[A-Z]+-[0-9]+\b|\bround-[0-9]+\b)' && \
+     echo "FAIL: rewrite the comment or test title to describe behavior, not cite the work item"
+   ```
+   If the grep matches, the fix is not to delete the citation but to rewrite the surrounding comment or test name per §4. A comment that needed an ID to make sense probably should not exist; a test name with an ID is hiding a behavioral description that should be the title instead.
 
 Fix any issues found before proceeding.
 

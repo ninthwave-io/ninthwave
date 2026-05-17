@@ -107,6 +107,15 @@ These are potential correctness bugs, security vulnerabilities, and data integri
 - Allowlist arrays or filter sets that list sibling values but miss the new one
 - Frontend adds an option but backend doesn't persist or process it
 
+#### Comment & Test Hygiene
+Comments and test names must describe enduring behavior, not the work that produced them. Block the PR when:
+
+- A comment references the current task, work item, round of review, fix, caller, or ticket (`// fix from round 2`, `// added for M-MCX-12`, `// per reviewer feedback`, `// used by checkout`). Per-PR context belongs in the PR description and commit message, not the source tree.
+- A test name (`describe`, `it`, `test` title, or filename) cites a work item ID instead of describing the behavior under test.
+- Any source file (outside `.ninthwave/`) contains a work item ID matching `[CHML]-[A-Z]+-[0-9]+` or `round-[0-9]+`.
+
+Do not accept "keep the citation but add a tracker link" -- the citation itself is the problem. The fix is to rewrite the comment or test name so the behavior, not the workflow, is the subject. Often the correct fix is to delete the comment entirely: if a reader six months from now would not need it, neither does the codebase today.
+
 ### Pass 2 -- INFORMATIONAL
 
 These are quality issues worth fixing but not blocking. They reduce maintainability, test confidence, or performance.
@@ -115,7 +124,6 @@ These are quality issues worth fixing but not blocking. They reduce maintainabil
 - Variables assigned but never read
 - Imports not used in the file
 - Comments/docstrings describing old behavior after the code changed
-- work item comments introduced by the PR without a tracking reference
 
 #### Magic Numbers & Hardcoded Values
 - Bare numeric literals used in logic -- should be named constants
