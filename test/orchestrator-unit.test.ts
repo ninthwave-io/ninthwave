@@ -1871,6 +1871,23 @@ describe("handleCiPending", () => {
     expect(orch.getItem("H-1-1")!.state).toBe("merged");
     expect(actions.some((a) => a.type === "clean")).toBe(true);
   });
+
+  it("external merge with live workspaceRef preserves ref for executeClean to close", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "reviewing");
+    orch.getItem("H-1-1")!.prNumber = 42;
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
+
+    const actions = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", prState: "merged" }]),
+    );
+
+    expect(orch.getItem("H-1-1")!.state).toBe("merged");
+    expect(actions.some((a) => a.type === "clean")).toBe(true);
+    // workspaceRef must survive interceptExternalMerge so executeClean can call closeWorkspace
+    expect(orch.getItem("H-1-1")!.workspaceRef).toBe("workspace:1");
+  });
 });
 
 // ── handleCiPassed / ci-failed recovery ──────────────────────────────
@@ -2414,6 +2431,34 @@ describe("handleMerging", () => {
     expect(orch.getItem("H-1-1")!.failureReason).toBe(
       "merge-aborted: PR was closed without merging",
     );
+  });
+});
+
+// ── merged state handler ──────────────────────────────────────────────
+
+describe("merged state handler", () => {
+  it("queues workspace-close when workspaceRef still set after failed close in executeMerge", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto", fixForward: false });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "merged");
+    orch.getItem("H-1-1")!.workspaceRef = "workspace:1";
+
+    const actions = orch.processTransitions(emptySnapshot());
+
+    expect(orch.getItem("H-1-1")!.state).toBe("done");
+    expect(actions.some((a) => a.type === "workspace-close" && a.itemId === "H-1-1")).toBe(true);
+  });
+
+  it("does not queue workspace-close when workspaceRef already cleared by executeMerge", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto", fixForward: false });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "merged");
+    // workspaceRef is undefined: executeMerge successfully closed it
+
+    const actions = orch.processTransitions(emptySnapshot());
+
+    expect(orch.getItem("H-1-1")!.state).toBe("done");
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(false);
   });
 });
 

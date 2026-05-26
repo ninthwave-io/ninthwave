@@ -449,4 +449,51 @@ describe("scenario: watch mode", () => {
     expect(editedLog?.itemId).toBe("M-keep");
     expect(editedLog?.changedFields).toContain("dependencies");
   });
+
+  it("reconcile closes all workspace refs before removing a non-terminal item", async () => {
+    const fakeGh = new FakeGitHub();
+    const fakeMux = new FakeMux();
+    const orch = makeOrch();
+
+    orch.addItem(makeWorkItem("Z-1"));
+
+    const actionDeps = buildActionDeps(fakeGh, fakeMux);
+    const loopDeps = buildLoopDeps(fakeGh, fakeMux, actionDeps);
+
+    // Z-1 starts implementing and gets workspace refs on all three fields.
+    // After one scan, its file disappears (simulating a rebaser deleting it).
+    let fileGone = false;
+    loopDeps.scanWorkItems = vi.fn(() => (fileGone ? [] : [makeWorkItem("Z-1")]));
+
+    // Assign all three workspace refs once the item is launching
+    loopDeps.sleep = async () => {
+      const z1 = orch.getItem("Z-1");
+      if (z1?.state === "implementing") {
+        // Simulate extra open workspace refs (reviewer + rebaser launched separately)
+        z1.reviewWorkspaceRef = fakeMux.launchWorkspace("/tmp", "claude", "Z-1-review") ?? undefined;
+        z1.rebaserWorkspaceRef = fakeMux.launchWorkspace("/tmp", "claude", "Z-1-rebase") ?? undefined;
+        // File disappears on next scan
+        fileGone = true;
+      }
+    };
+
+    await orchestrateLoop(orch, defaultCtx, loopDeps, {
+      maxIterations: 40,
+      watch: true,
+      watchIntervalMs: 0,
+    });
+
+    // Item was removed from orchestrator state
+    expect(orch.getItem("Z-1")).toBeUndefined();
+
+    // closeWorkspace was called for implementer, reviewer, and rebaser refs
+    const closeCalls = (actionDeps.mux.closeWorkspace as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c: unknown[]) => c[0] as string,
+    );
+    const allRefs = fakeMux.getAllRefs();
+    // Every ref that was ever launched should have been closed
+    for (const ref of allRefs) {
+      expect(closeCalls).toContain(ref);
+    }
+  });
 });

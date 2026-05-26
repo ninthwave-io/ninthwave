@@ -937,6 +937,12 @@ export async function orchestrateLoop(
       orch.addItem(item);
     }
     for (const id of removed) {
+      const removedItem = orch.getItem(id);
+      if (removedItem) {
+        for (const ref of [removedItem.workspaceRef, removedItem.reviewWorkspaceRef, removedItem.rebaserWorkspaceRef]) {
+          if (ref) deps.actionDeps.mux.closeWorkspace(ref, id);
+        }
+      }
       orch.removeItem(id);
     }
     for (const edit of edited) {

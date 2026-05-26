@@ -614,9 +614,9 @@ export class Orchestrator {
 
     this.transition(item, "merged", snap?.eventTime);
     // Transitioning to `merged` (non-active) already frees the inflight slot.
-    // We still clear the workspace ref here so the field reflects reality; the
-    // clean action runs below to close the actual workspace.
-    item.workspaceRef = undefined;
+    // Do NOT clear workspaceRef here -- executeClean uses it to close the
+    // workspace, then clears it. Clearing it here causes executeClean to skip
+    // the close, leaking the cmux window.
     const actions: Action[] = [{ type: "clean", itemId: item.id }];
 
     // Clean subsidiary workers if running
@@ -741,7 +741,11 @@ export class Orchestrator {
         actions = this.handleMerging(item, snap, now);
         break;
 
-      case "merged":
+      case "merged": {
+        // Queue a workspace-close retry if executeMerge failed to close the workspace.
+        const mergedActions: Action[] = item.workspaceRef
+          ? [{ type: "workspace-close", itemId: item.id }]
+          : [];
         if (!this.config.fixForward) {
           this.transition(item, "done");
         } else if (snap?.mergeCommitCIStatus === "pass") {
@@ -755,8 +759,9 @@ export class Orchestrator {
         } else {
           // Hold in merged until later polls can discover the merge commit SHA.
         }
-        actions = [];
+        actions = mergedActions;
         break;
+      }
 
       case "forward-fix-pending":
         actions = this.handleForwardFixPending(item, snap, now);

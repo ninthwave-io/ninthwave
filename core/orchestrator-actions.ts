@@ -390,8 +390,12 @@ export function executeMerge(
       // PR was already merged externally. Transition directly to merged.
       orch.transition(item, "merged");
       if (item.workspaceRef) {
-        deps.mux.closeWorkspace(item.workspaceRef, item.id);
-        item.workspaceRef = undefined;
+        const closed = deps.mux.closeWorkspace(item.workspaceRef, item.id);
+        if (closed) {
+          item.workspaceRef = undefined;
+        } else {
+          deps.io.warn?.(`[${item.id}] Failed to close workspace ${item.workspaceRef} after merge; will retry`);
+        }
       }
       try {
         deps.git.fetchOrigin(repoRoot, defaultBranch);
@@ -618,8 +622,12 @@ export function executeMerge(
   // Close the workspace and clear the ref here so workspace resources are
   // released immediately and the field reflects reality.
   if (item.workspaceRef) {
-    deps.mux.closeWorkspace(item.workspaceRef, item.id);
-    item.workspaceRef = undefined;
+    const closed = deps.mux.closeWorkspace(item.workspaceRef, item.id);
+    if (closed) {
+      item.workspaceRef = undefined;
+    } else {
+      deps.io.warn?.(`[${item.id}] Failed to close workspace ${item.workspaceRef} after merge; will retry`);
+    }
   }
 
   // Capture merge commit SHA for post-merge CI verification
