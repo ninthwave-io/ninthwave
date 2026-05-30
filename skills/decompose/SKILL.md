@@ -176,6 +176,15 @@ Decompose into adjacent items with explicit milestones, e.g.:
 
 Each adjacent item should remain independently testable and PR-sized per the sizing guidelines above.
 
+#### Backend/frontend sequencing
+
+When a capability spans backend + frontend, decide deliberately how the cross-layer seam gets wired -- otherwise one side ships before the other and the feature merges green but is non-functional end to end (e.g. the FE sends a field on the wire that no BE builder ever emits, so real requests silently drop it). Use one of two strategies:
+
+- **Strict ordering (prefer this).** Sequence the BE seam strictly before the FE that consumes it, via `Depends on:`. The seam is live on main before the FE lands, so the FE is guaranteed to wire to the real backend, not a stub.
+- **Build to contract (when strict ordering is not possible).** Require each item to build to the spec/contract rather than to whatever currently exists on main, and say so in the item's description: "wires <side> per <spec ref> regardless of whether <other side> has landed." Whichever side lands first, the seam is wired from one end by contract.
+
+For a capability that spans a full request round trip (BE -> FE -> BE, or any multi-layer loop), consider adding a final end-to-end gate item, owned by no single feature item and depending on all of them, whose only job is to verify the loop works from a real request. This catches the case where each layer passes its own acceptance criteria but the seam between two of them was never connected.
+
 #### Manual review override
 
 When a work item is unusually sensitive or risky, include:

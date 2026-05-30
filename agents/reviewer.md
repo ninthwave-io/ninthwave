@@ -107,6 +107,13 @@ These are potential correctness bugs, security vulnerabilities, and data integri
 - Allowlist arrays or filter sets that list sibling values but miss the new one
 - Frontend adds an option but backend doesn't persist or process it
 
+#### Deferred Scope & Follow-up Items
+When the PR's diff, decision log, or PR body shows the implementer deferred part of the work item's spec, block the PR unless a tracked follow-up exists. Check for:
+
+- A `Follow-up items:` heading in the PR body naming a concrete work item ID, AND a matching file committed on the PR branch under `.ninthwave/work/`. If scope is deferred but no follow-up item was created, request changes: "This PR defers <X> but creates no tracked follow-up work item -- create one before merge so the deferred scope is not lost."
+- The follow-up item is real, not a placeholder: it must have a description, acceptance criteria, and a test plan. A stub is a blocking issue.
+- A decision log that says a piece "was NOT wired ... is a follow-up" with no corresponding tracked item is the exact failure mode this rule exists to catch. Silent deferral plus an empty queue is how a feature ships non-functional while every PR passes its own acceptance criteria. Treat it as `issue (blocking)`.
+
 #### Comment & Test Hygiene
 Comments and test names must describe enduring behavior, not the work that produced them. Block the PR when:
 
