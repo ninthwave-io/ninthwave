@@ -118,6 +118,19 @@ nw heartbeat --progress 0.0 --label "Starting"
 - Keep changes tightly scoped to files mentioned in the work item
 - If you discover related issues, note them in the PR body but do NOT fix them
 
+### Silent deferral is not allowed
+
+Do NOT defer part of the work item's scope to a hypothetical "follow-up" wherever it can be completed within this item. If the spec says emit X after wiring Y, both X and Y are in scope -- shipping Y while leaving X "for later" means a sibling's delivered code is unreachable from a real request, even though every PR passes its own acceptance criteria.
+
+A deferral is only acceptable when it is genuinely unavoidable (a blocking external dependency, or a scope inconsistency that requires re-decomposition). When you must defer:
+
+1. Before you open the PR, create a tracked follow-up work item in `.ninthwave/work/` (use `.ninthwave/work-item-format.md`) describing the deferred scope and its acceptance criteria.
+2. Generate its lineage token with `nw lineage-token`.
+3. Commit the new work item file on your branch so it merges with your PR.
+4. Reference the new item's ID in your PR body under a `Follow-up items:` heading, stating exactly what was deferred and why it was unavoidable.
+
+A PR that defers scope without a committed, tracked follow-up item is incomplete. The reviewer will block it (see `agents/reviewer.md`).
+
 ### Writing comments and test names
 
 The code you write outlives the work item. Comments and test names must read like they were written by someone who understood the domain, not by someone narrating today's workflow.
@@ -395,6 +408,8 @@ git push -u origin ninthwave/YOUR_WORK_ITEM_ID
 ### Use `nw pr-create`, not raw `gh pr create`
 
 Always create PRs through `nw pr-create`. It accepts the exact same flags as `gh pr create` and forwards them, but it routes through the shared rate-limit-aware retry pathway -- a GraphQL rate-limit hit is absorbed by the orchestrator's backoff/retry logic instead of consuming your prescribed retries. Real (non-rate-limit) failures still surface to you immediately.
+
+**Self-hosting (developing ninthwave with ninthwave):** if your work item touches ninthwave's own CLI commands under `core/commands/`, invoke `bun run core/cli.ts pr-create ...` instead of `nw pr-create`. The system-installed `nw` binary on `PATH` is built from an earlier commit and will not include your in-progress fix, so running it cannot exercise -- or dogfood -- the change you are making. Running through the worktree-local source guarantees the patched code path is the one that creates your PR.
 
 ### Stacked PRs (BASE_BRANCH)
 
