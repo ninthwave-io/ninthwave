@@ -548,18 +548,20 @@ export function parseWorkItemContent(
 ): WorkItem | null {
   const lines = content.split("\n");
 
-  // Extract ID from the first heading line: "# Type: Title (ID)"
+  // Extract ID from the first heading line: "# Type: Title (ID)". Tolerate
+  // any heading level (`#`..`######`) so a stray `##` title does not silently
+  // drop the whole work item.
   let id = "";
   let title = "";
   for (const line of lines) {
-    if (line.startsWith("# ")) {
+    const headingMatch = line.match(/^#{1,6}\s+(.+)$/);
+    if (headingMatch) {
       const idMatch = line.match(ID_IN_PARENS);
       if (idMatch) {
         id = idMatch[1]!;
       }
-      // Title: everything after "# " up to the ID parens
-      title = line
-        .slice(2)
+      // Title: heading text up to the ID parens
+      title = headingMatch[1]!
         .replace(new RegExp(`\\s*\\(${ID_PATTERN_SOURCE}\\)`), "")
         .trim();
       // Strip "Type: " prefix if present (e.g., "Fix: foo" -> "foo")

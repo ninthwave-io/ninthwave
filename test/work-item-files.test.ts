@@ -166,6 +166,24 @@ describe("parseWorkItemFile", () => {
     expect(item!.dependencies).toEqual(["M-WRK-8", "H-BUG-1"]);
   });
 
+  it("tolerates a title heading at a deeper level than #", () => {
+    const dir = makeTempDir();
+    const content = `## Feat: Stray heading level (H-HDR-1)
+
+**Priority:** High
+**Source:** local
+**Depends on:** None
+**Domain:** headers
+`;
+    const fp = join(dir, "1-headers--H-HDR-1.md");
+    writeFileSync(fp, content);
+
+    const item = parseWorkItemFile(fp);
+    expect(item).not.toBeNull();
+    expect(item!.id).toBe("H-HDR-1");
+    expect(item!.title).toBe("Stray heading level");
+  });
+
   it("extracts bundle-with", () => {
     const dir = makeTempDir();
     const content = `# Feature A (M-FT-1)
