@@ -52,6 +52,24 @@ git rebase origin/main
 
 Continue to step 4.
 
+### If conflicts look like a squash-merged dependency (transplant case)
+
+If the conflicts are add/add conflicts on code the PR never wrote -- a dependency
+that squash-merged (or was rebased onto a newer base) while this PR waited -- a
+plain `git rebase origin/main` is replaying the dependency's old-lineage commits
+against their squashed/rewritten image and conflicting on code already on main.
+Do not resolve these by hand. Abort and transplant only the PR's own commits:
+
+```bash
+git rebase --abort
+# OLD_DEP_TIP = the PR branch's merge-base with the now-deleted/rebased dependency
+# branch (the last commit from the dependency, not from this PR).
+OLD_DEP_TIP=$(git merge-base HEAD origin/main)
+git rebase --onto origin/main "$OLD_DEP_TIP" HEAD
+```
+
+If that still conflicts, the conflicts are in the PR's own code -- resolve them below.
+
 ### If rebase has conflicts
 
 Resolve each conflicting file:

@@ -96,7 +96,19 @@ git fetch origin main --quiet
 git rebase origin/main --quiet
 ```
 
-If the rebase has conflicts, abort and re-create from the base:
+If the rebase has conflicts, first check whether they are *transplant* conflicts:
+add/add conflicts on code you never wrote, on a dependency that squash-merged (or
+was rebased onto newer base) while you were waiting. A plain `git rebase` replays
+the dependency's old-lineage commits against their squashed/rewritten image and
+conflicts on code that is already on the base. Recover by transplanting only your
+own commits onto the base:
+```bash
+# OLD_DEP_TIP = your branch's merge-base with the now-deleted/rebased dependency
+# branch (the last commit that came from the dependency, not from you).
+OLD_DEP_TIP=$(git merge-base HEAD origin/$BASE_BRANCH)
+git rebase --onto origin/$BASE_BRANCH "$OLD_DEP_TIP" HEAD
+```
+If the conflicts are genuinely in your own code, abort and re-create from the base:
 ```bash
 git rebase --abort
 git reset --hard origin/main  # or origin/$BASE_BRANCH if stacked
