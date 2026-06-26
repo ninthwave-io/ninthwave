@@ -4833,6 +4833,39 @@ describe("processComments (via processTransitions)", () => {
     expect(item.lastCommentCheck).toBe("2026-01-15T12:02:00Z");
   });
 
+  it("parked APPROVED item relaunches for a post-approval review body instead of re-merging", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = true;
+    item.sessionParked = true;
+    item.lastReviewedCommitSha = null;
+
+    // A trusted human leaves a "Comment" review (relayed as a review-type
+    // comment) after the PR was already approved; reviewDecision stays APPROVED.
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1",
+        ciStatus: "pass",
+        prState: "open",
+        headSha: "abc123",
+        reviewDecision: "APPROVED",
+        newComments: [
+          { body: "This is too much content; reconsider.", author: "rob", createdAt: "2026-01-15T12:01:00Z", commentType: "review" },
+        ],
+      }]),
+      FEEDBACK_FLUSH_NOW,
+    );
+
+    expect(actions.some((a) => a.type === "launch" && a.itemId === "H-1-1")).toBe(true);
+    expect(actions.some((a) => a.type === "merge")).toBe(false);
+    expect(item.state).toBe("launching");
+    expect(item.sessionParked).toBe(false);
+    expect(item.pendingFeedbackMessage).toContain("This is too much content");
+  });
+
   it("dead review-pending worker flushes one aggregated feedback relaunch", () => {
     const orch = new Orchestrator({ mergeStrategy: "manual" });
     orch.addItem(makeWorkItem("H-1-1"));

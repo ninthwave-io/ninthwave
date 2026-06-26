@@ -21,6 +21,7 @@ import {
   deletedFileReviewCommentMarker,
   hasNinthwaveReviewerComment,
   NINTHWAVE_REVIEWER_COMMENT_SIGNATURE,
+  fetchTrustedPrComments,
 } from "../core/gh.ts";
 import { setupTempRepo, cleanupTempRepos } from "./helpers.ts";
 
@@ -759,5 +760,70 @@ describe("hasNinthwaveReviewerComment", () => {
     // getRepoOwner throws when `gh repo view` fails; the helper must not
     // crash and should return false so the orchestrator retries next cycle.
     expect(hasNinthwaveReviewerComment("/repo", 42)).toBe(false);
+  });
+});
+
+describe("fetchTrustedPrComments", () => {
+  function apiArgsFor(endpoint: string): string[] | undefined {
+    return runSpy.mock.calls
+      .map((call) => call[1] as string[])
+      .find((args) => args[0] === "api" && args[1] === endpoint);
+  }
+
+  it("queries the reviews endpoint and merges review bodies as review comments", () => {
+    runSpy.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === "repo") {
+        return { stdout: "owner/repo", stderr: "", exitCode: 0 };
+      }
+      if (args[1] === "repos/owner/repo/issues/42/comments") {
+        return {
+          stdout: JSON.stringify([
+            { id: 1, body: "issue comment", author: "alice", authorAssociation: "MEMBER", createdAt: "2026-01-15T12:00:00Z", commentType: "issue" },
+          ]),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (args[1] === "repos/owner/repo/pulls/42/comments") {
+        return { stdout: "[]", stderr: "", exitCode: 0 };
+      }
+      if (args[1] === "repos/owner/repo/pulls/42/reviews") {
+        return {
+          stdout: JSON.stringify([
+            { id: 2, body: "this is too much content", author: "rob", authorAssociation: "OWNER", createdAt: "2026-01-15T12:05:00Z", commentType: "review" },
+          ]),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+
+    const comments = fetchTrustedPrComments("/repo", 42, "2026-01-15T11:00:00Z");
+
+    expect(comments.map((c) => ({ id: c.id, commentType: c.commentType }))).toEqual([
+      { id: 1, commentType: "issue" },
+      { id: 2, commentType: "review" },
+    ]);
+  });
+
+  it("filters review bodies on submitted_at and a non-empty body", () => {
+    runSpy.mockImplementation((_cmd: string, args: string[]) => {
+      if (args[0] === "repo") {
+        return { stdout: "owner/repo", stderr: "", exitCode: 0 };
+      }
+      return { stdout: "[]", stderr: "", exitCode: 0 };
+    });
+
+    fetchTrustedPrComments("/repo", 42, "2026-01-15T11:00:00Z");
+
+    const reviewsArgs = apiArgsFor("repos/owner/repo/pulls/42/reviews");
+    expect(reviewsArgs).toBeDefined();
+    const jq = reviewsArgs![reviewsArgs!.indexOf("--jq") + 1];
+    // Reviews timestamp is submitted_at, not created_at, and state-only
+    // reviews (empty body) carry no actionable feedback and are skipped.
+    expect(jq).toContain(".submitted_at >");
+    expect(jq).toContain('(.body // "") != ""');
+    expect(jq).toContain("OWNER");
   });
 });
