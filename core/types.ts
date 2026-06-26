@@ -11,7 +11,7 @@ export interface LogEntry {
 }
 
 export type Priority = "critical" | "high" | "medium" | "low";
-export type Status = "open" | "in-progress";
+export type Status = "open" | "in-progress" | "pending";
 
 export interface WorkItem {
   id: string; // e.g., "H-BF5-1"

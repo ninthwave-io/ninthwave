@@ -1,6 +1,7 @@
 // list command: display work items with optional filters.
 
 import { parseWorkItems } from "../parser.ts";
+import { listWorkItems } from "../work-item-files.ts";
 import { die, BOLD, RED, YELLOW, CYAN, DIM, RESET } from "../output.ts";
 import type { WorkItem } from "../types.ts";
 
@@ -48,8 +49,22 @@ export function cmdList(
     }
   }
 
-  // Build items list -- always sourced from origin/main by parseWorkItems.
+  // Build items list -- sourced from origin/main by parseWorkItems.
   let items: WorkItem[] = parseWorkItems(workDir, worktreeDir);
+
+  // Augment with "pending" items: work item files present in the local
+  // working tree but absent from origin/main (e.g. freshly /decompose'd and
+  // not yet committed, committed-but-unpushed, or pushed only to a feature
+  // branch). The daemon reads only origin/main, so these are invisible to it
+  // until they land on main -- surfacing them here keeps an agent that checks
+  // `nw list` right after /decompose from concluding its items vanished.
+  const onMainIds = new Set(items.map((it) => it.id));
+  for (const local of listWorkItems(workDir, worktreeDir)) {
+    if (!onMainIds.has(local.id)) {
+      local.status = "pending";
+      items.push(local);
+    }
+  }
 
   // Apply filters
   if (filterPriority) {
@@ -109,8 +124,10 @@ export function cmdList(
   console.log("-".repeat(120));
 
   let count = 0;
+  let pendingCount = 0;
   for (const item of items) {
     if (!item.id) continue;
+    if (item.status === "pending") pendingCount++;
 
     // Color-code priority
     let pcolor = "";
@@ -132,6 +149,7 @@ export function cmdList(
     // Color-code status
     let scolor = "";
     if (item.status === "in-progress") scolor = YELLOW;
+    else if (item.status === "pending") scolor = CYAN;
 
     // Truncate title
     let displayTitle = item.title;
@@ -158,6 +176,11 @@ export function cmdList(
 
   console.log();
   console.log(`${DIM}${count} items${RESET}`);
+  if (pendingCount > 0) {
+    console.log(
+      `${DIM}${pendingCount} pending -- exist locally but not on origin/main yet; the daemon won't process them until they're committed and pushed to main.${RESET}`,
+    );
+  }
 }
 
 function pad(s: string, width: number): string {

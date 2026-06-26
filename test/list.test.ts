@@ -168,7 +168,62 @@ describe("list", () => {
 
     expect(output).toContain("Unknown option: --remote");
   });
+
+  it("shows work items present locally but not on origin/main as pending", () => {
+    const repo = setupTempRepo();
+    const workDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+
+    writeLocalOnlyItem(workDir, "M-NEW-1");
+
+    const output = captureOutput(() => cmdList([], workDir, worktreeDir));
+
+    const newLine = output.split("\n").find((l) => l.startsWith("M-NEW-1"));
+    expect(newLine).toBeDefined();
+    expect(newLine).toContain("pending");
+    // Items that are on origin/main keep their normal status.
+    const onMainLine = output.split("\n").find((l) => l.startsWith("M-CI-1"));
+    expect(onMainLine).not.toContain("pending");
+    expect(output).toContain("1 pending");
+  });
+
+  it("omits the pending note when every item is on origin/main", () => {
+    const repo = setupTempRepo();
+    const workDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+
+    const output = captureOutput(() => cmdList([], workDir, worktreeDir));
+
+    expect(output).not.toContain("pending");
+  });
+
+  it("excludes pending items from --ready", () => {
+    const repo = setupTempRepo();
+    const workDir = useFixtureDir(repo, "valid.md");
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+
+    // M-NEW-1 has no dependencies, so it would qualify as ready -- but it is
+    // not on origin/main, so the daemon cannot act on it and it must not
+    // appear under --ready.
+    writeLocalOnlyItem(workDir, "M-NEW-1");
+
+    const output = captureOutput(() =>
+      cmdList(["--ready"], workDir, worktreeDir),
+    );
+
+    const newLines = output.split("\n").filter((l) => l.startsWith("M-NEW-1"));
+    expect(newLines).toHaveLength(0);
+    expect(output).toContain("2 items");
+  });
 });
+
+/** Write a dependency-free work item file into the working tree only. */
+function writeLocalOnlyItem(workDir: string, id: string): void {
+  writeFileSync(
+    join(workDir, `2-new-domain--${id}.md`),
+    `# Feat: Freshly decomposed item (${id})\n\n**Priority:** medium\n**Depends on:** None\n**Domain:** new-domain\n\nBody.\n`,
+  );
+}
 
 /** Helper to run git commands in tests. */
 function gitCmd(cwd: string, ...args: string[]): string {
