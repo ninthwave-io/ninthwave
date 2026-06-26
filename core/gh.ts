@@ -1057,9 +1057,26 @@ export interface PrComment {
   commentType: "issue" | "review";
 }
 
+const TRUSTED_ASSOCIATION_FILTER = '(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")';
+
+/** jq for issue/inline-comment endpoints, keyed on their `created_at` field. */
+function trustedCommentJq(since: string, tsField: string, commentType: "issue" | "review"): string {
+  return `[.[] | select(${tsField} > "${since}" and ${TRUSTED_ASSOCIATION_FILTER}) | {id: .id, body: .body, author: .user.login, authorAssociation: .author_association, createdAt: ${tsField}, commentType: "${commentType}"}]`;
+}
+
+/**
+ * jq for the reviews endpoint. Reviews carry their timestamp in `submitted_at`
+ * and an empty body for state-only reviews (a bare Approve/Request-changes with
+ * no summary text); skip those since they carry no actionable feedback.
+ */
+function trustedReviewBodyJq(since: string): string {
+  return `[.[] | select(.submitted_at > "${since}" and (.body // "") != "" and ${TRUSTED_ASSOCIATION_FILTER}) | {id: .id, body: .body, author: .user.login, authorAssociation: .author_association, createdAt: .submitted_at, commentType: "review"}]`;
+}
+
 /**
  * Fetch PR comments from trusted collaborators since a given timestamp.
- * Checks both issue comments (general) and review comments (inline).
+ * Checks issue comments (general), review comments (inline), and review bodies
+ * (the summary text on a Comment/Approve/Request-changes review).
  * Returns comments sorted by createdAt ascending.
  */
 export function fetchTrustedPrComments(
@@ -1075,9 +1092,9 @@ export function fetchTrustedPrComments(
   }
 
   const comments: PrComment[] = [];
-  const trustedFilter = '(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")';
-  const issueJq = `[.[] | select(.created_at > "${since}" and ${trustedFilter}) | {id: .id, body: .body, author: .user.login, authorAssociation: .author_association, createdAt: .created_at, commentType: "issue"}]`;
-  const reviewJq = `[.[] | select(.created_at > "${since}" and ${trustedFilter}) | {id: .id, body: .body, author: .user.login, authorAssociation: .author_association, createdAt: .created_at, commentType: "review"}]`;
+  const issueJq = trustedCommentJq(since, ".created_at", "issue");
+  const reviewJq = trustedCommentJq(since, ".created_at", "review");
+  const reviewBodyJq = trustedReviewBodyJq(since);
 
   // Issue comments (general PR comments)
   try {
@@ -1097,11 +1114,22 @@ export function fetchTrustedPrComments(
     }
   } catch { /* ignore */ }
 
+  // Review bodies (the summary text on a "Comment"/"Approve"/"Request changes"
+  // review). These live on a separate endpoint from inline comments; without
+  // this a post-approval "Comment" review is never relayed to a parked worker.
+  try {
+    const raw = apiGet(repoRoot, `repos/${ownerRepo}/pulls/${prNumber}/reviews`, reviewBodyJq);
+    if (raw.trim()) {
+      const parsed = JSON.parse(raw) as PrComment[];
+      comments.push(...parsed);
+    }
+  } catch { /* ignore */ }
+
   return comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 /**
- * Async variant of fetchTrustedPrComments. Uses ghInRepoAsync for both API
+ * Async variant of fetchTrustedPrComments. Uses ghInRepoAsync for the API
  * calls to yield to the event loop instead of blocking with Bun.spawnSync.
  * Same filtering and sorting logic as sync version.
  */
@@ -1118,9 +1146,9 @@ export async function fetchTrustedPrCommentsAsync(
   }
 
   const comments: PrComment[] = [];
-  const trustedFilter = '(.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")';
-  const issueJq = `[.[] | select(.created_at > "${since}" and ${trustedFilter}) | {id: .id, body: .body, author: .user.login, authorAssociation: .author_association, createdAt: .created_at, commentType: "issue"}]`;
-  const reviewJq = `[.[] | select(.created_at > "${since}" and ${trustedFilter}) | {id: .id, body: .body, author: .user.login, authorAssociation: .author_association, createdAt: .created_at, commentType: "review"}]`;
+  const issueJq = trustedCommentJq(since, ".created_at", "issue");
+  const reviewJq = trustedCommentJq(since, ".created_at", "review");
+  const reviewBodyJq = trustedReviewBodyJq(since);
 
   // Issue comments (general PR comments)
   try {
@@ -1143,6 +1171,20 @@ export async function fetchTrustedPrCommentsAsync(
       `repos/${ownerRepo}/pulls/${prNumber}/comments`,
       "--jq",
       reviewJq,
+    ]);
+    if (result.exitCode === 0 && result.stdout?.trim()) {
+      const parsed = JSON.parse(result.stdout) as PrComment[];
+      comments.push(...parsed);
+    }
+  } catch { /* ignore */ }
+
+  // Review bodies (the summary text on a Comment/Approve/Request-changes review).
+  try {
+    const result = await ghInRepoAsync(repoRoot, [
+      "api",
+      `repos/${ownerRepo}/pulls/${prNumber}/reviews`,
+      "--jq",
+      reviewBodyJq,
     ]);
     if (result.exitCode === 0 && result.stdout?.trim()) {
       const parsed = JSON.parse(result.stdout) as PrComment[];
