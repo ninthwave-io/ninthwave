@@ -74,7 +74,9 @@ import {
   executeCleanForwardFixer,
   executeReactToComment,
   executeClearFeedbackDoneSignal,
+  executeClearPushbackSignal,
 } from "./orchestrator-actions.ts";
+import { appendPushbackRound } from "./pushback.ts";
 
 // ── Merge commit CI grace periods ────────────────────────────────────
 // After merge, we poll CI on the merge commit. If no check runs appear
@@ -830,6 +832,58 @@ export class Orchestrator {
     return [...actions, ...feedback.actions];
   }
 
+  /**
+   * Handle a worker pushback signal: machine-actionable disagreement with review
+   * feedback. Records the round (persisted in orchestrator state, so it survives
+   * a daemon restart), unblocks the review loop without requiring a no-op commit,
+   * and forces a fresh review round so the reviewer re-engages with the worker's
+   * rationale (already posted to the PR thread by `nw pushback`).
+   *
+   * Returns the actions to run, or null when no actionable pushback applies.
+   * Gated on the same SHA condition as feedback-done -- the worker must be parked
+   * against review feedback on unchanged code, which is exactly the situation the
+   * no-op-commit workaround was used to escape.
+   */
+  private tryHandlePushback(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+    now: Date,
+  ): Action[] | null {
+    if (!snap?.pushbackSignal) return null;
+    if (!item.lastReviewedCommitSha || snap.headSha !== item.lastReviewedCommitSha) {
+      return null;
+    }
+
+    const signal = snap.pushbackSignal;
+    item.pushbackRounds = appendPushbackRound(item.pushbackRounds, {
+      reason: signal.reason,
+      ts: signal.ts,
+      ...(signal.commentId != null ? { commentId: signal.commentId } : {}),
+      ...(signal.commentType ? { commentType: signal.commentType } : {}),
+    });
+    this.config.onEvent?.(item.id, "pushback", {
+      round: item.pushbackRounds.length,
+      reason: signal.reason,
+      ...(signal.commentId != null ? { commentId: signal.commentId } : {}),
+    });
+
+    // Clear the SHA gate and review-completion so evaluateMerge launches a fresh
+    // review round without the worker pushing a commit.
+    item.lastReviewedCommitSha = null;
+    item.needsFeedbackResponse = false;
+    item.pendingFeedbackMessage = undefined;
+    item.reviewCompleted = false;
+    if (snap.prNumber) item.prNumber = snap.prNumber;
+
+    const actions: Action[] = [{ type: "clear-pushback-signal", itemId: item.id }];
+    this.transition(item, "ci-pending", snap?.eventTime);
+    if (item.baseBranch) {
+      actions.push({ type: "sync-stack-comments", itemId: item.id });
+    }
+    actions.push(...this.handleCiPending(item, snap, now));
+    return actions;
+  }
+
   /** Handle implementing state. */
   private handleImplementing(
     item: OrchestratorItem,
@@ -844,6 +898,11 @@ export class Orchestrator {
     // -> evaluateMerge -> reviewing in a single poll cycle on unchanged code.
     if (snap?.prNumber && snap.prState === "open") {
       if (item.lastReviewedCommitSha && snap.headSha === item.lastReviewedCommitSha) {
+        // Pushback signal: worker disagrees with review feedback. Re-triggers a
+        // review round without a no-op commit. Checked before feedback-done so a
+        // worker that pushes back isn't fast-pathed to merge.
+        const pushback = this.tryHandlePushback(item, snap, now);
+        if (pushback) return pushback;
         // Feedback-done signal: worker addressed feedback without code changes.
         // Clear the SHA gate and resume the normal loop.
         if (snap.feedbackDoneSignal) {
@@ -1543,6 +1602,13 @@ export class Orchestrator {
       actions.push(...this.evaluateMerge(item, snap, snap?.eventTime, now));
       return actions;
     }
+
+    // Pushback signal: worker disagrees with review feedback. Re-triggers a
+    // review round without a no-op commit. Checked before feedback-done and
+    // continuePendingFeedbackHandoff so disagreement isn't fast-pathed to merge
+    // or treated as a feedback handoff.
+    const pushback = this.tryHandlePushback(item, snap, now);
+    if (pushback) return [...actions, ...pushback];
 
     // Feedback-done signal: worker addressed feedback without code changes.
     // Must run before continuePendingFeedbackHandoff, which would re-stamp
@@ -2304,6 +2370,8 @@ export class Orchestrator {
         return executePostReview(item, action, ctx, deps);
       case "clear-feedback-done-signal":
         return executeClearFeedbackDoneSignal(item, ctx);
+      case "clear-pushback-signal":
+        return executeClearPushbackSignal(item, ctx);
     }
   }
 

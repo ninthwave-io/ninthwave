@@ -678,6 +678,85 @@ export function clearFeedbackDoneSignal(
   } catch { /* best-effort */ }
 }
 
+// ── Pushback signal ──────────────────────────────────────────────────
+// Durable, machine-actionable record of a worker disagreeing with review
+// feedback. Unlike feedback-done (which clears the review gate and proceeds to
+// merge), a pushback re-triggers the review loop without requiring a no-op
+// commit, carrying the worker's rationale forward to the reviewer.
+
+/** Path to a pushback signal file for a given item. */
+export function pushbackSignalPath(projectRoot: string, itemId: string): string {
+  return join(signalDir(projectRoot), `pushback--${itemId}.json`);
+}
+
+export interface PushbackSignal {
+  id: string;
+  ts: string;
+  /** The worker's rationale for disagreeing with the review feedback. */
+  reason: string;
+  /** Optional ID of the specific review comment being disputed. */
+  commentId?: number;
+  /** GitHub comment endpoint type for the disputed comment. */
+  commentType?: "issue" | "review";
+}
+
+/** Write a pushback signal file atomically. Creates the directory if needed. */
+export function writePushbackSignal(
+  projectRoot: string,
+  itemId: string,
+  reason: string,
+  io: DaemonIO = defaultIO,
+  opts: { commentId?: number; commentType?: "issue" | "review" } = {},
+): void {
+  const dir = signalDir(projectRoot);
+  if (!io.existsSync(dir)) {
+    io.mkdirSync(dir, { recursive: true });
+  }
+  const data: PushbackSignal = {
+    id: itemId,
+    ts: new Date().toISOString(),
+    reason,
+    ...(opts.commentId != null ? { commentId: opts.commentId } : {}),
+    ...(opts.commentType ? { commentType: opts.commentType } : {}),
+  };
+  io.writeFileSync(
+    pushbackSignalPath(projectRoot, itemId),
+    JSON.stringify(data, null, 2),
+    "utf-8",
+  );
+}
+
+/** Read a pushback signal file. Returns null if the file doesn't exist or is invalid. */
+export function readPushbackSignal(
+  projectRoot: string,
+  itemId: string,
+  io: DaemonIO = defaultIO,
+): PushbackSignal | null {
+  const filePath = pushbackSignalPath(projectRoot, itemId);
+  if (!io.existsSync(filePath)) return null;
+  try {
+    const content = io.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(content) as PushbackSignal;
+    if (!parsed || typeof parsed.reason !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Delete a pushback signal file. No-op if the file doesn't exist. */
+export function clearPushbackSignal(
+  projectRoot: string,
+  itemId: string,
+  io: DaemonIO = defaultIO,
+): void {
+  const filePath = pushbackSignalPath(projectRoot, itemId);
+  if (!io.existsSync(filePath)) return;
+  try {
+    io.unlinkSync(filePath);
+  } catch { /* best-effort */ }
+}
+
 // ── External review state ────────────────────────────────────────────
 
 export type ExternalReviewState = "detected" | "reviewing" | "reviewed" | "done";

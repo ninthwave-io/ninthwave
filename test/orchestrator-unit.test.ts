@@ -2686,6 +2686,134 @@ describe("handleReviewing", () => {
     expect(actions.some((a) => a.type === "clear-feedback-done-signal")).toBe(true);
   });
 
+  // ── Reviewer pushback ──────────────────────────────────────────────
+
+  it("pushback in implementing re-triggers review without a no-op commit", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "implementing");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = "reviewed-sha";
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "Please change X";
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open",
+        headSha: "reviewed-sha",
+        pushbackSignal: { id: "H-1-1", ts: "2026-01-15T12:00:00Z", reason: "X is intentional", commentId: 7, commentType: "review" },
+      }]),
+      NOW,
+    );
+
+    // Round recorded and persisted on the item.
+    expect(item.pushbackRounds).toHaveLength(1);
+    expect(item.pushbackRounds![0].reason).toBe("X is intentional");
+    expect(item.pushbackRounds![0].commentId).toBe(7);
+    // SHA gate cleared and review re-armed without a commit.
+    expect(item.lastReviewedCommitSha).toBeNull();
+    expect(item.reviewCompleted).toBe(false);
+    expect(item.needsFeedbackResponse).toBe(false);
+    expect(item.pendingFeedbackMessage).toBeUndefined();
+    // Signal consumed and a fresh review launched (reviewer re-surfaced).
+    expect(actions.some((a) => a.type === "clear-pushback-signal")).toBe(true);
+    expect(actions.some((a) => a.type === "launch-review")).toBe(true);
+    expect(item.state).toBe("reviewing");
+  });
+
+  it("pushback in review-pending re-triggers review without a no-op commit", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = "reviewed-sha";
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "Please change X";
+    item.workspaceRef = "workspace:1";
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open",
+        headSha: "reviewed-sha",
+        pushbackSignal: { id: "H-1-1", ts: "2026-01-15T12:00:00Z", reason: "already handled" },
+      }]),
+      NOW,
+    );
+
+    expect(item.pushbackRounds).toHaveLength(1);
+    expect(item.lastReviewedCommitSha).toBeNull();
+    expect(item.reviewCompleted).toBe(false);
+    expect(actions.some((a) => a.type === "clear-pushback-signal")).toBe(true);
+    expect(actions.some((a) => a.type === "launch-review")).toBe(true);
+  });
+
+  it("pushback is ignored when no SHA gate is active", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "implementing");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = null;
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open",
+        headSha: "some-sha",
+        pushbackSignal: { id: "H-1-1", ts: "2026-01-15T12:00:00Z", reason: "no gate" },
+      }]),
+      NOW,
+    );
+
+    expect(item.pushbackRounds).toBeUndefined();
+    expect(actions.some((a) => a.type === "clear-pushback-signal")).toBe(false);
+  });
+
+  it("multiple pushback rounds on the same comment chain are tracked distinctly", () => {
+    const orch = new Orchestrator({ mergeStrategy: "manual", maxReviewRounds: 10 });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = "reviewed-sha-1";
+    item.workspaceRef = "workspace:1";
+
+    orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open",
+        headSha: "reviewed-sha-1",
+        pushbackSignal: { id: "H-1-1", ts: "t1", reason: "round one", commentId: 7, commentType: "review" },
+      }]),
+      NOW,
+    );
+    expect(item.pushbackRounds).toHaveLength(1);
+
+    // Simulate a second review round producing feedback the worker pushes back on again.
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = "reviewed-sha-1";
+    orch.hydrateState("H-1-1", "review-pending");
+    item.workspaceRef = "workspace:1";
+
+    orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open",
+        headSha: "reviewed-sha-1",
+        pushbackSignal: { id: "H-1-1", ts: "t2", reason: "round two", commentId: 7, commentType: "review" },
+      }]),
+      NOW,
+    );
+
+    expect(item.pushbackRounds).toHaveLength(2);
+    expect(item.pushbackRounds![0].reason).toBe("round one");
+    expect(item.pushbackRounds![1].reason).toBe("round two");
+    expect(item.pushbackRounds!.every((r) => r.commentId === 7)).toBe(true);
+  });
+
   it("transitions to review-pending on request-changes verdict", () => {
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));
