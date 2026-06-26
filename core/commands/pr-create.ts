@@ -1,7 +1,22 @@
-// pr-create command: workers wrap `gh pr create` with rate-limit-aware
-// retries so a transient GraphQL rate-limit hit doesn't burn the worker's
-// own retry budget. All other gh failures bubble up unchanged so the
-// worker still sees real errors immediately.
+// pr-create command: workers wrap `gh pr create` so the recurring failure
+// modes under concurrent orchestration load recover automatically instead of
+// forcing manual recovery:
+//
+//  1. Missing domain label -- labels are stripped from `gh pr create` and
+//     applied after creation via the REST issues endpoint, creating the label
+//     on the fly when absent. A missing `domain:<x>` label is never a hard
+//     failure, and labelling avoids the `read:project` scope that
+//     `gh pr edit --add-label` demands.
+//  2. Transient auth / timeouts -- a concrete token is pinned into the
+//     subprocess environment (avoiding keychain flakiness mid-run) and
+//     transient 401 / connect-timeout failures join rate limits in the shared
+//     retry-with-backoff pathway.
+//  3. Merged + deleted base ref -- a stacked PR whose base was squash-merged
+//     and deleted is retried against the default branch, with one actionable
+//     message instead of an opaque GraphQL error.
+//
+// All other gh failures bubble up unchanged so the worker still sees real
+// errors immediately.
 //
 // When invoked without an explicit `--head` flag, the current git branch is
 // resolved via `git rev-parse --abbrev-ref HEAD` and forwarded as
@@ -15,7 +30,14 @@
 // Example: nw pr-create --label "domain:foo" --title "fix: ..." --body "$(cat <<'EOF' ... EOF)"
 
 import { GH_TIMEOUT } from "../shell.ts";
-import { runGhWithRateLimitRetry, type GhRetryOptions } from "../gh.ts";
+import {
+  runGhWithRateLimitRetry,
+  preResolveGhToken,
+  isBaseRefMissingError,
+  applyPrLabels as defaultApplyPrLabels,
+  getDefaultBranch as defaultGetDefaultBranch,
+  type GhRetryOptions,
+} from "../gh.ts";
 
 /** Default upper bound on a single rate-limit backoff (5 minutes). */
 const DEFAULT_MAX_WAIT_MS = 5 * 60_000;
@@ -63,6 +85,87 @@ export function resolveHeadArgs(
   return { kind: "ok", args: ["--head", branch, ...args] };
 }
 
+// ── Label extraction ────────────────────────────────────────────────
+
+/**
+ * Split `--label`/`-l` flags out of the forwarded args. Labels are applied
+ * after the PR is created (via the REST issues endpoint) rather than passed to
+ * `gh pr create`, because `gh pr create --label` hard-fails when the label does
+ * not yet exist. Recognises the separate (`--label value`, `-l value`), joined
+ * (`--label=value`, `-l=value`), and comma-separated (`--label "a,b"`) forms --
+ * gh treats `--label` as a comma-split string slice, so a single flag may carry
+ * multiple labels.
+ */
+export function extractLabelArgs(args: string[]): { labels: string[]; rest: string[] } {
+  const labels: string[] = [];
+  const rest: string[] = [];
+  const pushLabelValue = (value: string) => {
+    for (const part of value.split(",")) {
+      const trimmed = part.trim();
+      if (trimmed) labels.push(trimmed);
+    }
+  };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--label" || arg === "-l") {
+      const value = args[i + 1];
+      if (value !== undefined) {
+        pushLabelValue(value);
+        i++; // consume the value
+      }
+      continue;
+    }
+    if (arg.startsWith("--label=")) {
+      pushLabelValue(arg.slice("--label=".length));
+      continue;
+    }
+    if (arg.startsWith("-l=")) {
+      pushLabelValue(arg.slice("-l=".length));
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { labels, rest };
+}
+
+// ── Base ref handling ───────────────────────────────────────────────
+
+/** True when args carry an explicit `--base`/`-B` target. */
+export function hasBaseFlag(args: string[]): boolean {
+  return args.some((a) => a === "--base" || a.startsWith("--base=") || a === "-B");
+}
+
+/**
+ * Replace the value of an existing `--base`/`-B` flag with `newBase`. Used to
+ * retarget a stacked PR at the default branch when its original base merged and
+ * was deleted. Returns the args unchanged when no base flag is present.
+ */
+export function replaceBaseArg(args: string[], newBase: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--base" || arg === "-B") {
+      out.push(arg, newBase);
+      i++; // skip the old value
+      continue;
+    }
+    if (arg.startsWith("--base=")) {
+      out.push(`--base=${newBase}`);
+      continue;
+    }
+    out.push(arg);
+  }
+  return out;
+}
+
+/** Extract the PR number from a `gh pr create` URL (e.g. .../pull/42 -> 42). */
+export function extractPrNumber(stdout: string): number | null {
+  const match = stdout.match(/\/pull\/(\d+)/);
+  if (!match) return null;
+  const n = parseInt(match[1]!, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 // ── Command implementation ──────────────────────────────────────────
 
 export interface PrCreateDeps {
@@ -74,6 +177,14 @@ export interface PrCreateDeps {
   queryRateLimitImpl?: GhRetryOptions["queryRateLimitImpl"];
   /** Test seam: override sleep (forwarded to the retry helper). */
   sleepImpl?: GhRetryOptions["sleepImpl"];
+  /** Test seam: the environment to pin a resolved gh token into (defaults to process.env). */
+  env?: Record<string, string | undefined>;
+  /** Test seam: resolve a concrete gh token to pin into the environment. */
+  resolveTokenImpl?: () => string | null;
+  /** Test seam: resolve the repository default branch (for base-ref recovery). */
+  getDefaultBranchImpl?: (repoRoot: string) => string | null;
+  /** Test seam: ensure + apply labels to a created PR. Returns true on success. */
+  applyLabelsImpl?: (repoRoot: string, prNumber: number, labels: string[]) => boolean;
 }
 
 /**
@@ -112,6 +223,17 @@ export async function cmdPrCreate(
   deps: PrCreateDeps = {},
 ): Promise<number> {
   const getBranch = deps.getBranch ?? defaultGetBranch;
+  const env = deps.env ?? process.env;
+  const getDefaultBranch = deps.getDefaultBranchImpl ?? defaultGetDefaultBranch;
+  const applyLabels = deps.applyLabelsImpl ?? defaultApplyPrLabels;
+
+  // Pin a concrete token into the subprocess environment so a burst of gh
+  // calls during this run does not repeatedly hit the keychain (which flakes
+  // with transient 401s under concurrent agent load). The pinned token reaches
+  // the spawned gh process only because `env` is process.env in production and
+  // child processes inherit it; the injectable `deps.env` seam exists purely so
+  // tests can assert the pinning without mutating the real process environment.
+  preResolveGhToken(env, deps.resolveTokenImpl ?? undefined);
 
   const resolved = resolveHeadArgs(args, getBranch);
   if (resolved.kind === "error") {
@@ -119,29 +241,76 @@ export async function cmdPrCreate(
     return 1;
   }
 
-  const result = await runGhWithRateLimitRetry(["pr", "create", ...resolved.args], {
-    cwd: projectRoot,
-    timeout: GH_TIMEOUT,
-    maxRetries: DEFAULT_MAX_RETRIES,
-    maxWaitMs: DEFAULT_MAX_WAIT_MS,
-    runAsyncImpl: deps.runAsyncImpl,
-    queryRateLimitImpl: deps.queryRateLimitImpl,
-    sleepImpl: deps.sleepImpl,
-    onRetry: ({ attempt, waitMs, stderr }) => {
-      // One concise line per backoff so users tailing the worker see why we paused.
-      const seconds = Math.round(waitMs / 1000);
-      const reason = stderr.split("\n")[0] ?? "rate limit";
+  // Labels are applied after creation (via REST) so a missing domain label
+  // never hard-fails `gh pr create`, and labelling avoids the read:project
+  // scope `gh pr edit --add-label` demands.
+  const { labels, rest } = extractLabelArgs(resolved.args);
+
+  const runCreate = (createArgs: string[]) =>
+    runGhWithRateLimitRetry(["pr", "create", ...createArgs], {
+      cwd: projectRoot,
+      timeout: GH_TIMEOUT,
+      maxRetries: DEFAULT_MAX_RETRIES,
+      maxWaitMs: DEFAULT_MAX_WAIT_MS,
+      runAsyncImpl: deps.runAsyncImpl,
+      queryRateLimitImpl: deps.queryRateLimitImpl,
+      sleepImpl: deps.sleepImpl,
+      onRetry: ({ attempt, waitMs, reason, stderr }) => {
+        // One concise line per backoff so users tailing the worker see why we paused.
+        const seconds = Math.round(waitMs / 1000);
+        const firstLine = stderr.split("\n")[0] ?? reason;
+        process.stderr.write(
+          `nw pr-create: transient ${reason} failure (attempt ${attempt + 1}); waiting ${seconds}s before retry. ${firstLine}\n`,
+        );
+      },
+    });
+
+  let result = await runCreate(rest);
+
+  // Merged + deleted base ref: a stacked PR's dependency squash-merged and its
+  // branch was auto-deleted. Retry once against the default branch.
+  if (result.exitCode !== 0 && isBaseRefMissingError(result.stderr) && hasBaseFlag(rest)) {
+    const defaultBranch = getDefaultBranch(projectRoot);
+    if (defaultBranch) {
       process.stderr.write(
-        `nw pr-create: rate limit hit (attempt ${attempt + 1}); waiting ${seconds}s before retry. ${reason}\n`,
+        `nw pr-create: base branch is gone (merged and deleted); retrying against the default branch '${defaultBranch}'.\n`,
       );
-    },
-  });
+      result = await runCreate(replaceBaseArg(rest, defaultBranch));
+    } else {
+      process.stderr.write(
+        "nw pr-create: base branch is gone (merged and deleted) and the default branch " +
+          "could not be resolved. Re-run with an explicit --base pointing at an existing branch.\n",
+      );
+    }
+  }
 
   if (result.stdout) {
     process.stdout.write(result.stdout.endsWith("\n") ? result.stdout : `${result.stdout}\n`);
   }
-  if (result.exitCode !== 0 && result.stderr) {
-    process.stderr.write(result.stderr.endsWith("\n") ? result.stderr : `${result.stderr}\n`);
+  if (result.exitCode !== 0) {
+    if (result.stderr) {
+      process.stderr.write(result.stderr.endsWith("\n") ? result.stderr : `${result.stderr}\n`);
+    }
+    return result.exitCode;
   }
+
+  // PR created -- apply labels best-effort. A labelling failure must not fail
+  // the command (the PR exists; the orchestrator can recover labels).
+  if (labels.length > 0) {
+    const prNumber = extractPrNumber(result.stdout);
+    if (prNumber === null) {
+      process.stderr.write(
+        `nw pr-create: PR created but could not parse its number to apply labels (${labels.join(", ")}).\n`,
+      );
+    } else {
+      const applied = applyLabels(projectRoot, prNumber, labels);
+      if (!applied) {
+        process.stderr.write(
+          `nw pr-create: PR #${prNumber} created but applying labels (${labels.join(", ")}) failed; continuing.\n`,
+        );
+      }
+    }
+  }
+
   return result.exitCode;
 }

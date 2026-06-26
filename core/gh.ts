@@ -724,12 +724,22 @@ export interface GhRetryOptions {
   cwd: string;
   /** Per-attempt timeout for the underlying gh process. */
   timeout?: number;
-  /** Maximum number of rate-limit retries (default 5). Non-rate-limit failures bubble up immediately. */
+  /** Maximum number of retries (default 5). Non-retriable failures bubble up immediately. */
   maxRetries?: number;
   /** Upper bound on a single backoff sleep in milliseconds (default 6 minutes). */
   maxWaitMs?: number;
-  /** Floor for a single backoff sleep in milliseconds (default 5 seconds). */
+  /** Floor for a single rate-limit backoff sleep in milliseconds (default 5 seconds). */
   minWaitMs?: number;
+  /** Floor for a single transient (auth/network) backoff sleep in milliseconds (default 1 second). */
+  transientMinWaitMs?: number;
+  /**
+   * Failure kinds that should be retried with backoff. Defaults to rate
+   * limits plus transient auth (intermittent 401 under concurrent keychain
+   * load) and network (connect timeout) failures, all of which routinely
+   * succeed seconds later. Other kinds (repo-access, missing-cli, parse)
+   * bubble up immediately so the caller sees real errors.
+   */
+  retriableKinds?: ReadonlySet<GhFailureKind>;
   /** Optional retry observer (for logging/telemetry). */
   onRetry?: (info: { attempt: number; waitMs: number; reason: GhFailureKind; stderr: string }) => void;
   /** Test seam: override the gh runner. */
@@ -742,6 +752,13 @@ export interface GhRetryOptions {
   nowImpl?: () => number;
 }
 
+/** Default failure kinds the gh retry pathway absorbs with backoff. */
+export const DEFAULT_RETRIABLE_GH_KINDS: ReadonlySet<GhFailureKind> = new Set<GhFailureKind>([
+  "rate-limit",
+  "auth",
+  "network",
+]);
+
 /**
  * Run a gh command with rate-limit-aware backoff and retry.
  *
@@ -752,12 +769,17 @@ export interface GhRetryOptions {
  *   `[minWaitMs, maxWaitMs]`), then retries up to `maxRetries` times.
  *   If the rate_limit endpoint cannot be reached, falls back to capped
  *   exponential backoff.
- * - On any other failure, returns immediately so the caller can handle
- *   it -- non-rate-limit errors are not silently retried.
+ * - On a transient auth (intermittent 401) or network (connect timeout)
+ *   failure, retries with a shorter capped exponential backoff. These clear
+ *   on their own under concurrent keychain load and should not surface as
+ *   hard failures.
+ * - On any other failure (repo-access, missing-cli, parse), returns
+ *   immediately so the caller sees the real error. The retriable set is
+ *   configurable via `retriableKinds`.
  *
- * This is the shared rate-limit pathway both the orchestrator's direct
- * `gh pr create` call (review-inbox) and the worker-facing `nw pr-create`
- * CLI use, so a rate-limit hit in either context is handled the same way.
+ * Currently the worker-facing `nw pr-create` CLI is the only caller, so
+ * broadening the default retriable set (see `DEFAULT_RETRIABLE_GH_KINDS`) is
+ * contained to that command.
  */
 export async function runGhWithRateLimitRetry(
   args: string[],
@@ -766,6 +788,8 @@ export async function runGhWithRateLimitRetry(
   const maxRetries = opts.maxRetries ?? 5;
   const maxWaitMs = opts.maxWaitMs ?? 6 * 60_000;
   const minWaitMs = opts.minWaitMs ?? 5_000;
+  const transientMinWaitMs = opts.transientMinWaitMs ?? 1_000;
+  const retriableKinds = opts.retriableKinds ?? DEFAULT_RETRIABLE_GH_KINDS;
   const runner = opts.runAsyncImpl ?? runAsync;
   const queryRate = opts.queryRateLimitImpl ?? queryRateLimitAsync;
   const sleepFn = opts.sleepImpl ?? defaultSleep;
@@ -778,18 +802,26 @@ export async function runGhWithRateLimitRetry(
     if (result.exitCode === 0) return result;
 
     const kind = classifyGhFailure(result.stderr);
-    if (kind !== "rate-limit") return result;
+    if (!retriableKinds.has(kind)) return result;
     if (attempt === maxRetries) return result;
 
-    // Compute wait: prefer the actual reset window; fall back to capped exponential backoff.
-    let waitMs = Math.min(maxWaitMs, Math.max(minWaitMs, 30_000 * Math.pow(2, attempt)));
-    const rateInfo = await queryRate(opts.cwd);
-    if (rateInfo && rateInfo.remaining === 0 && typeof rateInfo.reset === "number") {
-      const resetMs = rateInfo.reset * 1000;
-      const nowMs = now();
-      if (resetMs > nowMs) {
-        waitMs = Math.min(maxWaitMs, Math.max(minWaitMs, resetMs - nowMs + 1000));
+    let waitMs: number;
+    if (kind === "rate-limit") {
+      // Rate limits: prefer the actual reset window; fall back to capped exponential backoff.
+      waitMs = Math.min(maxWaitMs, Math.max(minWaitMs, 30_000 * Math.pow(2, attempt)));
+      const rateInfo = await queryRate(opts.cwd);
+      if (rateInfo && rateInfo.remaining === 0 && typeof rateInfo.reset === "number") {
+        const resetMs = rateInfo.reset * 1000;
+        const nowMs = now();
+        if (resetMs > nowMs) {
+          waitMs = Math.min(maxWaitMs, Math.max(minWaitMs, resetMs - nowMs + 1000));
+        }
       }
+    } else {
+      // Transient auth/network failures clear quickly; use a shorter capped
+      // exponential backoff and don't bother querying the rate_limit endpoint
+      // (which itself needs auth that may currently be flaking).
+      waitMs = Math.min(maxWaitMs, Math.max(transientMinWaitMs, 2_000 * Math.pow(2, attempt)));
     }
 
     opts.onRetry?.({ attempt, waitMs, reason: kind, stderr: result.stderr });
@@ -1132,10 +1164,7 @@ const DOMAIN_LABEL_COLOR = "0E8A16";
 export function ensureDomainLabels(repoRoot: string, domains: string[]): void {
   const unique = [...new Set(domains)];
   for (const domain of unique) {
-    ghInRepo(repoRoot, [
-      "label", "create", `domain:${domain}`,
-      "--color", DOMAIN_LABEL_COLOR, "--force",
-    ]);
+    ensureLabelExists(repoRoot, `domain:${domain}`);
   }
 }
 
@@ -1161,6 +1190,142 @@ export function applyGithubToken(projectRoot: string): void {
   if (token) {
     process.env.GH_TOKEN = token;
   }
+}
+
+/**
+ * Resolve a concrete GitHub token to pin into the subprocess environment.
+ * Prefers the explicit NINTHWAVE_GITHUB_TOKEN, then falls back to whatever
+ * `gh auth token` resolves from the keychain. Returns null when no token can
+ * be resolved (e.g. gh not installed, not logged in).
+ */
+export function resolveGhTokenForEnv(): string | null {
+  const fromEnv = resolveGithubToken("");
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  try {
+    const result = Bun.spawnSync(["gh", "auth", "token"], { stdout: "pipe", stderr: "pipe" });
+    if (result.exitCode !== 0) return null;
+    const token = result.stdout.toString().trim();
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pin a concrete GitHub token into the given environment so a burst of gh
+ * subprocesses does not repeatedly hit the OS keychain -- which intermittently
+ * returns HTTP 401 under concurrent agent load even though the same call
+ * succeeds seconds later. Sets both GH_TOKEN and GITHUB_TOKEN (gh and the REST
+ * API helpers honour either). No-op when a static token is already present, so
+ * an explicitly configured identity is never overwritten.
+ */
+export function preResolveGhToken(
+  env: Record<string, string | undefined>,
+  getToken: () => string | null = resolveGhTokenForEnv,
+): void {
+  if (env.GH_TOKEN || env.GITHUB_TOKEN) return;
+  const token = getToken();
+  if (token) {
+    env.GH_TOKEN = token;
+    env.GITHUB_TOKEN = token;
+  }
+}
+
+// ── Base ref recovery ──────────────────────────────────────────────
+
+/**
+ * Match the GraphQL error gh surfaces when a stacked PR targets a base branch
+ * that has been merged and deleted (the dependency squash-merged and GitHub
+ * auto-deleted its head ref). The recovery is to retarget the PR at the
+ * default branch.
+ *
+ * Deliberately narrow: every alternation must name the base *ref* being gone,
+ * so a "no commits between <base> and <head>" failure (a valid base with no new
+ * commits, a semantically distinct condition) does NOT trip the recovery path.
+ * Recovering on that would retarget at the default branch and open a PR with an
+ * unintended, much larger diff -- worse than failing with the real error.
+ */
+export const BASE_REF_MISSING_RE =
+  /base ref must be a branch|base ref is not a branch|base ref .*(does not exist|not found)/i;
+
+/** True when a gh failure indicates the requested base ref is gone (merged + deleted). */
+export function isBaseRefMissingError(stderr: string): boolean {
+  return BASE_REF_MISSING_RE.test(stderr);
+}
+
+// ── REST labelling (scope-light) ───────────────────────────────────
+
+/** Default color for labels created on the fly (matches domain label color). */
+const ON_THE_FLY_LABEL_COLOR = DOMAIN_LABEL_COLOR;
+
+/** Injectable gh runner for label helpers (defaults to the real sync gh call). */
+type GhRunner = (repoRoot: string, args: string[]) => RunResult;
+
+/**
+ * Idempotently ensure a label exists. `gh label create --force` upserts, so a
+ * missing label is created and an existing one is left intact (never a hard
+ * failure). Best-effort: a non-zero exit does not throw.
+ */
+export function ensureLabelExists(
+  repoRoot: string,
+  label: string,
+  runner: GhRunner = ghInRepo,
+): void {
+  runner(repoRoot, [
+    "label", "create", label,
+    "--color", ON_THE_FLY_LABEL_COLOR, "--force",
+  ]);
+}
+
+/**
+ * Add labels to a PR via the REST issues endpoint
+ * (`POST repos/{owner}/{repo}/issues/{number}/labels`).
+ *
+ * Uses REST rather than `gh pr edit --add-label` because the latter resolves
+ * the PR through GraphQL and demands the `read:project` scope, which the
+ * worker token does not carry. The REST endpoint needs only standard `repo`
+ * scope. Returns true on success.
+ */
+export function addPrLabelsViaRest(
+  repoRoot: string,
+  prNumber: number,
+  labels: string[],
+  runner: GhRunner = ghInRepo,
+  getOwner: (repoRoot: string) => string = getRepoOwner,
+): boolean {
+  if (labels.length === 0) return true;
+  let ownerRepo: string;
+  try {
+    ownerRepo = getOwner(repoRoot);
+  } catch {
+    return false;
+  }
+  const args = ["api", "--method", "POST", `repos/${ownerRepo}/issues/${prNumber}/labels`];
+  for (const label of labels) {
+    args.push("-f", `labels[]=${label}`);
+  }
+  const result = runner(repoRoot, args);
+  return result.exitCode === 0;
+}
+
+/**
+ * Ensure labels exist (create-on-the-fly) and apply them to a PR via REST.
+ * This is the worker recovery path: a missing `domain:<x>` label is created
+ * rather than failing PR creation, and labelling never requires `read:project`.
+ * Best-effort -- labelling failures do not block the PR.
+ */
+export function applyPrLabels(
+  repoRoot: string,
+  prNumber: number,
+  labels: string[],
+  runner: GhRunner = ghInRepo,
+  getOwner: (repoRoot: string) => string = getRepoOwner,
+): boolean {
+  if (labels.length === 0) return true;
+  for (const label of labels) {
+    ensureLabelExists(repoRoot, label, runner);
+  }
+  return addPrLabelsViaRest(repoRoot, prNumber, labels, runner, getOwner);
 }
 
 // ── PR comment CRUD (for upsert pattern) ──────────────────────────

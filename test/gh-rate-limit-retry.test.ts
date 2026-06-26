@@ -32,6 +32,22 @@ function repoNotFound(): RunResult {
   };
 }
 
+function authFail(): RunResult {
+  return {
+    stdout: "",
+    stderr: "HTTP 401: Bad credentials (https://api.github.com/graphql)",
+    exitCode: 1,
+  };
+}
+
+function timeoutFail(): RunResult {
+  return {
+    stdout: "",
+    stderr: "dial tcp 140.82.112.5:443: connect: operation timed out",
+    exitCode: 1,
+  };
+}
+
 describe("runGhWithRateLimitRetry", () => {
   it("returns success without retry when gh succeeds on the first try", async () => {
     const runner = vi.fn(async () => ok("https://github.com/x/y/pull/42"));
@@ -147,6 +163,103 @@ describe("runGhWithRateLimitRetry", () => {
     expect(runner).toHaveBeenCalledTimes(3);
     // 2 sleeps (between attempts), no sleep after the final failure
     expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a transient 401 auth failure with backoff and succeeds", async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce(authFail())
+      .mockResolvedValueOnce(ok("https://github.com/x/y/pull/11"));
+    const sleep = vi.fn(async () => {});
+    const onRetry = vi.fn();
+
+    const result = await runGhWithRateLimitRetry(["pr", "create"], {
+      cwd: "/repo",
+      runAsyncImpl: runner,
+      sleepImpl: sleep,
+      queryRateLimitImpl: async () => null,
+      onRetry,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    const retry = onRetry.mock.calls[0]![0] as { reason: string };
+    expect(retry.reason).toBe("auth");
+  });
+
+  it("retries a connect timeout (network) failure with backoff and succeeds", async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce(timeoutFail())
+      .mockResolvedValueOnce(ok("https://github.com/x/y/pull/12"));
+    const sleep = vi.fn(async () => {});
+    const onRetry = vi.fn();
+
+    const result = await runGhWithRateLimitRetry(["pr", "create"], {
+      cwd: "/repo",
+      runAsyncImpl: runner,
+      sleepImpl: sleep,
+      queryRateLimitImpl: async () => null,
+      onRetry,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(runner).toHaveBeenCalledTimes(2);
+    const retry = onRetry.mock.calls[0]![0] as { reason: string };
+    expect(retry.reason).toBe("network");
+  });
+
+  it("does not query the rate_limit endpoint for transient auth failures", async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce(authFail())
+      .mockResolvedValueOnce(ok("https://github.com/x/y/pull/13"));
+    const sleep = vi.fn(async () => {});
+    const queryRate = vi.fn(async () => null);
+
+    await runGhWithRateLimitRetry(["pr", "create"], {
+      cwd: "/repo",
+      runAsyncImpl: runner,
+      sleepImpl: sleep,
+      queryRateLimitImpl: queryRate,
+    });
+
+    expect(queryRate).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a persistent transient failure after bounded retries", async () => {
+    const runner = vi.fn().mockResolvedValue(authFail());
+    const sleep = vi.fn(async () => {});
+
+    const result = await runGhWithRateLimitRetry(["pr", "create"], {
+      cwd: "/repo",
+      runAsyncImpl: runner,
+      sleepImpl: sleep,
+      queryRateLimitImpl: async () => null,
+      maxRetries: 2,
+      transientMinWaitMs: 10,
+      maxWaitMs: 100,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("401");
+    expect(runner).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it("respects a custom retriableKinds set (rate-limit only)", async () => {
+    const runner = vi.fn().mockResolvedValueOnce(authFail());
+    const sleep = vi.fn(async () => {});
+
+    const result = await runGhWithRateLimitRetry(["pr", "create"], {
+      cwd: "/repo",
+      runAsyncImpl: runner,
+      sleepImpl: sleep,
+      queryRateLimitImpl: async () => null,
+      retriableKinds: new Set(["rate-limit"]),
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 
   it("forwards args verbatim to the gh runner", async () => {
