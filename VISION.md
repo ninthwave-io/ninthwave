@@ -35,7 +35,7 @@ v0.1.0 shipped March 2026. Twelve grind cycles (0-11) have shipped since then. S
 - Monorepo workspace detection (pnpm/yarn/npm)
 - `nw doctor` health check command
 
-**0.2.0 scope reduction.** Narrowed focus to the core orchestration pipeline. Removed: external task backends (GitHub Issues, ClickUp, Sentry, PagerDuty), sandboxing (nono, policy proxy), remote dashboard server, webhook notifications, and legacy migration commands. These features were working but added surface area beyond the narrowest wedge. They may return as separate packages or plugins. Sandboxing in particular is returning through composition rather than re-implementation -- see *Sandbox composition* below.
+**0.2.0 scope reduction.** Narrowed focus to the core orchestration pipeline. Removed: external task backends (GitHub Issues, ClickUp, Sentry, PagerDuty), sandboxing (nono, policy proxy), remote dashboard server, webhook notifications, and legacy migration commands. These features were working but added surface area beyond the narrowest wedge. They may return as separate packages or plugins. Sandboxing in particular would return as a composition over a pluggable sandbox provider rather than a bespoke re-implementation -- see *Sandbox composition* below.
 
 **Crew mode foundation.** Multi-daemon coordination via WebSocket broker with creator-affinity scheduling -- items prefer the daemon whose human decomposed them, enabling easier steering and intervention. Affinity is a session-bounded preference, not a hard rule: when the creator's daemon hits its session limit, queued items overflow to other daemons. Review jobs are local-only and do not participate in crew claim scheduling. Mock broker for local testing, persistent daemon IDs, and reconnect state reconciliation. TUI displays crew status when connected.
 
@@ -77,25 +77,11 @@ The next evolution beyond the CLI. Ninthwave Cloud provides reporting and analyt
 - **Review and rebase patterns.** Feedback round-trip times, review pass rates, rebase frequency. Surfaces friction points in the PR lifecycle.
 - **Team insights.** Aggregate metrics across projects, teams, and time periods for engineering leaders. Answers: are we getting faster? Is quality holding? Where is the value?
 
-### Sandbox composition -- sandcastle + strait
+### Sandbox composition
 
-Worker sandboxing returns as a composition of existing layers rather than a bespoke ninthwave runtime.
+Worker sandboxing returns as a composition over a pluggable sandbox provider rather than a bespoke ninthwave runtime. ninthwave delegates the sandbox primitive -- worktree lifecycle, provider backends (Docker, Podman, microVMs, devcontainers, no-sandbox local mode), and agent invocation with commit extraction -- to a provider it composes with rather than owns. The cost is a small adapter layer (host-credential mount for subscription auth, ninthwave-specific agent wiring); what ninthwave keeps and continues to own is the pipeline state machine, daemon, GitHub/PR lifecycle, crew mode, and decomposition.
 
-**The stack.** Three independent layers, each doing one thing well:
-
-```
-ninthwave daemon        -- pipeline orchestration (FSM, PR lifecycle, crew)
-     |
-     +-- sandcastle     -- sandbox primitive (worktree + provider + agent invocation)
-             |
-             +-- strait -- in-container network data plane (policy, egress control)
-```
-
-**sandcastle as the sandbox primitive.** [sandcastle](https://github.com/mattpocock/sandcastle) already provides what a ninthwave-native sandbox layer would have needed: a `SandboxProvider` interface with implementations for Docker, Podman, Vercel Firecracker, Daytona, and no-sandbox local mode; worktree lifecycle management; agent invocation with commit extraction; and prompt shell-expansion. ninthwave will adopt it as the sandbox primitive rather than re-implementing these pieces. The cost of adoption is writing a small adapter layer (host-credential mount for subscription auth, ninthwave-specific agent wiring) rather than owning the whole runtime. What ninthwave keeps and continues to own: the pipeline state machine, daemon, GitHub/PR lifecycle, crew mode, decomposition, multiplexer support for inspection.
-
-**strait repositioned.** [strait](https://github.com/ninthwave-io/strait) pivots from "ninthwave sandbox runtime" to "in-container data plane for any sandbox". It provides network policy, egress control, and a root-vs-agent-user trust boundary inside whatever container sandcastle (or a user-supplied runtime) provides. strait is no longer a standalone launch surface; it is a module composable with sandcastle's providers or a devcontainer feature.
-
-**BYO-sandbox as a product property.** In keeping with *Bring your own everything*, ninthwave users can run on sandcastle with Docker, Podman, Vercel Firecracker, or a custom provider; on devcontainers; or on raw host worktrees for low-security local dev. The pipeline orchestrator is invariant to this choice.
+**BYO-sandbox as a product property.** In keeping with *Bring your own everything*, ninthwave users can run on the bundled default provider, on devcontainers, or on raw host worktrees for low-security local dev. The pipeline orchestrator is invariant to this choice.
 
 ### Architecture evolution -- subscription-first, event-driven sessions
 
@@ -103,7 +89,7 @@ Two related shifts that this refactor enables:
 
 - **Subscription-first auth.** The frictionless way to use Claude Code, OpenCode, or Copilot CLI under ninthwave is with the user's existing subscription, not fresh API keys. This means a host-credential mount pattern (bind `~/.claude`, `~/.config/anthropic`, `gh auth`, etc. into the sandbox) is now first-class, not an afterthought. TUI attachment via multiplexer remains available for occasional debugging but is no longer central to the model.
 
-- **Event-driven agent sessions.** Agent sessions become short-lived and triggered by pipeline events (initial spec, CI failure, review feedback). Workspaces persist across sessions via sandcastle's `createWorkspace()`; each trigger is a fresh `run()` against the same workspace. A standardized completion-signal protocol lets workers emit a clean "done" sentinel instead of blocking in inbox wait loops, freeing session slots and subscription quota. This is cheaper, more deterministic, and aligns with sandcastle's lifecycle model.
+- **Event-driven agent sessions.** Agent sessions become short-lived and triggered by pipeline events (initial spec, CI failure, review feedback). Workspaces persist across sessions; each trigger is a fresh run against the same persistent workspace. A standardized completion-signal protocol lets workers emit a clean "done" sentinel instead of blocking in inbox wait loops, freeing session slots and subscription quota. This is cheaper, more deterministic, and aligns with a persistent-workspace lifecycle.
 
 ### Deferred
 
@@ -130,7 +116,7 @@ What ninthwave will not become:
 
 7. **Not a monitoring system.** ninthwave doesn't collect metrics or evaluate production health. Post-merge CI verification is orchestration -- completing the change lifecycle on GitHub -- not monitoring.
 
-8. **Not a sandbox runtime.** ninthwave does not implement containers, VMs, kernel isolation, or network policy. It delegates to sandcastle (and its providers) for sandboxing and composes strait for in-container network policy. The orchestrator coordinates sandboxed agents; it does not sandbox them.
+8. **Not a sandbox runtime.** ninthwave does not implement containers, VMs, kernel isolation, or network policy. It delegates to a pluggable sandbox provider for sandboxing and network policy. The orchestrator coordinates sandboxed agents; it does not sandbox them.
 
 ## Feature-Completeness
 
@@ -139,7 +125,7 @@ The CLI is approaching feature-completeness for the core orchestration pipeline.
 - A developer goes from spec to merged, reviewed PRs in a single command cycle.
 - The pipeline handles all common failure modes automatically: CI failures, merge conflicts, review feedback, worker crashes, dependency ordering.
 - Works with 3+ AI coding tools (currently: Claude Code, OpenCode, Copilot CLI), each usable with the developer's existing subscription via the host-credential mount pattern.
-- Sandbox provider is pluggable (ships with sandcastle-backed Docker as default; supports Podman, Vercel Firecracker, devcontainers, and no-sandbox local dev).
+- Sandbox provider is pluggable (ships with a Docker-backed default; supports Podman, microVMs, devcontainers, and no-sandbox local dev).
 - Extensible multiplexer support (ships with cmux, community can extend via Multiplexer interface).
 - Post-merge CI verification completes the change lifecycle automatically.
 - Every decomposed work item has a test plan with tracked outcomes.
