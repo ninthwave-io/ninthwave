@@ -1,7 +1,7 @@
 // Launch functions: create worktrees and start AI coding sessions for work items.
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, unlinkSync, statSync, accessSync, constants as fsConstants } from "fs";
-import { join, basename } from "path";
+import { join, basename, dirname } from "path";
 import { warn, info } from "../output.ts";
 import { run } from "../shell.ts";
 import { userStateDir } from "../daemon.ts";
@@ -64,6 +64,7 @@ const defaultLaunchGitDeps: LaunchGitDeps = {
 };
 import { seedAgentFiles } from "../agent-files.ts";
 import { cleanStaleBranchForReuse } from "../branch-cleanup.ts";
+import { buildDependencyDecisionsSection } from "../decision-logs.ts";
 import type { WorkItem } from "../types.ts";
 
 /** Timeout for the post-worktree-create bootstrap hook (5 minutes). */
@@ -629,12 +630,16 @@ export function launchSingleItem(
     const seededFilesLine = commitRecommendedSeededFiles.length > 0
       ? `\nNOTE: The following files were seeded into this worktree by ninthwave and should be included in your first commit: ${commitRecommendedSeededFiles.join(", ")}\n`
       : "";
+    // Surface the decision logs of this item's declared dependencies so the
+    // worker reconciles any divergence at startup rather than mid-work.
+    const decisionsDir = join(dirname(workDir), "decisions");
+    const dependencyDecisionsSection = buildDependencyDecisionsSection(decisionsDir, item.dependencies);
     const systemPrompt = `YOUR_WORK_ITEM_ID: ${item.id}
 YOUR_PARTITION: ${partition}
 PROJECT_ROOT: ${worktreePath}
 HUB_ROOT: ${projectRoot}
 ${baseBranchLine}${hubRepoNwoLine}${seededFilesLine}
-${itemText}`;
+${itemText}${dependencyDecisionsSection}`;
 
     // Write system prompt into the workspace (.ninthwave/.prompt, auto-ignored)
     const promptFile = join(worktreePath, ".ninthwave", ".prompt");

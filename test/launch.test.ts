@@ -508,6 +508,77 @@ describe("launchSingleItem", () => {
     expect(result).toContain("Creating worktree for M-CI-1");
   });
 
+  it("surfaces dependency decision logs in the worker prompt", async () => {
+    const mockMux = createMockMux();
+    const deps = createMockLaunchDeps();
+    const repo = setupTempRepo();
+    const workDir = setupWorkItemsDir(repo);
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+
+    const decisionsDir = join(repo, ".ninthwave", "decisions");
+    mkdirSync(decisionsDir, { recursive: true });
+    writeFileSync(
+      join(decisionsDir, "2026-06-21T10-15-00Z--M-CI-1.md"),
+      "item: M-CI-1\ndecision: keep the legacy runner DTO as a serialization boundary\n",
+    );
+
+    // H-CI-2 declares `Depends on: M-CI-1`.
+    const item = parseWorkItems(workDir, worktreeDir).find((i) => i.id === "H-CI-2")!;
+    await captureOutput(() => {
+      const res = launchSingleItem(item, workDir, worktreeDir, repo, "claude", mockMux, {}, deps);
+      expect(res).not.toBeNull();
+    });
+
+    const promptPath = join(worktreeDir, "ninthwave-H-CI-2", ".ninthwave", ".prompt");
+    const systemPrompt = readFileSync(promptPath, "utf-8");
+    expect(systemPrompt).toContain("## Pending decisions on your dependencies");
+    expect(systemPrompt).toContain("Decision logged by M-CI-1");
+    expect(systemPrompt).toContain("keep the legacy runner DTO as a serialization boundary");
+  });
+
+  it("omits the dependency-decisions section for an item with no dependencies", async () => {
+    const mockMux = createMockMux();
+    const deps = createMockLaunchDeps();
+    const repo = setupTempRepo();
+    const workDir = setupWorkItemsDir(repo);
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+
+    // A decision log exists, but M-CI-1 declares `Depends on: None`.
+    const decisionsDir = join(repo, ".ninthwave", "decisions");
+    mkdirSync(decisionsDir, { recursive: true });
+    writeFileSync(
+      join(decisionsDir, "2026-06-21T10-15-00Z--C-UO-1.md"),
+      "item: C-UO-1\ndecision: unrelated\n",
+    );
+
+    const item = parseWorkItems(workDir, worktreeDir).find((i) => i.id === "M-CI-1")!;
+    await captureOutput(() => {
+      launchSingleItem(item, workDir, worktreeDir, repo, "claude", mockMux, {}, deps);
+    });
+
+    const promptPath = join(worktreeDir, "ninthwave-M-CI-1", ".ninthwave", ".prompt");
+    const systemPrompt = readFileSync(promptPath, "utf-8");
+    expect(systemPrompt).not.toContain("Pending decisions on your dependencies");
+  });
+
+  it("omits the section when a dependency has no decision logs", async () => {
+    const mockMux = createMockMux();
+    const deps = createMockLaunchDeps();
+    const repo = setupTempRepo();
+    const workDir = setupWorkItemsDir(repo);
+    const worktreeDir = join(repo, ".ninthwave", ".worktrees");
+
+    // No decision logs written at all; H-CI-2 still depends on M-CI-1.
+    const item = parseWorkItems(workDir, worktreeDir).find((i) => i.id === "H-CI-2")!;
+    await captureOutput(() => {
+      launchSingleItem(item, workDir, worktreeDir, repo, "claude", mockMux, {}, deps);
+    });
+
+    const promptPath = join(worktreeDir, "ninthwave-H-CI-2", ".ninthwave", ".prompt");
+    const systemPrompt = readFileSync(promptPath, "utf-8");
+    expect(systemPrompt).not.toContain("Pending decisions on your dependencies");
+  });
+
   it("uses the runtime-resolved tmux backend instead of the ambient mux", async () => {
     const ambientMux = createMockMux("cmux");
     const resolvedMux = createMockMux("tmux");

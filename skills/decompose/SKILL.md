@@ -157,6 +157,8 @@ For schema-dependent items: check the actual `*.ex` / `models.py` / type definit
 
 This validation is intentionally bounded: chase a claim down when a cheap `rg` or schema read would catch it, but do not try to validate every call site or every behavioral contract up front. When an inconsistency slips through and the implementer hits it at code-writing time, the catch-net is the "Scope Correction" section in `agents/implementer.md`, which prescribes per-pattern recovery (reword + decision log; rename instead of delete; ship-observable + `test.fixme` for unobservable; narrow + decision log on freshness drift).
 
+When a new item declares a `Depends on:` an item that has already run, also skim `.ninthwave/decisions/*--<depId>.md` for that dependency's logged decisions. If a decision contradicts an assumption in the new item's spec (e.g. the dependency decided to keep a module the new item assumes was deleted), reconcile the spec before writing the item. Launched workers are also pointed at their dependencies' decision logs at startup, so this is a best-effort early catch, not the only line of defense.
+
 #### Refactor work items: prefer qualitative acceptance over numeric LOC
 
 Numeric line-reduction targets (`>= 150 lines net reduction`) on refactor-style items are a recurring pitfall. Refactor items typically ship with guardrails (`do not touch field bodies`, `parity preserving`); those guardrails cap the extractable surface. When the LOC target is unreachable under the item's own guardrails, every implementer faces the same false choice -- violate guardrails to hit the number, or burn cycles arguing the target was aspirational -- and reviewers re-litigate the trade-off on every PR in the wave.
@@ -184,6 +186,8 @@ When a capability spans backend + frontend, decide deliberately how the cross-la
 - **Build to contract (when strict ordering is not possible).** Require each item to build to the spec/contract rather than to whatever currently exists on main, and say so in the item's description: "wires <side> per <spec ref> regardless of whether <other side> has landed." Whichever side lands first, the seam is wired from one end by contract.
 
 For a capability that spans a full request round trip (BE -> FE -> BE, or any multi-layer loop), consider adding a final end-to-end gate item, owned by no single feature item and depending on all of them, whose only job is to verify the loop works from a real request. This catches the case where each layer passes its own acceptance criteria but the seam between two of them was never connected.
+
+**Shared contracts: give the contract a single owner.** When two or more items share a contract (a wire shape, a serializer, an event payload, a set of field names), do not let each item independently re-derive it -- they will diverge on names or shapes, and mocked tests stay green on both until a late rebase exposes the drift. Pick exactly one item to own the contract types first, and make the others `Depends on:` it so they wire to the real definition. If strict ordering is impossible, require a thin integration/contract test that exercises the real serializer end to end (not a mock) so a divergence fails a test rather than surfacing at rebase.
 
 #### Manual review override
 
