@@ -17,11 +17,19 @@ import {
   cmdPrCreate,
   hasHeadFlag,
   resolveHeadArgs,
+  extractLabelArgs,
+  hasBaseFlag,
+  replaceBaseArg,
+  extractPrNumber,
 } from "../core/commands/pr-create.ts";
 import type { RunResult } from "../core/types.ts";
 
 function ok(stdout: string): RunResult {
   return { stdout, stderr: "", exitCode: 0 };
+}
+
+function fail(stderr: string): RunResult {
+  return { stdout: "", stderr, exitCode: 1 };
 }
 
 describe("hasHeadFlag", () => {
@@ -172,5 +180,271 @@ describe("cmdPrCreate", () => {
     } finally {
       process.stderr.write = originalWrite;
     }
+  });
+});
+
+describe("extractLabelArgs", () => {
+  it("splits a separate --label value out of the args", () => {
+    const { labels, rest } = extractLabelArgs(["--title", "x", "--label", "domain:foo", "--body", "y"]);
+    expect(labels).toEqual(["domain:foo"]);
+    expect(rest).toEqual(["--title", "x", "--body", "y"]);
+  });
+
+  it("splits the joined --label=value form", () => {
+    const { labels, rest } = extractLabelArgs(["--label=domain:foo", "--title", "x"]);
+    expect(labels).toEqual(["domain:foo"]);
+    expect(rest).toEqual(["--title", "x"]);
+  });
+
+  it("splits the -l short alias and collects multiple labels", () => {
+    const { labels, rest } = extractLabelArgs(["-l", "a", "--label", "b", "--title", "x"]);
+    expect(labels).toEqual(["a", "b"]);
+    expect(rest).toEqual(["--title", "x"]);
+  });
+
+  it("returns empty labels when none present", () => {
+    const { labels, rest } = extractLabelArgs(["--title", "x"]);
+    expect(labels).toEqual([]);
+    expect(rest).toEqual(["--title", "x"]);
+  });
+});
+
+describe("hasBaseFlag / replaceBaseArg", () => {
+  it("detects all base flag forms", () => {
+    expect(hasBaseFlag(["--base", "b"])).toBe(true);
+    expect(hasBaseFlag(["--base=b"])).toBe(true);
+    expect(hasBaseFlag(["-B", "b"])).toBe(true);
+    expect(hasBaseFlag(["--title", "x"])).toBe(false);
+  });
+
+  it("replaces the base value in the separate form", () => {
+    expect(replaceBaseArg(["--base", "old", "--title", "x"], "main"))
+      .toEqual(["--base", "main", "--title", "x"]);
+  });
+
+  it("replaces the base value in the joined form", () => {
+    expect(replaceBaseArg(["--base=old", "--title", "x"], "main"))
+      .toEqual(["--base=main", "--title", "x"]);
+  });
+});
+
+describe("extractPrNumber", () => {
+  it("parses the PR number from a gh pr create URL", () => {
+    expect(extractPrNumber("https://github.com/o/r/pull/42")).toBe(42);
+    expect(extractPrNumber("https://github.com/o/r/pull/7\n")).toBe(7);
+  });
+
+  it("returns null when there is no PR URL", () => {
+    expect(extractPrNumber("nope")).toBeNull();
+  });
+});
+
+describe("cmdPrCreate -- missing label recovery", () => {
+  it("strips --label from gh pr create and applies labels via the injected applier", async () => {
+    const runner = vi.fn(async () => ok("https://github.com/x/y/pull/42"));
+    const applyLabels = vi.fn(() => true);
+
+    const result = await cmdPrCreate(
+      ["--title", "fix: x", "--label", "domain:newdomain", "--body", "y"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: async () => {},
+        queryRateLimitImpl: async () => null,
+        env: {},
+        resolveTokenImpl: () => null,
+        applyLabelsImpl: applyLabels,
+      },
+    );
+
+    expect(result).toBe(0);
+    const [, args] = runner.mock.calls[0]!;
+    // gh pr create must NOT carry the label flag.
+    expect(args).not.toContain("--label");
+    expect(args).not.toContain("domain:newdomain");
+    // Labels applied post-create against the parsed PR number.
+    expect(applyLabels).toHaveBeenCalledWith("/repo", 42, ["domain:newdomain"]);
+  });
+
+  it("still succeeds (exit 0) when label application fails", async () => {
+    const runner = vi.fn(async () => ok("https://github.com/x/y/pull/9"));
+    const result = await cmdPrCreate(
+      ["--title", "fix: x", "--label", "domain:foo"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: async () => {},
+        queryRateLimitImpl: async () => null,
+        env: {},
+        resolveTokenImpl: () => null,
+        applyLabelsImpl: () => false,
+      },
+    );
+    expect(result).toBe(0);
+  });
+});
+
+describe("cmdPrCreate -- transient failure retry and token pre-resolution", () => {
+  it("pins a resolved token into the environment before invoking gh", async () => {
+    const env: Record<string, string | undefined> = {};
+    const runner = vi.fn(async () => ok("https://github.com/x/y/pull/1"));
+    await cmdPrCreate(
+      ["--title", "fix: x"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: async () => {},
+        queryRateLimitImpl: async () => null,
+        env,
+        resolveTokenImpl: () => "ghp_static_token",
+      },
+    );
+    expect(env.GH_TOKEN).toBe("ghp_static_token");
+    expect(env.GITHUB_TOKEN).toBe("ghp_static_token");
+  });
+
+  it("does not overwrite an already-pinned token", async () => {
+    const env: Record<string, string | undefined> = { GH_TOKEN: "existing" };
+    const runner = vi.fn(async () => ok("https://github.com/x/y/pull/1"));
+    const resolveToken = vi.fn(() => "ghp_new");
+    await cmdPrCreate(
+      ["--title", "fix: x"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: async () => {},
+        queryRateLimitImpl: async () => null,
+        env,
+        resolveTokenImpl: resolveToken,
+      },
+    );
+    expect(env.GH_TOKEN).toBe("existing");
+    expect(resolveToken).not.toHaveBeenCalled();
+  });
+
+  it("retries a transient 401 and succeeds on the next attempt", async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce(fail("HTTP 401: Bad credentials (https://api.github.com/...)"))
+      .mockResolvedValueOnce(ok("https://github.com/x/y/pull/5"));
+    const sleep = vi.fn(async () => {});
+    const result = await cmdPrCreate(
+      ["--title", "fix: x"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: sleep,
+        queryRateLimitImpl: async () => null,
+        env: {},
+        resolveTokenImpl: () => null,
+      },
+    );
+    expect(result).toBe(0);
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a connect timeout and succeeds on the next attempt", async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce(fail("dial tcp: lookup api.github.com: i/o timeout"))
+      .mockResolvedValueOnce(ok("https://github.com/x/y/pull/6"));
+    const sleep = vi.fn(async () => {});
+    const result = await cmdPrCreate(
+      ["--title", "fix: x"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: sleep,
+        queryRateLimitImpl: async () => null,
+        env: {},
+        resolveTokenImpl: () => null,
+      },
+    );
+    expect(result).toBe(0);
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("cmdPrCreate -- merged + deleted base ref recovery", () => {
+  it("retries against the default branch when the base ref is gone", async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce(fail("GraphQL: Base ref must be a branch (createPullRequest)"))
+      .mockResolvedValueOnce(ok("https://github.com/x/y/pull/8"));
+    const result = await cmdPrCreate(
+      ["--base", "ninthwave/dep", "--title", "fix: x"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: async () => {},
+        queryRateLimitImpl: async () => null,
+        env: {},
+        resolveTokenImpl: () => null,
+        getDefaultBranchImpl: () => "main",
+      },
+    );
+    expect(result).toBe(0);
+    expect(runner).toHaveBeenCalledTimes(2);
+    const [, retryArgs] = runner.mock.calls[1]!;
+    expect(retryArgs).toContain("--base");
+    expect(retryArgs[retryArgs.indexOf("--base") + 1]).toBe("main");
+  });
+
+  it("surfaces a clear error when the base is gone and the default branch is unresolved", async () => {
+    const runner = vi.fn(async () => fail("GraphQL: Base ref must be a branch (createPullRequest)"));
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      writes.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const result = await cmdPrCreate(
+        ["--base", "ninthwave/dep", "--title", "fix: x"],
+        "/repo",
+        {
+          getBranch: () => "ninthwave/M-PRC-1",
+          runAsyncImpl: runner,
+          sleepImpl: async () => {},
+          queryRateLimitImpl: async () => null,
+          env: {},
+          resolveTokenImpl: () => null,
+          getDefaultBranchImpl: () => null,
+        },
+      );
+      expect(result).toBe(1);
+      // Only the initial attempt -- no default branch to retry against.
+      expect(runner).toHaveBeenCalledTimes(1);
+      const combined = writes.join("");
+      expect(combined).toContain("base branch is gone");
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+  });
+
+  it("does not retry base recovery when no --base was supplied", async () => {
+    const runner = vi.fn(async () => fail("GraphQL: Base ref must be a branch (createPullRequest)"));
+    const getDefaultBranch = vi.fn(() => "main");
+    const result = await cmdPrCreate(
+      ["--title", "fix: x"],
+      "/repo",
+      {
+        getBranch: () => "ninthwave/M-PRC-1",
+        runAsyncImpl: runner,
+        sleepImpl: async () => {},
+        queryRateLimitImpl: async () => null,
+        env: {},
+        resolveTokenImpl: () => null,
+        getDefaultBranchImpl: getDefaultBranch,
+      },
+    );
+    expect(result).toBe(1);
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(getDefaultBranch).not.toHaveBeenCalled();
   });
 });
