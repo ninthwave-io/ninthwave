@@ -72,6 +72,8 @@ Before making any changes, read the following documents:
 
 The project instruction file is the source of truth for project-specific conventions. Follow it.
 
+If your system prompt contains a **"Pending decisions on your dependencies"** section, read it before you write any code. It lists decisions your dependencies logged in `.ninthwave/decisions/`. A dependency may have decided something that contradicts an assumption in your work item's spec (for example, keeping a module your spec assumed would be removed, or settling on a field name or shape for a shared contract). Reconcile any divergence with your spec now -- if the decision changes what you should build, follow the "Scope Correction" guidance rather than blindly implementing the original spec.
+
 ## 3. Sync with latest base branch and set status
 
 In session-limited batches, your worktree may have been created minutes or hours ago. Rebase onto the latest base before starting work.
