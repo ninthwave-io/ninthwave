@@ -4,7 +4,7 @@
 
 import { join } from "path";
 import { existsSync, unlinkSync } from "fs";
-import { heartbeatFilePath, writeHeartbeat, clearFeedbackDoneSignal } from "./daemon.ts";
+import { heartbeatFilePath, writeHeartbeat, clearFeedbackDoneSignal, clearPushbackSignal } from "./daemon.ts";
 import { cleanHeadlessPhase } from "./headless.ts";
 import { cleanInbox } from "./commands/inbox.ts";
 import { validatePickupCandidate } from "./commands/launch.ts";
@@ -1433,6 +1433,19 @@ export function executeClearFeedbackDoneSignal(
 ): ActionResult {
   try {
     clearFeedbackDoneSignal(ctx.projectRoot, item.id);
+    return { success: true };
+  } catch {
+    return { success: true }; // best-effort cleanup
+  }
+}
+
+/** Delete the one-shot pushback signal file after the orchestrator has recorded it. */
+export function executeClearPushbackSignal(
+  item: OrchestratorItem,
+  ctx: ExecutionContext,
+): ActionResult {
+  try {
+    clearPushbackSignal(ctx.projectRoot, item.id);
     return { success: true };
   } catch {
     return { success: true }; // best-effort cleanup

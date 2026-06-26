@@ -12,7 +12,7 @@ import {
   TERMINAL_STATES,
 } from "./orchestrator.ts";
 import { type RequestQueue, type RequestPriority } from "./request-queue.ts";
-import { readHeartbeat, readVerdictFile, readFeedbackDoneSignal } from "./daemon.ts";
+import { readHeartbeat, readVerdictFile, readFeedbackDoneSignal, readPushbackSignal } from "./daemon.ts";
 import { readHeadlessPhase } from "./headless.ts";
 import { snapshotInboxState } from "./commands/inbox.ts";
 import {
@@ -657,6 +657,14 @@ export function buildSnapshot(
       } catch { /* best-effort */ }
     }
 
+    // Read pushback signal for items awaiting feedback response
+    if (heartbeatStates.has(orchItem.state)) {
+      try {
+        const pushback = readPushbackSignal(projectRoot, orchItem.id);
+        if (pushback) snap.pushbackSignal = pushback;
+      } catch { /* best-effort */ }
+    }
+
     // Fast PR detection: if GitHub didn't find a PR but the heartbeat reports one,
     // trust the heartbeat. The worker writes --pr after gh pr create returns, so
     // the PR definitely exists. GitHub API will confirm on the next cycle.
@@ -975,6 +983,14 @@ export async function buildSnapshotAsync(
       try {
         const signal = readFeedbackDoneSignal(projectRoot, orchItem.id);
         if (signal) snap.feedbackDoneSignal = true;
+      } catch { /* best-effort */ }
+    }
+
+    // Read pushback signal for items awaiting feedback response
+    if (heartbeatStates.has(orchItem.state)) {
+      try {
+        const pushback = readPushbackSignal(projectRoot, orchItem.id);
+        if (pushback) snap.pushbackSignal = pushback;
       } catch { /* best-effort */ }
     }
 

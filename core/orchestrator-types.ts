@@ -158,6 +158,8 @@ export interface OrchestratorItem {
   timeoutExtensionCount?: number;
   /** ISO timestamp when the item entered ci-pending via transition(). Used for stale-CI grace period. Not set by hydrateState. */
   ciPendingSince?: string;
+  /** History of reviewer-pushback rounds. Persisted in orchestrator state so disagreement survives daemon restarts and re-surfaces distinctly per round. */
+  pushbackRounds?: import("./pushback.ts").PushbackRound[];
 }
 
 // ── State-specific data interfaces ───────────────────────────────────
@@ -358,6 +360,8 @@ export interface ItemSnapshot {
   headSha?: string;
   /** One-shot signal: worker addressed feedback without code changes. */
   feedbackDoneSignal?: boolean;
+  /** One-shot signal: worker registered disagreement with review feedback (pushback). */
+  pushbackSignal?: import("./daemon.ts").PushbackSignal;
   /**
    * Parked-worker stall detector signal. Populated only when stall conditions are
    * met for a review-pending item: true when a ninthwave reviewer comment is
@@ -409,7 +413,8 @@ export type ActionType =
   | "react-to-comment"
   | "set-commit-status"
   | "post-review"
-  | "clear-feedback-done-signal";
+  | "clear-feedback-done-signal"
+  | "clear-pushback-signal";
 
 export interface Action {
   type: ActionType;

@@ -631,6 +631,20 @@ gh api repos/{owner}/{repo}/issues/{pr}/comments \
 2. Run `nw feedback-done` to signal the orchestrator that feedback is addressed
 3. The orchestrator will clear the pending feedback state and resume the review/merge loop without waiting for a new commit
 
+**Pushback path (disagreement).** Use this when you actually disagree with review feedback and want the reviewer to reconsider, rather than conceding (`nw feedback-done`) or making the requested change. `nw pushback` registers machine-actionable disagreement that the orchestrator persists and re-surfaces -- it re-triggers a review round **without requiring a no-op commit**. Do **not** push an empty commit to retrigger automation; that workaround is no longer needed.
+
+```bash
+nw pushback -m "<why you disagree>" [--comment-id <id>] [--comment-type issue|review]
+```
+
+What it does:
+
+1. Posts a structured, auditable comment to the PR thread (prefixed `**[Implementer]** [PUSHBACK] <reason>`) so the reviewer sees your rationale.
+2. Writes a durable signal the orchestrator consumes on its next poll. The orchestrator records the pushback round (persisted in its state, so it survives a daemon restart) and launches a fresh review round carrying your rationale -- no new commit required.
+3. Each invocation is tracked as a distinct round, so repeated disagreement on the same comment chain is auditable.
+
+Use `--comment-id`/`--comment-type` to anchor the pushback to the specific review comment you dispute (the comment ID is in the relayed feedback). Provide a clear, specific reason -- the reviewer re-reads the PR (including your `[PUSHBACK]` comment) and either concedes or holds the feedback. If the reviewer holds and you still disagree after addressing their points, prefer making the change or posting a concrete blocker comment over an endless pushback loop (review rounds are capped).
+
 #### Rebase Request
 
 This can arrive as either a structured `[ORCHESTRATOR]` message or a plain-language inbox nudge. In both cases, the daemon is telling **you** to rebase the PR branch now.

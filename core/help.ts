@@ -36,6 +36,7 @@ import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdHeartbeat } from "./commands/heartbeat.ts";
 import { cmdPrCreate } from "./commands/pr-create.ts";
 import { cmdFeedbackDone } from "./commands/feedback-done.ts";
+import { cmdPushback } from "./commands/pushback.ts";
 import { cmdInbox } from "./commands/inbox.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdLineageToken } from "./commands/lineage-token.ts";
@@ -493,6 +494,26 @@ export const COMMAND_REGISTRY: ReadonlyArray<CommandEntry> = [
     flags: {},
     examples: [
       "nw feedback-done",
+    ],
+  },
+  {
+    name: "pushback",
+    usage: 'pushback -m "<reason>" [--comment-id <id>] [--comment-type issue|review]',
+    description: "Register disagreement with review feedback without a no-op commit",
+    group: "advanced",
+    needsRoot: true,
+    needsWork: false,
+    handler: (ctx) => {
+      cmdPushback(ctx.args, ctx.projectRoot);
+    },
+    flags: {
+      "-m, --message": "Why you disagree with the review feedback (required)",
+      "--comment-id": "ID of the specific review comment being disputed",
+      "--comment-type": "GitHub comment endpoint type: issue or review",
+    },
+    examples: [
+      'nw pushback -m "This pattern is intentional -- see PR description"',
+      'nw pushback -m "Existing code already handles this" --comment-id 12345 --comment-type review',
     ],
   },
   {
