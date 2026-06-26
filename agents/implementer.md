@@ -304,6 +304,30 @@ git add .ninthwave/decisions/
 
 Treat `.ninthwave/decisions/` as a review inbox, just like `.ninthwave/friction/` is an inbox for friction notes. Reviewed entries are deleted after review; do **not** move them into archival review subdirectories.
 
+### Bulk Mechanical Lint/Type Refactor Playbook
+
+Large mechanical lint or type burndowns -- clearing a rule across hundreds of files, or adding precise types to thousands of sites -- are usually fanned out across many edit-subagents working in one shared checkout, with this agent acting as the orchestrator that drives the waves. That fan-out pattern surfaces a recurring set of frictions that are not project-specific: they recur on any large type-aware lint burndown. Follow these rules when you run one.
+
+**1. Never run a whole-project typecheck inside subagents.** Several concurrent `tsc --noEmit` runs across parallel agents spike memory hard enough to require human intervention (multi-GB each, all resident at once). Instead:
+
+- Cap edit-subagent concurrency at roughly 3 agents.
+- Have each edit-subagent verify its change with the cheapest possible check -- a single-file lint, `eslint <file>`, and nothing heavier.
+- Run the one project-wide `tsc --noEmit` centrally, yourself (the orchestrator), once per wave between fan-outs. Subagents never invoke it.
+
+**2. Type-aware lint passing does NOT imply typecheck passing.** After a wave clears every `no-unsafe-*` lint violation -- with each subagent verifying via `eslint` only -- the central `tsc` can still surface fresh errors that the per-file lint never saw. The classic case is `noUncheckedIndexedAccess`: indexed-access sites such as `mock.calls[0][0]` become `T | undefined`, so newly precise types expose access errors that were invisible while the values were `any`. Therefore:
+
+- Any task that adds precise types to indexed-access sites must gate its subagents on `tsc`, not just on scoped lint.
+- Run the central `tsc` and have each typing subagent grep that central output for its own files, fixing what its change introduced. Lint-green is necessary but not sufficient; `tsc`-green is the real gate.
+
+**3. Shared-worktree git hygiene: the orchestrator owns all git state.** Edit-subagents that run `git stash`, `git add`, or any other git command on their own initiative pollute the staged index and make it impossible to tell the orchestrator's commits apart from a subagent's half-staged work. Hard-block edit-subagents from running *any* git command. They edit files in place; you (the orchestrator) own every `git add`, `git stash`, `git commit`, and `git reset`.
+
+**4. Some lint rules are NOT safe to `eslint --fix`.** A blanket `--fix` can strip load-bearing code. The worst offender is `no-unnecessary-type-assertion`: typescript-eslint back-infers the generic type argument from the `as` target on throwing testing-library queries (`getBy*`, `getAllBy*`, `findBy*`) and on `queryClient.getQueryData`, so it reports the assertion as unnecessary even though `tsc` relies on it -- removing it breaks the typecheck. The correct fix is the generic-call form, not deletion:
+
+- Rewrite `getByRole(...) as HTMLButtonElement` as `getByRole<HTMLButtonElement>(...)`, and `queryClient.getQueryData(key) as Foo` as `queryClient.getQueryData<Foo>(key)`.
+- **Exclude** `querySelector`, `closest`, and `queryBy*` -- these return `T | null`, so their `as` assertion is genuinely necessary and must be kept.
+
+Before reaching for `eslint --fix` on any rule, confirm the rule is autofix-safe for the constructs in scope. When a `/decompose` work item annotates per-rule autofix safety (see `skills/decompose/SKILL.md`), treat that annotation as authoritative for the rule it names.
+
 ## 5. Commit Your Changes
 
 Before you commit, check for pending orchestrator messages:

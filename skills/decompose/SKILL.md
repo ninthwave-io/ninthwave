@@ -165,6 +165,17 @@ Default to qualitative acceptance: "no direct `EntityCreateModal` import; identi
 
 If a numeric target is genuinely useful as a sanity check, label it aspirational ("target ~150 lines reduction; verify reachability under the item's guardrails before relying on the number") rather than as an acceptance gate.
 
+#### Lint/type burndown items: flag per-rule autofix safety
+
+When a work item asks an implementer to clear a named lint rule across many files, state explicitly whether `eslint --fix` (or the equivalent autofixer) is safe for that rule. Not every rule is safe to autofix in bulk: a blanket `--fix` of `no-unnecessary-type-assertion`, for example, strips load-bearing `as` assertions that typescript-eslint reports as unnecessary but `tsc` actually relies on (throwing testing-library queries like `getBy*`/`getAllBy*`/`findBy*` and `queryClient.getQueryData`), so the autofix passes lint and then breaks the typecheck.
+
+For each rule a burndown item names, add a one-line autofix-safety note so the implementer knows before they reach for `--fix`:
+
+- **Autofix-safe** -- "`<rule>`: safe to `eslint --fix` in bulk."
+- **Not autofix-safe** -- "`<rule>`: do NOT bulk `--fix`; <the correct manual transform>." For instance: "`no-unnecessary-type-assertion`: do NOT bulk `--fix`; use the generic-call form (`getByRole<T>(...)`, `getQueryData<T>(...)`) and keep the `as` on `querySelector`/`closest`/`queryBy*`, which return `T | null`."
+
+The implementer playbook in `agents/implementer.md` ("Bulk Mechanical Lint/Type Refactor Playbook") carries the full rationale; the decompose author's job is to surface the per-rule verdict up front so the implementer does not rediscover it mid-burndown.
+
 #### Cutover-style risk signal
 
 If a draft work item is scoped as a single-PR cutover that spans frontend + backend + docs + e2e, or that requires deleting and re-wiring components in the same pass, treat it as a sizing failure and split. A single implementer session cannot reliably finish 4-8+ hours of coordinated cross-layer change in one shot without sacrificing test coverage or scope fidelity.
