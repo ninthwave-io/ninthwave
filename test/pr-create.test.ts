@@ -207,6 +207,17 @@ describe("extractLabelArgs", () => {
     expect(labels).toEqual([]);
     expect(rest).toEqual(["--title", "x"]);
   });
+
+  it("splits gh's comma-separated single-flag form into distinct labels", () => {
+    const { labels, rest } = extractLabelArgs(["--label", "domain:a, domain:b", "--title", "x"]);
+    expect(labels).toEqual(["domain:a", "domain:b"]);
+    expect(rest).toEqual(["--title", "x"]);
+  });
+
+  it("splits the -l=value joined short form", () => {
+    const { labels } = extractLabelArgs(["-l=domain:a", "--title", "x"]);
+    expect(labels).toEqual(["domain:a"]);
+  });
 });
 
 describe("hasBaseFlag / replaceBaseArg", () => {

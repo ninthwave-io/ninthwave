@@ -91,24 +91,36 @@ export function resolveHeadArgs(
  * Split `--label`/`-l` flags out of the forwarded args. Labels are applied
  * after the PR is created (via the REST issues endpoint) rather than passed to
  * `gh pr create`, because `gh pr create --label` hard-fails when the label does
- * not yet exist. Recognises the separate (`--label value`, `-l value`) and
- * joined (`--label=value`) forms.
+ * not yet exist. Recognises the separate (`--label value`, `-l value`), joined
+ * (`--label=value`, `-l=value`), and comma-separated (`--label "a,b"`) forms --
+ * gh treats `--label` as a comma-split string slice, so a single flag may carry
+ * multiple labels.
  */
 export function extractLabelArgs(args: string[]): { labels: string[]; rest: string[] } {
   const labels: string[] = [];
   const rest: string[] = [];
+  const pushLabelValue = (value: string) => {
+    for (const part of value.split(",")) {
+      const trimmed = part.trim();
+      if (trimmed) labels.push(trimmed);
+    }
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--label" || arg === "-l") {
       const value = args[i + 1];
       if (value !== undefined) {
-        labels.push(value);
+        pushLabelValue(value);
         i++; // consume the value
       }
       continue;
     }
     if (arg.startsWith("--label=")) {
-      labels.push(arg.slice("--label=".length));
+      pushLabelValue(arg.slice("--label=".length));
+      continue;
+    }
+    if (arg.startsWith("-l=")) {
+      pushLabelValue(arg.slice("-l=".length));
       continue;
     }
     rest.push(arg);
@@ -217,7 +229,10 @@ export async function cmdPrCreate(
 
   // Pin a concrete token into the subprocess environment so a burst of gh
   // calls during this run does not repeatedly hit the keychain (which flakes
-  // with transient 401s under concurrent agent load).
+  // with transient 401s under concurrent agent load). The pinned token reaches
+  // the spawned gh process only because `env` is process.env in production and
+  // child processes inherit it; the injectable `deps.env` seam exists purely so
+  // tests can assert the pinning without mutating the real process environment.
   preResolveGhToken(env, deps.resolveTokenImpl ?? undefined);
 
   const resolved = resolveHeadArgs(args, getBranch);

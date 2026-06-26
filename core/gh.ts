@@ -777,9 +777,9 @@ export const DEFAULT_RETRIABLE_GH_KINDS: ReadonlySet<GhFailureKind> = new Set<Gh
  *   immediately so the caller sees the real error. The retriable set is
  *   configurable via `retriableKinds`.
  *
- * This is the shared rate-limit pathway both the orchestrator's direct
- * `gh pr create` call (review-inbox) and the worker-facing `nw pr-create`
- * CLI use, so a rate-limit hit in either context is handled the same way.
+ * Currently the worker-facing `nw pr-create` CLI is the only caller, so
+ * broadening the default retriable set (see `DEFAULT_RETRIABLE_GH_KINDS`) is
+ * contained to that command.
  */
 export async function runGhWithRateLimitRetry(
   args: string[],
@@ -1164,10 +1164,7 @@ const DOMAIN_LABEL_COLOR = "0E8A16";
 export function ensureDomainLabels(repoRoot: string, domains: string[]): void {
   const unique = [...new Set(domains)];
   for (const domain of unique) {
-    ghInRepo(repoRoot, [
-      "label", "create", `domain:${domain}`,
-      "--color", DOMAIN_LABEL_COLOR, "--force",
-    ]);
+    ensureLabelExists(repoRoot, `domain:${domain}`);
   }
 }
 
@@ -1202,7 +1199,7 @@ export function applyGithubToken(projectRoot: string): void {
  * be resolved (e.g. gh not installed, not logged in).
  */
 export function resolveGhTokenForEnv(): string | null {
-  const fromEnv = process.env.NINTHWAVE_GITHUB_TOKEN;
+  const fromEnv = resolveGithubToken("");
   if (fromEnv && fromEnv.trim()) return fromEnv.trim();
   try {
     const result = Bun.spawnSync(["gh", "auth", "token"], { stdout: "pipe", stderr: "pipe" });
@@ -1241,9 +1238,15 @@ export function preResolveGhToken(
  * that has been merged and deleted (the dependency squash-merged and GitHub
  * auto-deleted its head ref). The recovery is to retarget the PR at the
  * default branch.
+ *
+ * Deliberately narrow: every alternation must name the base *ref* being gone,
+ * so a "no commits between <base> and <head>" failure (a valid base with no new
+ * commits, a semantically distinct condition) does NOT trip the recovery path.
+ * Recovering on that would retarget at the default branch and open a PR with an
+ * unintended, much larger diff -- worse than failing with the real error.
  */
 export const BASE_REF_MISSING_RE =
-  /base ref must be a branch|base.*is not a branch|no commits between|base.*does not exist/i;
+  /base ref must be a branch|base ref is not a branch|base ref .*(does not exist|not found)/i;
 
 /** True when a gh failure indicates the requested base ref is gone (merged + deleted). */
 export function isBaseRefMissingError(stderr: string): boolean {

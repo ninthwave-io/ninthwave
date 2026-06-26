@@ -27,6 +27,21 @@ describe("isBaseRefMissingError", () => {
     expect(isBaseRefMissingError("GraphQL: Base ref must be a branch (createPullRequest)")).toBe(true);
   });
 
+  it("matches the base-ref-is-not-a-branch variant", () => {
+    expect(isBaseRefMissingError("Base ref is not a branch")).toBe(true);
+  });
+
+  it("matches base-ref does-not-exist / not-found variants", () => {
+    expect(isBaseRefMissingError("Base ref 'ninthwave/dep' does not exist")).toBe(true);
+    expect(isBaseRefMissingError("Base ref not found")).toBe(true);
+  });
+
+  it("does NOT match 'no commits between' -- a valid base with no new commits", () => {
+    expect(isBaseRefMissingError(
+      "GraphQL: No commits between main and ninthwave/M-PRC-1 (createPullRequest)",
+    )).toBe(false);
+  });
+
   it("does not match unrelated failures", () => {
     expect(isBaseRefMissingError("could not resolve to a repository")).toBe(false);
     expect(isBaseRefMissingError("HTTP 401: Bad credentials")).toBe(false);
