@@ -4,7 +4,7 @@
 
 import { join } from "path";
 import { existsSync, unlinkSync } from "fs";
-import { heartbeatFilePath, writeHeartbeat, clearFeedbackDoneSignal, clearPushbackSignal } from "./daemon.ts";
+import { heartbeatFilePath, writeHeartbeat, clearFeedbackDoneSignal, clearPushbackSignal, clearNoNewInfoSignal } from "./daemon.ts";
 import { cleanHeadlessPhase } from "./headless.ts";
 import { cleanInbox } from "./commands/inbox.ts";
 import { validatePickupCandidate } from "./commands/launch.ts";
@@ -1446,6 +1446,19 @@ export function executeClearPushbackSignal(
 ): ActionResult {
   try {
     clearPushbackSignal(ctx.projectRoot, item.id);
+    return { success: true };
+  } catch {
+    return { success: true }; // best-effort cleanup
+  }
+}
+
+/** Delete the one-shot no-new-info signal file after the orchestrator has consumed it. */
+export function executeClearNoNewInfoSignal(
+  item: OrchestratorItem,
+  ctx: ExecutionContext,
+): ActionResult {
+  try {
+    clearNoNewInfoSignal(ctx.projectRoot, item.id);
     return { success: true };
   } catch {
     return { success: true }; // best-effort cleanup

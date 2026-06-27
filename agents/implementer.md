@@ -645,6 +645,19 @@ What it does:
 
 Use `--comment-id`/`--comment-type` to anchor the pushback to the specific review comment you dispute (the comment ID is in the relayed feedback). Provide a clear, specific reason -- the reviewer re-reads the PR (including your `[PUSHBACK]` comment) and either concedes or holds the feedback. If the reviewer holds and you still disagree after addressing their points, prefer making the change or posting a concrete blocker comment over an endless pushback loop (review rounds are capped).
 
+**Spurious-wake path (no new info).** Use this when you were relaunched for "feedback" that contains nothing actionable -- it just echoes a prior approval, repeats something already addressed, or is a stale/duplicate/bot comment with no request in it. Do **not** concede with `nw feedback-done` (that resumes the loop and can re-review) and do **not** push a no-op commit. Instead tell the orchestrator the trigger was spurious:
+
+```bash
+nw no-new-info -m "<what woke you and why there is nothing to do>"
+```
+
+What it does:
+
+1. Writes a durable signal the orchestrator consumes on its next poll. If this exact HEAD was already approved, the orchestrator restores the settled review state and lets the normal merge path proceed -- **no new review round, no merge of un-reviewed code**. If it was not yet approved, the item simply re-parks.
+2. Logs a friction entry capturing what woke you, so the relay can be tightened over time.
+
+Be honest: only use this when the relayed text genuinely carries no new actionable information. If there is any real request in it, address it, concede with `nw feedback-done`, or disagree with `nw pushback` instead.
+
 #### Rebase Request
 
 This can arrive as either a structured `[ORCHESTRATOR]` message or a plain-language inbox nudge. In both cases, the daemon is telling **you** to rebase the PR branch now.

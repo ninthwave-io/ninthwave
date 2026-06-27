@@ -192,6 +192,7 @@ export function reconstructState(
     reviewCompleted?: boolean;
     reviewRound?: number;
     lastReviewedCommitSha?: string | null;
+    lastApprovedCommitSha?: string | null;
     lastCommentCheck?: string;
     pendingFeedbackBatch?: PendingFeedbackBatch;
     needsFeedbackResponse?: boolean;
@@ -232,6 +233,7 @@ export function reconstructState(
         reviewCompleted: si.reviewCompleted,
         reviewRound: si.reviewRound,
         lastReviewedCommitSha: si.lastReviewedCommitSha,
+        lastApprovedCommitSha: si.lastApprovedCommitSha,
         lastCommentCheck: si.lastCommentCheck,
         pendingFeedbackBatch: si.pendingFeedbackBatch,
         needsFeedbackResponse: si.needsFeedbackResponse,
@@ -272,6 +274,7 @@ export function reconstructState(
       if (saved.reviewCompleted) item.reviewCompleted = saved.reviewCompleted;
       if (saved.reviewRound != null) item.reviewRound = saved.reviewRound;
       if (saved.lastReviewedCommitSha != null) item.lastReviewedCommitSha = saved.lastReviewedCommitSha;
+      if (saved.lastApprovedCommitSha != null) item.lastApprovedCommitSha = saved.lastApprovedCommitSha;
       if (saved.lastCommentCheck) item.lastCommentCheck = saved.lastCommentCheck;
       if (saved.pendingFeedbackBatch) item.pendingFeedbackBatch = saved.pendingFeedbackBatch;
       if (saved.needsFeedbackResponse) item.needsFeedbackResponse = saved.needsFeedbackResponse;

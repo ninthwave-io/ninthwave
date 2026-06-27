@@ -303,7 +303,7 @@ Inline comments are the primary feedback mechanism for the GitHub UI. Each findi
 
 Build the entire review as a single JSON payload passed via `--input`. Use an **unquoted** heredoc delimiter so shell variables (like `$COMMIT_SHA`) expand. Each inline comment needs `path`, `line`, `side`, and `body`.
 
-**Marker requirement:** Every inline comment `body` must end with `\n\n<!-- ninthwave-reviewer -->`. This HTML comment marker prevents the orchestrator from misclassifying your comments as human feedback.
+**Marker requirement:** Every piece of text you author on the PR -- both the top-level review `body` summary **and** every inline comment `body` -- must end with `\n\n<!-- ninthwave-reviewer -->`. This HTML comment marker is how the orchestrator tells your output apart from human feedback; without it on the **body** summary, the orchestrator relays your own approval summary back as if a human left it, which retriggers review forever and blocks the merge. The summary body is the easy one to forget -- do not.
 
 ```bash
 # Get the latest commit SHA for the review
@@ -315,7 +315,7 @@ gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/reviews \
   --input - << REVIEW_EOF
 {
   "commit_id": "$COMMIT_SHA",
-  "body": "Brief verdict summary here",
+  "body": "Brief verdict summary here\n\n<!-- ninthwave-reviewer -->",
   "event": "COMMENT",
   "comments": [
     {
