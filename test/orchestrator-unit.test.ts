@@ -2814,6 +2814,129 @@ describe("handleReviewing", () => {
     expect(item.pushbackRounds!.every((r) => r.commentId === 7)).toBe(true);
   });
 
+  // ── No-new-info (spurious wake) ────────────────────────────────────
+
+  it("no-new-info settles an approved item back to merge instead of re-reviewing", () => {
+    // Reproduces the #1551 loop: the worker was relaunched on the reviewer's own
+    // approval body (already reset reviewCompleted) and reports the wake spurious.
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;            // reset by the spurious ingest
+    item.lastReviewedCommitSha = "approved-sha";
+    item.lastApprovedCommitSha = "approved-sha";
+    item.needsFeedbackResponse = true;
+    item.pendingFeedbackMessage = "LGTM -- approve";
+    item.workspaceRef = "workspace:1";
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open", isMergeable: true,
+        headSha: "approved-sha",
+        noNewInfoSignal: { id: "H-1-1", ts: "2026-01-15T12:00:00Z", reason: "reviewer's own approval echoed back" },
+      }]),
+      NOW,
+    );
+
+    // Settled, not churned into another review round.
+    expect(item.state).not.toBe("reviewing");
+    expect(actions.some((a) => a.type === "launch-review")).toBe(false);
+    // Approval restored, feedback discarded, worker re-parked, signal consumed.
+    expect(item.reviewCompleted).toBe(true);
+    expect(item.needsFeedbackResponse).toBe(false);
+    expect(item.pendingFeedbackMessage).toBeUndefined();
+    expect(item.sessionParked).toBe(true);
+    expect(actions.some((a) => a.type === "workspace-close")).toBe(true);
+    expect(actions.some((a) => a.type === "clear-no-new-info-signal")).toBe(true);
+
+    // Next poll, after the workspace closed (workspaceRef cleared), auto-merges.
+    item.workspaceRef = undefined;
+    const next = orch.processTransitions(
+      snapshotWith([{ id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open", isMergeable: true, headSha: "approved-sha" }]),
+      NOW,
+    );
+    expect(item.state).toBe("merging");
+    expect(next.some((a) => a.type === "merge" && a.prNumber === 42)).toBe(true);
+  });
+
+  it("no-new-info on a never-approved HEAD re-parks but does not merge", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = "head-sha";
+    item.lastApprovedCommitSha = null;       // this HEAD was never approved
+    item.workspaceRef = "workspace:1";
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open", isMergeable: true,
+        headSha: "head-sha",
+        noNewInfoSignal: { id: "H-1-1", ts: "2026-01-15T12:00:00Z", reason: "stale bot comment" },
+      }]),
+      NOW,
+    );
+
+    expect(actions.some((a) => a.type === "clear-no-new-info-signal")).toBe(true);
+    expect(item.reviewCompleted).toBe(false);
+    expect(actions.some((a) => a.type === "merge")).toBe(false);
+    expect(actions.some((a) => a.type === "launch-review")).toBe(false);
+  });
+
+  it("no-new-info is ignored when the SHA gate is not active (code advanced)", () => {
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.prNumber = 42;
+    item.reviewCompleted = false;
+    item.lastReviewedCommitSha = "old-sha";
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open", isMergeable: true,
+        headSha: "new-sha",
+        noNewInfoSignal: { id: "H-1-1", ts: "2026-01-15T12:00:00Z", reason: "should be ignored" },
+      }]),
+      NOW,
+    );
+
+    expect(actions.some((a) => a.type === "clear-no-new-info-signal")).toBe(false);
+  });
+
+  it("a marked reviewer review body is not relayed as human feedback (auto-merges)", () => {
+    // Proves the marker fix: with <!-- ninthwave-reviewer --> on the body, the
+    // reviewer's own approval summary is filtered out and the merge proceeds.
+    const orch = new Orchestrator({ mergeStrategy: "auto" });
+    orch.addItem(makeWorkItem("H-1-1"));
+    orch.hydrateState("H-1-1", "review-pending");
+    const item = orch.getItem("H-1-1")!;
+    item.reviewCompleted = true;
+    item.lastReviewedCommitSha = "approved-sha";
+    item.prNumber = 42;
+
+    const actions = orch.processTransitions(
+      snapshotWith([{
+        id: "H-1-1", prNumber: 42, ciStatus: "pass", prState: "open", isMergeable: true,
+        headSha: "approved-sha",
+        newComments: [
+          { id: 701, body: "LGTM -- approve\n\n<!-- ninthwave-reviewer -->", author: "rob", createdAt: "2026-01-15T12:01:00Z", commentType: "review" },
+        ],
+      }]),
+      NOW,
+    );
+
+    expect(item.reviewCompleted).toBe(true);
+    expect(actions.some((a) => a.type === "send-message")).toBe(false);
+    expect(actions.some((a) => a.type === "launch-review")).toBe(false);
+    expect(item.state).toBe("merging");
+    expect(actions.some((a) => a.type === "merge")).toBe(true);
+  });
+
   it("transitions to review-pending on request-changes verdict", () => {
     const orch = new Orchestrator();
     orch.addItem(makeWorkItem("H-1-1"));

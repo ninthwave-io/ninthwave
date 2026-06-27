@@ -79,6 +79,8 @@ export interface DaemonStateItem {
   reviewRound?: number;
   /** SHA of the branch HEAD when the last review returned "request-changes". */
   lastReviewedCommitSha?: string | null;
+  /** SHA of the branch HEAD the reviewer last approved. */
+  lastApprovedCommitSha?: string | null;
   /** Whether a CI failure notification has been sent for the current failure. */
   ciFailureNotified?: boolean;
   /** The lastCommitTime when ciFailureNotified was set. */
@@ -757,6 +759,80 @@ export function clearPushbackSignal(
   } catch { /* best-effort */ }
 }
 
+// ── No-new-info signal ───────────────────────────────────────────────
+// One-shot record that a worker was woken by feedback carrying nothing
+// actionable (e.g. the reviewer's own approval summary echoed back, a stale or
+// duplicate comment). Unlike feedback-done (which clears the review gate and
+// resumes the loop) and pushback (which re-triggers a review), no-new-info tells
+// the orchestrator the wake was spurious: preserve the settled review gate and
+// re-park, without churning another review round.
+
+/** Path to a no-new-info signal file for a given item. */
+export function noNewInfoSignalPath(projectRoot: string, itemId: string): string {
+  return join(signalDir(projectRoot), `no-new-info--${itemId}.json`);
+}
+
+export interface NoNewInfoSignal {
+  id: string;
+  ts: string;
+  /** The worker's account of what woke it and why nothing was actionable. */
+  reason: string;
+}
+
+/** Write a no-new-info signal file atomically. Creates the directory if needed. */
+export function writeNoNewInfoSignal(
+  projectRoot: string,
+  itemId: string,
+  reason: string,
+  io: DaemonIO = defaultIO,
+): void {
+  const dir = signalDir(projectRoot);
+  if (!io.existsSync(dir)) {
+    io.mkdirSync(dir, { recursive: true });
+  }
+  const data: NoNewInfoSignal = {
+    id: itemId,
+    ts: new Date().toISOString(),
+    reason,
+  };
+  io.writeFileSync(
+    noNewInfoSignalPath(projectRoot, itemId),
+    JSON.stringify(data, null, 2),
+    "utf-8",
+  );
+}
+
+/** Read a no-new-info signal file. Returns null if the file doesn't exist or is invalid. */
+export function readNoNewInfoSignal(
+  projectRoot: string,
+  itemId: string,
+  io: DaemonIO = defaultIO,
+): NoNewInfoSignal | null {
+  const filePath = noNewInfoSignalPath(projectRoot, itemId);
+  if (!io.existsSync(filePath)) return null;
+  try {
+    const content = io.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(content) as NoNewInfoSignal;
+    if (!parsed || typeof parsed.reason !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Delete a no-new-info signal file. No-op if the file doesn't exist. */
+export function clearNoNewInfoSignal(
+  projectRoot: string,
+  itemId: string,
+  io: DaemonIO = defaultIO,
+): void {
+  const filePath = noNewInfoSignalPath(projectRoot, itemId);
+  if (!io.existsSync(filePath)) return;
+  try {
+    io.unlinkSync(filePath);
+  } catch { /* best-effort */ }
+}
+
 // ── External review state ────────────────────────────────────────────
 
 export type ExternalReviewState = "detected" | "reviewing" | "reviewed" | "done";
@@ -855,6 +931,7 @@ export function serializeOrchestratorState(
         ...(item.reviewCompleted ? { reviewCompleted: item.reviewCompleted } : {}),
         ...(item.reviewRound ? { reviewRound: item.reviewRound } : {}),
         ...(item.lastReviewedCommitSha != null ? { lastReviewedCommitSha: item.lastReviewedCommitSha } : {}),
+        ...(item.lastApprovedCommitSha != null ? { lastApprovedCommitSha: item.lastApprovedCommitSha } : {}),
         ...(item.failureReason ? { failureReason: item.failureReason } : {}),
         ...(item.workItem.dependencies.length > 0 ? { dependencies: item.workItem.dependencies } : {}),
         ...(item.startedAt ? { startedAt: item.startedAt } : {}),

@@ -64,6 +64,8 @@ export interface OrchestratorItem {
   pendingRetryWorkspaceRef?: string;
   /** SHA of the last reviewed commit. Used by the SHA gate to prevent re-review on unchanged code after review feedback. */
   lastReviewedCommitSha?: string | null;
+  /** SHA of the last commit the reviewer approved. Lets a `no-new-info` signal safely restore the settled review gate only when the current HEAD is the approved one (never merges un-reviewed code). */
+  lastApprovedCommitSha?: string | null;
   /** Timestamp of last state change (ISO string). */
   lastTransition: string;
   /** Number of times CI has failed for this item in the current daemon session. */
@@ -362,6 +364,8 @@ export interface ItemSnapshot {
   feedbackDoneSignal?: boolean;
   /** One-shot signal: worker registered disagreement with review feedback (pushback). */
   pushbackSignal?: import("./daemon.ts").PushbackSignal;
+  /** One-shot signal: worker reported a spurious wake carrying no actionable feedback (no-new-info). */
+  noNewInfoSignal?: import("./daemon.ts").NoNewInfoSignal;
   /**
    * Parked-worker stall detector signal. Populated only when stall conditions are
    * met for a review-pending item: true when a ninthwave reviewer comment is
@@ -414,7 +418,8 @@ export type ActionType =
   | "set-commit-status"
   | "post-review"
   | "clear-feedback-done-signal"
-  | "clear-pushback-signal";
+  | "clear-pushback-signal"
+  | "clear-no-new-info-signal";
 
 export interface Action {
   type: ActionType;

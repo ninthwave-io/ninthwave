@@ -37,6 +37,7 @@ import { cmdHeartbeat } from "./commands/heartbeat.ts";
 import { cmdPrCreate } from "./commands/pr-create.ts";
 import { cmdFeedbackDone } from "./commands/feedback-done.ts";
 import { cmdPushback } from "./commands/pushback.ts";
+import { cmdNoNewInfo } from "./commands/no-new-info.ts";
 import { cmdInbox } from "./commands/inbox.ts";
 import { cmdLogs } from "./commands/logs.ts";
 import { cmdLineageToken } from "./commands/lineage-token.ts";
@@ -514,6 +515,23 @@ export const COMMAND_REGISTRY: ReadonlyArray<CommandEntry> = [
     examples: [
       'nw pushback -m "This pattern is intentional -- see PR description"',
       'nw pushback -m "Existing code already handles this" --comment-id 12345 --comment-type review',
+    ],
+  },
+  {
+    name: "no-new-info",
+    usage: 'no-new-info -m "<what woke me / why there is nothing to do>"',
+    description: "Signal that a wake carried no actionable info (spurious trigger); re-parks without re-review and logs friction",
+    group: "advanced",
+    needsRoot: true,
+    needsWork: false,
+    handler: (ctx) => {
+      cmdNoNewInfo(ctx.args, ctx.projectRoot);
+    },
+    flags: {
+      "-m, --message": "What woke you and why there was nothing actionable (required)",
+    },
+    examples: [
+      'nw no-new-info -m "Woken by the reviewer\'s own approval summary; no change requested"',
     ],
   },
   {

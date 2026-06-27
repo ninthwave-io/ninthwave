@@ -75,6 +75,7 @@ import {
   executeReactToComment,
   executeClearFeedbackDoneSignal,
   executeClearPushbackSignal,
+  executeClearNoNewInfoSignal,
 } from "./orchestrator-actions.ts";
 import { appendPushbackRound } from "./pushback.ts";
 
@@ -884,6 +885,60 @@ export class Orchestrator {
     return actions;
   }
 
+  /**
+   * Handle a worker no-new-info signal: the worker was relaunched on feedback
+   * carrying nothing actionable (e.g. the reviewer's own approval summary echoed
+   * back, a stale or duplicate comment) and reports the wake as spurious.
+   *
+   * Rather than churn another review round, discard the feedback that triggered
+   * the wake and restore the settled review state: when this exact HEAD was
+   * previously approved, re-arm `reviewCompleted` so the normal review-pending
+   * merge path proceeds; otherwise just re-park (no merge, no re-review). The
+   * approval guard (`lastApprovedCommitSha === headSha`) ensures a misused signal
+   * can never merge un-reviewed code.
+   *
+   * Returns the actions to run, or null when no actionable signal applies. Gated
+   * on the same unchanged-code SHA condition as feedback-done and pushback.
+   */
+  private tryHandleNoNewInfo(
+    item: OrchestratorItem,
+    snap: ItemSnapshot | undefined,
+    _now: Date,
+  ): Action[] | null {
+    if (!snap?.noNewInfoSignal) return null;
+    if (!item.lastReviewedCommitSha || snap.headSha !== item.lastReviewedCommitSha) {
+      return null;
+    }
+
+    const signal = snap.noNewInfoSignal;
+    this.config.onEvent?.(item.id, "no-new-info", { reason: signal.reason });
+
+    // Discard the spurious feedback so it cannot reset the gate again.
+    item.pendingFeedbackBatch = undefined;
+    item.pendingFeedbackMessage = undefined;
+    item.needsFeedbackResponse = false;
+    if (snap.prNumber) item.prNumber = snap.prNumber;
+
+    // Restore review completion only when this exact HEAD was actually approved.
+    if (item.lastApprovedCommitSha && snap.headSha === item.lastApprovedCommitSha) {
+      item.reviewCompleted = true;
+    }
+
+    const actions: Action[] = [{ type: "clear-no-new-info-signal", itemId: item.id }];
+
+    // The worker has nothing left to do -- re-park it. Closing the workspace
+    // clears workspaceRef so the next poll's review-pending merge path isn't held
+    // by the mid-edit guard. The merge itself happens on the next poll via the
+    // normal canAutoMerge path, avoiding the teardown race of merging mid-edit.
+    if (item.workspaceRef && !item.sessionParked) {
+      item.sessionParked = true;
+      actions.push({ type: "workspace-close", itemId: item.id });
+    }
+
+    this.transition(item, "review-pending", snap?.eventTime);
+    return actions;
+  }
+
   /** Handle implementing state. */
   private handleImplementing(
     item: OrchestratorItem,
@@ -898,6 +953,11 @@ export class Orchestrator {
     // -> evaluateMerge -> reviewing in a single poll cycle on unchanged code.
     if (snap?.prNumber && snap.prState === "open") {
       if (item.lastReviewedCommitSha && snap.headSha === item.lastReviewedCommitSha) {
+        // No-new-info signal: worker reports a spurious wake. Checked first so a
+        // non-actionable wake settles instead of being fast-pathed into re-review
+        // or merge by the pushback/feedback-done handlers below.
+        const noNewInfo = this.tryHandleNoNewInfo(item, snap, now);
+        if (noNewInfo) return noNewInfo;
         // Pushback signal: worker disagrees with review feedback. Re-triggers a
         // review round without a no-op commit. Checked before feedback-done so a
         // worker that pushes back isn't fast-pathed to merge.
@@ -1603,6 +1663,12 @@ export class Orchestrator {
       return actions;
     }
 
+    // No-new-info signal: worker reports a spurious wake (feedback carried
+    // nothing actionable). Checked before pushback/feedback-done so it settles
+    // back to the approved state instead of triggering another review round.
+    const noNewInfo = this.tryHandleNoNewInfo(item, snap, now);
+    if (noNewInfo) return [...actions, ...noNewInfo];
+
     // Pushback signal: worker disagrees with review feedback. Re-triggers a
     // review round without a no-op commit. Checked before feedback-done and
     // continuePendingFeedbackHandoff so disagreement isn't fast-pathed to merge
@@ -1833,6 +1899,7 @@ export class Orchestrator {
       if (v.verdict === "approve") {
         item.reviewCompleted = true;
         item.lastReviewedCommitSha = snap?.headSha ?? null;
+        item.lastApprovedCommitSha = snap?.headSha ?? null;
         this.transition(item, "ci-passed", snap?.eventTime);
         actions.push({ type: "clean-review", itemId: item.id });
         actions.push({
@@ -2196,6 +2263,13 @@ export class Orchestrator {
   ): Action[] {
     const actions: Action[] = [];
 
+    // No-new-info signal: a spurious wake settles back to the approved state
+    // instead of letting the discarded feedback drive another review round.
+    // Checked before the feedback handoff/resolve below, which would otherwise
+    // reset the review gate.
+    const noNewInfo = this.tryHandleNoNewInfo(item, snap, now);
+    if (noNewInfo) return noNewInfo;
+
     const pendingFeedbackHandoff = this.continuePendingFeedbackHandoff(item, snap);
     if (pendingFeedbackHandoff) return pendingFeedbackHandoff;
 
@@ -2372,6 +2446,8 @@ export class Orchestrator {
         return executeClearFeedbackDoneSignal(item, ctx);
       case "clear-pushback-signal":
         return executeClearPushbackSignal(item, ctx);
+      case "clear-no-new-info-signal":
+        return executeClearNoNewInfoSignal(item, ctx);
     }
   }
 
