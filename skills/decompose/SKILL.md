@@ -18,9 +18,9 @@ allowed-tools:
 user_invocable: true
 ---
 
-## Interactive Questions (CRITICAL)
+## Interactive Questions
 
-This skill is highly interactive. You MUST use your interactive question tool to ask the user questions -- do NOT simply print a question as text and wait for a response.
+This skill is highly interactive. Always ask the user questions through your interactive question tool -- never by printing a question as text and waiting for a response.
 
 **Tool names by platform:** `AskUserQuestion` (Claude Code), `question` (OpenCode), `request_user_input` (Codex), `ask_user` (Copilot CLI, Gemini CLI). Use whichever is available in your environment.
 
@@ -199,9 +199,9 @@ When a work item is unusually sensitive or risky, include:
 
 Use this for auth and permission-boundary changes, secrets handling, destructive production operations, or high-risk data migrations. Omit the field for normal items. Do not write `false`.
 
-#### Test plan (REQUIRED)
+#### Test plan (required on every item)
 
-Every work item MUST include a `**Test plan:**` field. This is not optional -- workers use it as a testing checklist during implementation.
+Every work item must include a `**Test plan:**` field -- workers use it as a testing checklist during implementation.
 
 Each test plan specifies:
 - **What tests** to write or verify (new tests vs. existing coverage)
@@ -242,7 +242,7 @@ Format: `[CHML]-<feature_code>-<seq>`
 - Feature code from Phase 1
 - Incrementing sequence
 
-**Reserved IDs -- check git history of `.ninthwave/work/` BEFORE assigning numbers.** Work item IDs become git branch names (`ninthwave/<ID>`). If you mint an ID that any prior work item already used, `nw` will refuse to launch the new item because the lineage tokens don't match the existing branch, and the entire dependency chain behind it stalls. Re-decomposing a feature after a previous pass has shipped or abandoned items is the common trigger -- the open `.ninthwave/work/` queue looks empty, but git history still records every ID ever used.
+**Reserved IDs -- check git history of `.ninthwave/work/` before assigning numbers.** Work item IDs become git branch names (`ninthwave/<ID>`). If you mint an ID that any prior work item already used, `nw` will refuse to launch the new item because the lineage tokens don't match the existing branch, and the entire dependency chain behind it stalls. Re-decomposing a feature after a previous pass has shipped or abandoned items is the common trigger -- the open `.ninthwave/work/` queue looks empty, but git history still records every ID ever used.
 
 Use git history of the work dir (not `gh pr list`): work item filenames follow the convention `{priority_num}-{domain_slug}--{ID}.md`, so the ID is always present in the filename. PR titles are free prose and drift. Git history also catches decomposed-then-abandoned items that never got a PR.
 
@@ -258,7 +258,7 @@ Before assigning any new sequence numbers:
    Filter to the feature code you're assigning. No `--diff-filter=A` -- renames only show the new name with `A`, so filtering that way would miss half of a `git mv` pair.
 2. Union that set with the IDs already in `.ninthwave/work/` (current queue).
 3. Assign new numbers from the first integer strictly greater than the maximum in the union. Do not reclaim gaps -- the branch names for abandoned IDs may still exist on origin or in local clones, and reusing a gap is as risky as reusing the tail.
-4. If the repo is a shallow clone (`git rev-parse --is-shallow-repository` returns `true`), STOP and run `git fetch --unshallow` first. The check is only sound against full history.
+4. If the repo is a shallow clone (`git rev-parse --is-shallow-repository` returns `true`), run `git fetch --unshallow` before assigning any numbers. The check is only sound against full history.
 
 ---
 

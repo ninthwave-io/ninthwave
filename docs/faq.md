@@ -387,13 +387,13 @@ ninthwave does not declare models in agent frontmatter -- that knob was tool-spe
 {
   "ai_tool_overrides": {
     "claude": {
-      "env": { "ANTHROPIC_MODEL": "claude-opus-4-7" }
+      "env": { "ANTHROPIC_MODEL": "claude-opus-4-8" }
     }
   }
 }
 ```
 
-Check each tool's docs for its own env-var/flag names (Codex, OpenCode, Copilot each use their own). Overrides apply per-tool; they are not currently keyed by agent role, so today the same model is used across implementer, reviewer, rebaser, and forward-fixer for any given harness.
+Any model ID the harness accepts works here (e.g. `claude-fable-5` for the Claude 5 family). Check each tool's docs for its own env-var/flag names (Codex, OpenCode, Copilot each use their own). Overrides apply per-tool; they are not currently keyed by agent role, so today the same model is used across implementer, reviewer, rebaser, and forward-fixer for any given harness.
 
 **Where to put what:** `ai_tool_overrides` belongs in `.ninthwave/config.local.json` (gitignored by the deny-by-default `.ninthwave/.gitignore` that `nw init` writes) whenever the values are user-specific -- which absolute local paths almost always are. `.ninthwave/config.json` is for project-shared settings you want committed (e.g. `crew_url`). Use `~/.ninthwave/config.json` for defaults that should follow your user across every repo.
 

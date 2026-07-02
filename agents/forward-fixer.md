@@ -92,127 +92,36 @@ If the root cause is clear, choose the smallest safe repair path:
 - **Disable-feature-flag PR** when the merged change introduced a feature flag and turning it off is the safest, smallest repair
 - **Revert PR** when reverting the merged change is safer, faster, or less risky than a forward fix
 
-Do **not** create a synthetic child work item in `.ninthwave/work/`. The canonical item stays the same; only the PR changes.
+Do not create a synthetic child work item in `.ninthwave/work/`. The canonical item stays the same; only the PR changes.
 
-#### Option A: Minimal fix-forward PR
+#### Shared repair workflow (all options)
 
-1. Create a fix branch from main:
+1. Create the repair branch from the default branch:
    ```bash
-   git checkout -b ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID origin/REPO_DEFAULT_BRANCH
+   git checkout -b <branch> origin/REPO_DEFAULT_BRANCH
    ```
-
-2. Make the **minimal** change to fix the failure:
-   - Only fix what broke -- do not refactor, improve, or clean up surrounding code
-   - Do not re-implement the original feature differently
-   - The fix should be as small as possible while being correct
-
-3. Run the project's test suite to verify the fix works
-
-4. Commit with a clear message:
+2. Make the option-specific change (see below), honoring the Constraints in section 4
+3. Run the relevant tests to verify the repair restores the failing checks
+4. Commit with the option's commit subject
+5. Push and create the PR:
    ```bash
-   git commit -m "fix: repair CI after YOUR_VERIFY_ITEM_ID merge"
-   ```
-
-5. Push and create a PR:
-   ```bash
-   git push -u origin ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID
-   gh pr create --label "domain:verify" --title "fix: repair CI after YOUR_VERIFY_ITEM_ID merge" --body "$(cat <<'EOF'
+   git push -u origin <branch>
+   gh pr create --label "domain:verify" --title "<option's commit subject>" --body "$(cat <<'EOF'
    ## Summary
-   Fixes post-merge CI failure caused by YOUR_VERIFY_ITEM_ID.
+   <one line: repairs / disables the flag from / reverts YOUR_VERIFY_ITEM_ID to restore post-merge CI>
 
    - **Merge commit**: YOUR_VERIFY_MERGE_SHA
-   - **Root cause**: <describe what broke and why>
-   - **Fix**: <describe the minimal fix>
+   - **Root cause**: <what broke and why>
+   - **Repair**: <the minimal fix | the flag disabled and where it is defined | the revert>
+   - **Why this path**: <why fix-forward vs disable-flag vs revert was the smallest safe repair>
 
    ## Test Plan
    - [ ] CI passes on this PR
-   - [ ] Fix addresses the specific failure without side effects
+   - [ ] Repair addresses the specific failure without unrelated changes
    EOF
    )"
    ```
-
-#### Option B: Disable a newly introduced feature flag
-
-Use this path only when the failing merge introduced a feature flag or kill switch and disabling it is safer and smaller than either a code repair or a full revert.
-
-1. Create a fix branch from main:
-   ```bash
-   git checkout -b ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID origin/REPO_DEFAULT_BRANCH
-   ```
-
-2. Disable the new behavior using the mechanism introduced in the merged change:
-   - Reuse the existing env var, config constant, rollout file, or code path added by the merge
-   - Do **not** invent a new feature flag system just for recovery
-   - Do **not** repurpose an unrelated config switch
-   - Keep the change minimal and easy to re-enable later
-
-3. Run the relevant tests to verify disabling the flag restores CI.
-
-4. Commit with a clear message:
-   ```bash
-   git commit -m "fix: disable introduced feature flag after YOUR_VERIFY_ITEM_ID merge"
-   ```
-
-5. Push and create a PR:
-   ```bash
-   git push -u origin ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID
-   gh pr create --label "domain:verify" --title "fix: disable introduced feature flag after YOUR_VERIFY_ITEM_ID merge" --body "$(cat <<'EOF'
-   ## Summary
-   Disables the newly introduced feature flag from YOUR_VERIFY_ITEM_ID to restore post-merge CI.
-
-   - **Merge commit**: YOUR_VERIFY_MERGE_SHA
-   - **Root cause**: <describe what broke>
-   - **Flag disabled**: <name the flag and where it is defined>
-   - **Repair**: disable the new behavior as the smallest safe recovery
-   - **Why not revert**: <describe why disabling the flag is safer or faster>
-
-   ## Test Plan
-   - [ ] CI passes on this PR
-   - [ ] Disabling the flag restores the failing checks without unrelated changes
-   EOF
-   )"
-   ```
-
-#### Option C: Revert PR
-
-If reverting is the right repair:
-
-1. Create a revert branch from the default branch:
-   ```bash
-   git checkout -b ninthwave/revert-YOUR_VERIFY_ITEM_ID origin/REPO_DEFAULT_BRANCH
-   ```
-
-2. Revert the merge with the smallest viable change:
-   ```bash
-   git revert YOUR_VERIFY_MERGE_SHA
-   ```
-
-   If the merge commit requires a mainline parent selection, choose the correct `-m` value based on the repository's merge strategy.
-
-3. Run the relevant tests to verify the revert restores CI.
-
-4. Commit with a clear message if the revert command did not already create one:
-   ```bash
-   git commit -m "revert: revert YOUR_VERIFY_ITEM_ID merge"
-   ```
-
-5. Push and create a PR:
-   ```bash
-   git push -u origin ninthwave/revert-YOUR_VERIFY_ITEM_ID
-   gh pr create --label "domain:verify" --title "revert: revert YOUR_VERIFY_ITEM_ID merge" --body "$(cat <<'EOF'
-   ## Summary
-   Reverts YOUR_VERIFY_ITEM_ID to restore post-merge CI.
-
-   - **Merge commit**: YOUR_VERIFY_MERGE_SHA
-   - **Root cause**: <describe what broke and why revert is the safest repair>
-   - **Repair**: revert the merged change so main returns to green
-
-   ## Test Plan
-   - [ ] CI passes on this PR
-   - [ ] Revert restores the failing checks without unrelated changes
-   EOF
-   )"
-   ```
+   If you could not run the relevant tests locally, say so in the PR body instead of implying they passed.
 
 ```bash
 nw heartbeat --progress 1.0 --label "Repair PR created"
@@ -220,11 +129,36 @@ nw heartbeat --progress 1.0 --label "Repair PR created"
 
 The repair PR enters the normal pipeline -- the orchestrator daemon will track its CI, review, and merge.
 
+#### Option A: Minimal fix-forward PR
+
+- Branch: `ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID`
+- Commit subject: `fix: repair CI after YOUR_VERIFY_ITEM_ID merge`
+- Change: the smallest correct fix for what broke
+
+#### Option B: Disable a newly introduced feature flag
+
+Use this path only when the failing merge introduced a feature flag or kill switch and disabling it is safer and smaller than either a code repair or a full revert.
+
+- Branch: `ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID`
+- Commit subject: `fix: disable introduced feature flag after YOUR_VERIFY_ITEM_ID merge`
+- Change: disable the new behavior using the mechanism introduced in the merged change -- reuse the existing env var, config constant, rollout file, or code path added by the merge. Do not invent a new feature flag system for recovery and do not repurpose an unrelated config switch. Keep the change minimal and easy to re-enable later.
+- PR body: name the flag and where it is defined, and explain why disabling beats reverting.
+
+#### Option C: Revert PR
+
+- Branch: `ninthwave/revert-YOUR_VERIFY_ITEM_ID`
+- Commit subject: `revert: revert YOUR_VERIFY_ITEM_ID merge`
+- Change:
+  ```bash
+  git revert YOUR_VERIFY_MERGE_SHA
+  ```
+  If the merge commit requires a mainline parent selection, choose the correct `-m` value based on the repository's merge strategy. Commit manually only if the revert command did not already create the commit.
+
 ### Step 4: Escalate if stuck
 
 If the root cause is not obvious after reasonable investigation (reading CI logs, the diff, and related code), or if the fix would require significant changes:
 
-1. Do NOT create a speculative fix
+1. Do not create a speculative fix
 2. Report your findings so a human can investigate:
 
 ```bash
@@ -233,14 +167,14 @@ nw heartbeat --progress 1.0 --label "Stuck - needs human"
 
 Then stop. The orchestrator will transition to stuck with your diagnostic output available.
 
-## 4. Constraints (CRITICAL)
+## 4. Constraints
 
-- **Minimal changes only** -- repair what broke, nothing else
-- **Do NOT re-implement** the original feature. The merge is done; only fix the breakage
-- **Do NOT create a new flag** just for recovery -- only disable a flag introduced by the failing merge when one already exists
-- **Do NOT create** a second committed work item in `.ninthwave/work/`
-- **Do NOT modify** `VERSION` or `CHANGELOG.md`
-- **Do NOT expand scope** -- if you discover other issues, ignore them
+- **Minimal changes only** -- repair what broke, nothing else. Do not refactor, improve, or clean up surrounding code.
+- **Do not re-implement** the original feature. The merge is done; only fix the breakage
+- **Do not create a new flag** just for recovery -- only disable a flag introduced by the failing merge when one already exists
+- **Do not create** a second committed work item in `.ninthwave/work/`
+- **Do not modify** `VERSION` or `CHANGELOG.md`
+- **Do not expand scope** -- if you discover other issues, ignore them
 - **Fast exit on flaky failures** -- re-run CI, do not write code
 - **Branch from main** -- your worktree is already on main, not the original item's branch
 - **One fix per verification** -- if multiple things broke, fix the most critical one
@@ -258,4 +192,4 @@ Ignore comments prefixed with other agent labels (`[Implementer]`, `[Reviewer]`,
 
 ## 6. Idle -- Wait for Orchestrator Daemon
 
-After creating the fix PR (or re-running CI for flaky failures), stop and wait. The orchestrator daemon handles the post-PR lifecycle automatically. Do NOT poll or watch the PR.
+After creating the fix PR (or re-running CI for flaky failures), stop and wait. The orchestrator daemon handles the post-PR lifecycle automatically; do not poll or watch the PR.

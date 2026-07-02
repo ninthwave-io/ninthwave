@@ -67,9 +67,9 @@ This repo uses ninthwave to develop ninthwave. When working here, log friction a
 
 ## Skill routing
 
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
-The skill has specialized workflows that produce better results than ad-hoc answers.
+When the user's request matches an available skill, invoke it via the Skill tool as
+your first action, before answering directly or using other tools. The skill has
+specialized workflows that produce better results than ad-hoc answers.
 
 Key routing rules:
 - Product ideas, "is this worth building", brainstorming -> invoke office-hours

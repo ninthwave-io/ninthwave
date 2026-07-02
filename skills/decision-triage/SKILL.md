@@ -43,9 +43,9 @@ This skill ships from one repo but runs in any repo that uses ninthwave. The onl
 
 ---
 
-## Interactive Questions (CRITICAL)
+## Interactive Questions
 
-This skill is highly interactive. You MUST use your interactive question tool to ask the user questions. Do NOT print a question as text and wait for a response.
+This skill is highly interactive. Always ask the user questions through your interactive question tool -- never by printing a question as text and waiting for a response.
 
 **Tool names by platform:** `AskUserQuestion` (Claude Code), `question` (OpenCode), `request_user_input` (Codex), `ask_user` (Copilot CLI, Gemini CLI). Use whichever is available in your environment.
 
@@ -60,7 +60,7 @@ This skill is highly interactive. You MUST use your interactive question tool to
 
 ## Hard rules
 
-- **Never group questions across decisions.** Always one question per log. **But DO batch the slow parts:** investigation runs in parallel up front (Phase 2), execution runs after all decisions are collected (Phase 4). The human's interactive window in Phase 3 must be as tight as possible: no nested confirmations, no waiting for subagents, no follow-up "are you sure" prompts.
+- **Never group questions across decisions.** Always one question per log. **But do batch the slow parts:** investigation runs in parallel up front (Phase 2), execution runs after all decisions are collected (Phase 4). The human's interactive window in Phase 3 must be as tight as possible: no nested confirmations, no waiting for subagents, no follow-up "are you sure" prompts.
 - **Never commit.** The skill stages edits and writes new files. The human commits at the end if they want to.
 - **Work items must follow `.ninthwave/work-item-format.md`.** Read it before writing any new work item file.
 - **Generate lineage tokens with `nw lineage-token`** when creating a work item, the same way `/decompose` does.
@@ -98,7 +98,7 @@ Triage decisions are dramatically better when grounded in the actual shipped cod
 
 ### How to launch
 
-**Launch one Explore subagent per log, all in parallel.** Issue a single assistant message containing N `Agent` tool calls, one per decision log. Do NOT spawn them sequentially. This is the entire point of the phase.
+**Launch one Explore subagent per log, all in parallel.** Issue a single assistant message containing N `Agent` tool calls, one per decision log; do not spawn them sequentially. This is the entire point of the phase.
 
 If the inbox holds more than 10 logs, batch in groups of 10 (still parallel within each group). Wait for one group to finish before launching the next.
 
@@ -115,7 +115,7 @@ Decision log path: [path]
 Decision log contents (verbatim):
 [paste the entire file body]
 
-You are running in an unknown repo. Do NOT assume any paths outside `.ninthwave/`. Discover the consuming repo's doc and ADR conventions before recommending anything.
+You are running in an unknown repo. Do not assume any paths outside `.ninthwave/`. Discover the consuming repo's doc and ADR conventions before recommending anything.
 
 Investigate and report back, in this exact section order:
 
@@ -123,7 +123,7 @@ Investigate and report back, in this exact section order:
    Run `git log --all --grep=<item id>` and any related searches to find the work item's PR or merge commits. Read the actual diff. Confirm the decision text matches what shipped: does the named field, function, file, or behavior actually exist as described? State explicitly: matches / partial match / mismatch / unclear, and cite the SHA you read.
 
 2. REPO DOC SURVEY
-   Glob the repo to discover its doc and ADR conventions. Do NOT hardcode paths; check what is actually present. Look for:
+   Glob the repo to discover its doc and ADR conventions. Do not hardcode paths; check what is actually present. Look for:
      - prose doc directories: `docs/`, `documentation/`, `doc/`, `architecture/`
      - ADR conventions: `adr/`, `**/adr/`, `**/decisions/`, `**/architecture-decisions/`
      - root docs: `README.md`, `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `ETHOS.md`, `VISION.md`
@@ -209,12 +209,12 @@ The triage table is the only state Phase 3 and Phase 4 share. Carry it across bo
 Walk the triage table in FIFO order. For each log, in order:
 
 1. **Print** the assessment block (so the human has the grounded context on screen above the question).
-2. **Call AskUserQuestion ONCE.** No follow-ups. No "are you sure". No inner confirmation loops.
+2. **Call AskUserQuestion once.** No follow-ups. No "are you sure". No inner confirmation loops.
 3. **Mark the subagent's recommendation** as `(Recommended)` and put it first in the option list (per the AskUserQuestion convention).
 4. **Use the `preview` field** on the recommended option to show the proposed artifact: the ADR body, the work item draft, the before/after diff, the receipt, etc. AskUserQuestion renders previews as monospace markdown blocks beside the option list, so the human can read what will happen if they approve without leaving the question.
 5. **Record** the user's choice in the triage table under a new `decision` key. Move to the next log immediately.
 
-If the user picks an option the subagent did NOT draft for (e.g. the user picks E when the subagent recommended A), record the choice anyway. Phase 4 will draft inline using the investigation context from `full_report`.
+If the user picks an option the subagent did not draft for (e.g. the user picks E when the subagent recommended A), record the choice anyway. Phase 4 will draft inline using the investigation context from `full_report`.
 
 ### Question shape
 
@@ -319,7 +319,7 @@ When the loop finishes, summarize the session:
 3. List any new ADR files by path.
 4. List any files edited.
 5. Run `git status` and show the user the staged/unstaged changes.
-6. **Do NOT commit.** Tell the user the suggested commit command and let them decide:
+6. **Do not commit.** Tell the user the suggested commit command and let them decide:
    ```
    Suggested next step:
      git add -A && git commit -m "chore: triage decisions"

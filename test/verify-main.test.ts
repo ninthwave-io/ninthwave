@@ -1528,8 +1528,8 @@ describe("forward-fixer agent file", () => {
     expect(content).toContain("ninthwave/fix-forward-YOUR_VERIFY_ITEM_ID");
     expect(content).toContain("ninthwave/revert-YOUR_VERIFY_ITEM_ID");
     expect(content).toContain("#### Option B: Disable a newly introduced feature flag");
-    expect(content).toContain("Do **not** invent a new feature flag");
-    expect(content).toContain("Do **not** create a synthetic child work item");
+    expect(content).toContain("Do not invent a new feature flag");
+    expect(content).toContain("Do not create a synthetic child work item");
     expect(content).toContain(".ninthwave/work/");
   });
 });
